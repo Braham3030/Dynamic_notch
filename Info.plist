@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Dynamic Notch needs access to Apple Music to seamlessly display real-time live playback activities and beautiful album artwork glows.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dynamic Island relies on your microphone to generate accurate, real-time audio visualization waveforms based on the bass and treble of the music playing from your speakers.</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/Braham3030/Dynamic_notch/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>IjqaidXPggH9Hr2Zt+VWgoUn+MnGnBV7Jys8c3dq7Yg=</string>
+</dict>
+</plist>
