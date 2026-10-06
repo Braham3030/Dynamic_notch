@@ -225,8 +225,8 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .fill(Color.black)
                     
-                    // 2. Full-bleed Dynamic Notch Gradient with Music
-                    if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                    // 2. Full-bleed Dynamic Notch Gradient with Music (Only when expanded, starts solid black in compact/small size)
+                    if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
                         LinearGradient(
                             colors: [
                                 model.artworkColor,
@@ -236,6 +236,7 @@ struct IslandView: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
+                        .transition(.opacity)
                     }
                 }
                 .frame(width: model.width, height: model.height)
@@ -601,9 +602,9 @@ extension IslandModel {
     
     var height: CGFloat {
         if isExpanded {
-            if state == .expandedMusic { return 180 }
-            if state == .expandedFood { return 80 }
-            return 110
+            if state == .expandedMusic { return 215 }
+            if state == .expandedFood { return 85 }
+            return 120
         }
         return physicalNotchHeight
     }
@@ -726,7 +727,7 @@ class IslandModel: ObservableObject {
     
     @Published var physicalNotchHeight: CGFloat = 34 
     @Published var baseNotchWidth: CGFloat = 200 
-    @Published var displayMode: ScreenDisplayMode = .macbook
+    @Published var displayMode: ScreenDisplayMode = .both
     
     var updaterController: SPUStandardUpdaterController?
     

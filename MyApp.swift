@@ -37,6 +37,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
             
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.updateWindows(for: IslandModel.shared.displayMode)
+        }
+            
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
             if IslandModel.shared.autoCloseBehavior == .clickOutside && IslandModel.shared.isHoverExpanded {
                 DispatchQueue.main.async {
@@ -84,8 +88,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
+        let width: CGFloat = 700
+        let height: CGFloat = 350
+        
         let win = IslandOverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -98,8 +105,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         win.isRestorable = false 
         
-        let width: CGFloat = 600
-        let height: CGFloat = 200 
         let originX = screen.frame.midX - (width / 2)
         let originY = screen.frame.maxY - height
         
