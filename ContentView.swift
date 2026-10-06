@@ -1227,7 +1227,74 @@ struct PlayPauseButtonStyle: ButtonStyle {
 
 struct ContentView: View {
     @State private var selectedPane: SettingsPane = .appearance
-    var body: some View { HStack(spacing: 0) { VStack(alignment: .leading, spacing: 4) { Text("Preferences").font(.headline).padding(.horizontal, 14).padding(.top, 28).padding(.bottom, 12); ForEach(SettingsPane.allCases) { pane in Button(action: { selectedPane = pane }) { HStack(spacing: 12) { Image(systemName: pane.icon).frame(width: 20); Text(pane.rawValue); Spacer() }.padding(.vertical, 8).padding(.horizontal, 14).background(selectedPane == pane ? Color.accentColor.opacity(0.15) : Color.clear).foregroundStyle(selectedPane == pane ? Color.accentColor : Color.primary).cornerRadius(6) }.buttonStyle(.plain).padding(.horizontal, 8) }; Spacer() }.frame(width: 220, alignment: .leading).frame(maxHeight: .infinity).background(.thinMaterial); Divider().ignoresSafeArea(); VStack(spacing: 0) { switch selectedPane { case .appearance: AnimationSettingsView(); case .display: HardwareCalibrationView(); case .liveActivities: LiveActivitiesView(); case .systemControls: SystemControlsView(); case .about: AboutView() } }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(NSColor.controlBackgroundColor)) }.ignoresSafeArea().frame(width: 780, height: 640) }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Preferences")
+                    .font(.headline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 44)
+                    .padding(.bottom, 12)
+                
+                ForEach(SettingsPane.allCases) { pane in
+                    Button(action: { selectedPane = pane }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: pane.icon)
+                                .frame(width: 20)
+                            Text(pane.rawValue)
+                                .font(.system(size: 13, weight: selectedPane == pane ? .semibold : .regular))
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                        .background(selectedPane == pane ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .foregroundStyle(selectedPane == pane ? Color.accentColor : Color.primary)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+                }
+                Spacer()
+            }
+            .frame(width: 225, alignment: .leading)
+            .frame(maxHeight: .infinity)
+            .background(.thinMaterial)
+            
+            Divider().ignoresSafeArea()
+            
+            // Detail Content
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(selectedPane.rawValue)
+                        .font(.title2.bold())
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 40)
+                .padding(.bottom, 12)
+                
+                switch selectedPane {
+                case .appearance:
+                    AnimationSettingsView()
+                case .display:
+                    HardwareCalibrationView()
+                case .liveActivities:
+                    LiveActivitiesView()
+                case .systemControls:
+                    SystemControlsView()
+                case .about:
+                    AboutView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(NSColor.controlBackgroundColor))
+        }
+        .ignoresSafeArea()
+        .frame(width: 820, height: 660)
+    }
 }
 
 struct BezierGraph: View {

@@ -10,7 +10,7 @@ struct MyApp: App {
     var body: some Scene {
         WindowGroup("Dynamic Island Settings") {
             ContentView()
-                .frame(width: 780, height: 640)
+                .frame(width: 820, height: 660)
         }
         .windowResizability(.contentSize)
     } 
