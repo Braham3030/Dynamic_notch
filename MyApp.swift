@@ -49,6 +49,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        
+        NSEvent.addGlobalMonitorForEvents(matching: .swipe) { event in
+            if event.deltaX != 0 {
+                DispatchQueue.main.async {
+                    IslandModel.shared.beginSwipeCollapse()
+                }
+            }
+        }
+        
+        NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { event in
+            if event.phase == .began && abs(event.scrollingDeltaX) > 2.0 && event.hasPreciseScrollingDeltas {
+                DispatchQueue.main.async {
+                    IslandModel.shared.beginSwipeCollapse()
+                }
+            }
+        }
     }
     
     func updateWindows(for mode: ScreenDisplayMode) {

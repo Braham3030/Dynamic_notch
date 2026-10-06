@@ -762,7 +762,7 @@ class IslandModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.triggerScreenTransitionPulse()
+            self?.endSwipeExpansion()
         }
         
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -777,13 +777,37 @@ class IslandModel: ObservableObject {
         }
     }
     
+    func beginSwipeCollapse() {
+        transitionDebounceTask?.cancel()
+        withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
+            self.isScreenTransitioning = true
+        }
+        transitionDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if !Task.isCancelled {
+                withAnimation(.spring(response: 0.40, dampingFraction: 0.65)) {
+                    self.isScreenTransitioning = false
+                }
+            }
+        }
+    }
+    
+    func endSwipeExpansion() {
+        transitionDebounceTask?.cancel()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
+                self.isScreenTransitioning = false
+            }
+        }
+    }
+    
     func triggerScreenTransitionPulse() {
         transitionDebounceTask?.cancel()
         transitionDebounceTask = Task { @MainActor in
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
                 self.isScreenTransitioning = true
             }
-            try? await Task.sleep(nanoseconds: 280_000_000)
+            try? await Task.sleep(nanoseconds: 260_000_000)
             if !Task.isCancelled {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
                     self.isScreenTransitioning = false
