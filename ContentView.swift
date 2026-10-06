@@ -408,26 +408,46 @@ struct IslandView: View {
     @ViewBuilder var controlsView: some View {
         Group {
             if model.state == .expandedAirPods {
-                HStack(spacing: 16) { Image(systemName: "airpodspro"); Text("AirPods Pro Locating...").font(.headline) }.foregroundColor(.white)
+                if model.showAirPodsLocalization {
+                    HStack(spacing: 16) { Image(systemName: "airpodspro"); Text("AirPods Pro Locating...").font(.headline) }.foregroundColor(.white)
+                } else {
+                    disabledFeatureNotice("AirPods & Bluetooth Disabled")
+                }
             } else if model.state == .expandedPhone {
-                HStack(spacing: 16) { Image(systemName: "phone.fill").foregroundColor(.green); Text("Incoming Call...").font(.headline).foregroundColor(.white) }
+                if model.showPhone {
+                    HStack(spacing: 16) { Image(systemName: "phone.fill").foregroundColor(.green); Text("Incoming Call...").font(.headline).foregroundColor(.white) }
+                } else {
+                    disabledFeatureNotice("Phone Access Disabled")
+                }
             } else if model.state == .expandedNotifications {
-                HStack(spacing: 16) { Image(systemName: "bell.fill").foregroundColor(.red); Text("No New Notifications").font(.headline).foregroundColor(.white) }
+                if model.showNotifications {
+                    HStack(spacing: 16) { Image(systemName: "bell.fill").foregroundColor(.red); Text("No New Notifications").font(.headline).foregroundColor(.white) }
+                } else {
+                    disabledFeatureNotice("Notifications Disabled")
+                }
             } else if model.state == .expandedAirDrop {
-                HStack(spacing: 16) { Image(systemName: "airdrop"); Text("AirDrop Enabled").font(.headline) }.foregroundColor(.white)
+                if model.showAirDrop {
+                    HStack(spacing: 16) { Image(systemName: "airdrop"); Text("AirDrop Enabled").font(.headline) }.foregroundColor(.white)
+                } else {
+                    disabledFeatureNotice("AirDrop Sharing Disabled")
+                }
             } else {
-                HStack(spacing: 16) {
-                    HStack(spacing: 10) { 
-                        ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
-                        ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
+                if model.showControlCenter {
+                    HStack(spacing: 16) {
+                        HStack(spacing: 10) { 
+                            ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
+                            ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
+                        }
+                        VStack(spacing: 8) { 
+                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
+                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
+                        }.frame(width: 140)
+                        if model.airPodsConnected && model.showAirPodsLocalization {
+                            AirPodsListeningModeSlider(model: model)
+                        }
                     }
-                    VStack(spacing: 8) { 
-                        CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
-                        CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
-                    }.frame(width: 140)
-                    if model.airPodsConnected {
-                        AirPodsListeningModeSlider(model: model)
-                    }
+                } else {
+                    disabledFeatureNotice("Control Center Quick Toggles Disabled")
                 }
             }
         }
@@ -435,6 +455,17 @@ struct IslandView: View {
         .opacity(showsExpandedControls ? 1 : 0)
         .offset(y: showsExpandedControls ? 0 : -72)
         .allowsHitTesting(showsExpandedControls)
+    }
+    
+    @ViewBuilder func disabledFeatureNotice(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.slash.fill")
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(.vertical, 8)
     }
     
     @ViewBuilder var musicView: some View {
@@ -733,37 +764,167 @@ class IslandModel: ObservableObject {
     @Published var airPodsBatteryLevel: Double = 0.85
     @Published var hasMicPermission: Bool = false
     
-    func requestMusicPermission() {
-        let script = "tell application \"Music\" to get player state"
-        var error: NSDictionary?
-        if let scriptObj = NSAppleScript(source: script) {
-            _ = scriptObj.executeAndReturnError(&error)
+    func requestControlCenterPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Control Center"
+        alert.informativeText = "Dynamic Notch requires permission to interact with macOS System Events and Accessibility to adjust screen brightness, system volume, Wi-Fi, and Bluetooth.\n\nWould you like to grant permission to modify system controls?"
+        alert.addButton(withTitle: "Allow System Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            _ = AXIsProcessTrustedWithOptions(options)
             DispatchQueue.main.async {
-                self.showMusic = (error == nil)
+                self.showControlCenter = true
+                completion(true)
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.showControlCenter = false
+                completion(false)
+            }
+        }
+    }
+
+    func requestMusicPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Apple Music"
+        alert.informativeText = "Dynamic Notch requires permission to communicate with Apple Music to retrieve track information, album art, and control playback.\n\nWould you like to grant permission to use the Apple Music service?"
+        alert.addButton(withTitle: "Allow Music Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let script = "tell application \"Music\" to get player state"
+            var error: NSDictionary?
+            if let scriptObj = NSAppleScript(source: script) {
+                _ = scriptObj.executeAndReturnError(&error)
+            }
+            DispatchQueue.main.async {
+                self.showMusic = true
+                self.startMusicMonitoring()
+                completion(true)
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.showMusic = false
+                self.isMusicPlaying = false
+                completion(false)
             }
         }
     }
     
-    func requestMicPermission() {
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
+    func requestAirPodsPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Bluetooth & AirPods"
+        alert.informativeText = "Dynamic Notch requires Bluetooth permission to detect nearby paired AirPods, read real-time connection status, and show battery level gauges.\n\nWould you like to grant Bluetooth access?"
+        alert.addButton(withTitle: "Allow Bluetooth Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
             DispatchQueue.main.async {
-                self.hasMicPermission = granted
-                if granted {
-                    AudioAnalyzer.shared.startMonitoring()
+                self.showAirPodsLocalization = true
+                self.triggerAirPodsConnectSimulation()
+                completion(true)
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.showAirPodsLocalization = false
+                self.airPodsShowingCompact = false
+                completion(false)
+            }
+        }
+    }
+    
+    func requestMicPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Waveform Visualizer"
+        alert.informativeText = "Dynamic Notch requests microphone access for real-time FFT audio frequency analysis to animate music waveforms in the notch.\n\nWould you like to grant microphone access?"
+        alert.addButton(withTitle: "Allow Microphone Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    self.hasMicPermission = granted
+                    if granted {
+                        AudioAnalyzer.shared.startMonitoring()
+                    } else {
+                        AudioAnalyzer.shared.stopMonitoring()
+                    }
+                    completion(granted)
                 }
             }
+        } else {
+            DispatchQueue.main.async {
+                self.hasMicPermission = false
+                AudioAnalyzer.shared.stopMonitoring()
+                completion(false)
+            }
         }
     }
     
-    func requestNotificationsPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            DispatchQueue.main.async {
-                self.showNotifications = granted
+    func requestNotificationsPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Notifications"
+        alert.informativeText = "Dynamic Notch requires notification permissions to present floating alert banners inside the notch.\n\nWould you like to allow notifications?"
+        alert.addButton(withTitle: "Allow Notifications")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                DispatchQueue.main.async {
+                    self.showNotifications = granted
+                    completion(granted)
+                }
             }
+        } else {
+            DispatchQueue.main.async {
+                self.showNotifications = false
+                completion(false)
+            }
+        }
+    }
+    
+    func requestPhonePermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for Phone & Calls"
+        alert.informativeText = "Dynamic Notch requires permission to detect active phone and FaceTime calls.\n\nWould you like to grant permission?"
+        alert.addButton(withTitle: "Allow Phone Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        let response = alert.runModal()
+        DispatchQueue.main.async {
+            self.showPhone = (response == .alertFirstButtonReturn)
+            completion(self.showPhone)
+        }
+    }
+    
+    func requestAirDropPermission(completion: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Permission Required for AirDrop Sharing"
+        alert.informativeText = "Dynamic Notch requires permission to observe active incoming and outgoing AirDrop transfers.\n\nWould you like to grant AirDrop access?"
+        alert.addButton(withTitle: "Allow AirDrop Access")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.alertStyle = .informational
+        let response = alert.runModal()
+        DispatchQueue.main.async {
+            self.showAirDrop = (response == .alertFirstButtonReturn)
+            completion(self.showAirDrop)
         }
     }
     
     func triggerAirPodsConnectSimulation() {
+        guard showAirPodsLocalization else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
             self.airPodsConnected = true
             self.airPodsShowingCompact = true
@@ -1636,7 +1797,32 @@ struct SystemControlsView: View {
                 .pickerStyle(.menu)
             }
             
-            Section(header: Text("System Permissions & Access"), footer: Text("Grant access to allow Dynamic Notch to control Apple Music, detect AirPods, and visualize live audio.")) {
+            Section(header: Text("System Permissions & Integrations"), footer: Text("All integrations require system permission before making changes or reading data. Disabling an item instantly terminates its active notch activities.")) {
+                HStack {
+                    Image(systemName: "switch.2")
+                        .foregroundStyle(.purple)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Control Center Quick Toggles")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Allows adjusting brightness, volume, Wi-Fi & Bluetooth")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.showControlCenter },
+                        set: { newVal in
+                            if newVal {
+                                model.requestControlCenterPermission { _ in }
+                            } else {
+                                model.showControlCenter = false
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                }
+                
                 HStack {
                     Image(systemName: "music.note")
                         .foregroundStyle(.pink)
@@ -1644,7 +1830,7 @@ struct SystemControlsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Apple Music Access")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Player automation and album artwork lookup")
+                        Text("Connects to Apple Music server for track info & controls")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -1653,9 +1839,10 @@ struct SystemControlsView: View {
                         get: { model.showMusic },
                         set: { newVal in
                             if newVal {
-                                model.requestMusicPermission()
+                                model.requestMusicPermission { _ in }
                             } else {
                                 model.showMusic = false
+                                model.isMusicPlaying = false
                             }
                         }
                     ))
@@ -1667,9 +1854,9 @@ struct SystemControlsView: View {
                         .foregroundStyle(.blue)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("AirPods & Bluetooth")
+                        Text("AirPods & Bluetooth Localization")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Automatic connect banner & battery percentage")
+                        Text("Finds paired AirPods and displays connection & battery gauges")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -1677,9 +1864,11 @@ struct SystemControlsView: View {
                     Toggle("", isOn: Binding(
                         get: { model.showAirPodsLocalization },
                         set: { newVal in
-                            model.showAirPodsLocalization = newVal
                             if newVal {
-                                model.triggerAirPodsConnectSimulation()
+                                model.requestAirPodsPermission { _ in }
+                            } else {
+                                model.showAirPodsLocalization = false
+                                model.airPodsShowingCompact = false
                             }
                         }
                     ))
@@ -1691,9 +1880,9 @@ struct SystemControlsView: View {
                         .foregroundStyle(.orange)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Live Waveform Visualizer")
+                        Text("Live Audio Waveforms (Microphone)")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Microphone permission for audio visualization")
+                        Text("Analyzes real-time sound to render live waveforms")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -1702,9 +1891,10 @@ struct SystemControlsView: View {
                         get: { model.hasMicPermission },
                         set: { newVal in
                             if newVal {
-                                model.requestMicPermission()
+                                model.requestMicPermission { _ in }
                             } else {
                                 model.hasMicPermission = false
+                                AudioAnalyzer.shared.stopMonitoring()
                             }
                         }
                     ))
@@ -1727,7 +1917,7 @@ struct SystemControlsView: View {
                         get: { model.showNotifications },
                         set: { newVal in
                             if newVal {
-                                model.requestNotificationsPermission()
+                                model.requestNotificationsPermission { _ in }
                             } else {
                                 model.showNotifications = false
                             }
@@ -1737,19 +1927,28 @@ struct SystemControlsView: View {
                 }
                 
                 HStack {
-                    Image(systemName: "switch.2")
-                        .foregroundStyle(.purple)
+                    Image(systemName: "phone.fill")
+                        .foregroundStyle(.green)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Control Center Quick Toggles")
+                        Text("Phone & FaceTime")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Fast brightness, volume, and Wi-Fi switches")
+                        Text("Shows live active call status in Dynamic Notch")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: $model.showControlCenter)
-                        .labelsHidden()
+                    Toggle("", isOn: Binding(
+                        get: { model.showPhone },
+                        set: { newVal in
+                            if newVal {
+                                model.requestPhonePermission { _ in }
+                            } else {
+                                model.showPhone = false
+                            }
+                        }
+                    ))
+                    .labelsHidden()
                 }
                 
                 HStack {
@@ -1757,19 +1956,28 @@ struct SystemControlsView: View {
                         .foregroundStyle(.cyan)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("AirDrop & Nearby Sharing")
+                        Text("AirDrop Sharing")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Status notifications for active transfers")
+                        Text("Displays active transfer progress in the notch")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: $model.showAirDrop)
-                        .labelsHidden()
+                    Toggle("", isOn: Binding(
+                        get: { model.showAirDrop },
+                        set: { newVal in
+                            if newVal {
+                                model.requestAirDropPermission { _ in }
+                            } else {
+                                model.showAirDrop = false
+                            }
+                        }
+                    ))
+                    .labelsHidden()
                 }
             }
             
-            Section(footer: Text("If an item was denied previously, open System Settings to grant access.")) {
+            Section(footer: Text("If an item was denied previously in macOS, open Privacy & Security Settings to grant access.")) {
                 Button(action: { model.openSystemPrivacySettings() }) {
                     HStack {
                         Image(systemName: "lock.shield.fill")
