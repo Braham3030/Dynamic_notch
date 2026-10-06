@@ -20,17 +20,18 @@ class IslandOverlayWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
     override var acceptsFirstResponder: Bool { false }
-    
-    override func updateConstraintsIfNeeded() {
-        // No-op to eliminate layout constraint update loops on floating overlay
-    }
-    
-    override func layoutIfNeeded() {
-        // No-op to eliminate layout constraint update loops on floating overlay
+}
+
+class PassthroughHostingController: NSHostingController<IslandView> {
+    override func loadView() {
+        let v = PassthroughView(rootView: rootView)
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor.clear.cgColor
+        self.view = v
     }
 }
 
-class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+class PassthroughView: NSHostingView<IslandView> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let model = IslandModel.shared
         let islandW: CGFloat = model.width
@@ -122,9 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingView = PassthroughHostingView(rootView: islandView)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingController = PassthroughHostingController(rootView: islandView)
         
         let width: CGFloat = 500
         let height: CGFloat = 240
@@ -138,11 +137,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        hostingView.autoresizingMask = [.width, .height]
-        hostingView.translatesAutoresizingMaskIntoConstraints = true
-        
-        win.contentView = hostingView
+        win.contentViewController = hostingController
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false
