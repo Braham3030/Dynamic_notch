@@ -765,23 +765,21 @@ class IslandModel: ObservableObject {
     @Published var hasMicPermission: Bool = false
     
     func requestControlCenterPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Control Center"
-        alert.informativeText = "Dynamic Notch requires permission to interact with macOS System Events and Accessibility to adjust screen brightness, system volume, Wi-Fi, and Bluetooth.\n\nWould you like to grant permission to modify system controls?"
-        alert.addButton(withTitle: "Allow System Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-            _ = AXIsProcessTrustedWithOptions(options)
-            DispatchQueue.main.async {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Control Center"
+            alert.informativeText = "Dynamic Notch requires permission to interact with macOS System Events and Accessibility to adjust screen brightness, system volume, Wi-Fi, and Bluetooth.\n\nWould you like to grant permission to modify system controls?"
+            alert.addButton(withTitle: "Allow System Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+                _ = AXIsProcessTrustedWithOptions(options)
                 self.showControlCenter = true
                 completion(true)
-            }
-        } else {
-            DispatchQueue.main.async {
+            } else {
                 self.showControlCenter = false
                 completion(false)
             }
@@ -789,27 +787,25 @@ class IslandModel: ObservableObject {
     }
 
     func requestMusicPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Apple Music"
-        alert.informativeText = "Dynamic Notch requires permission to communicate with Apple Music to retrieve track information, album art, and control playback.\n\nWould you like to grant permission to use the Apple Music service?"
-        alert.addButton(withTitle: "Allow Music Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            let script = "tell application \"Music\" to get player state"
-            var error: NSDictionary?
-            if let scriptObj = NSAppleScript(source: script) {
-                _ = scriptObj.executeAndReturnError(&error)
-            }
-            DispatchQueue.main.async {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Apple Music"
+            alert.informativeText = "Dynamic Notch requires permission to communicate with Apple Music to retrieve track information, album art, and control playback.\n\nWould you like to grant permission to use the Apple Music service?"
+            alert.addButton(withTitle: "Allow Music Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let script = "tell application \"Music\" to get player state"
+                var error: NSDictionary?
+                if let scriptObj = NSAppleScript(source: script) {
+                    _ = scriptObj.executeAndReturnError(&error)
+                }
                 self.showMusic = true
                 self.startMusicMonitoring()
                 completion(true)
-            }
-        } else {
-            DispatchQueue.main.async {
+            } else {
                 self.showMusic = false
                 self.isMusicPlaying = false
                 completion(false)
@@ -818,22 +814,20 @@ class IslandModel: ObservableObject {
     }
     
     func requestAirPodsPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Bluetooth & AirPods"
-        alert.informativeText = "Dynamic Notch requires Bluetooth permission to detect nearby paired AirPods, read real-time connection status, and show battery level gauges.\n\nWould you like to grant Bluetooth access?"
-        alert.addButton(withTitle: "Allow Bluetooth Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            DispatchQueue.main.async {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Bluetooth & AirPods"
+            alert.informativeText = "Dynamic Notch requires Bluetooth permission to detect nearby paired AirPods, read real-time connection status, and show battery level gauges.\n\nWould you like to grant Bluetooth access?"
+            alert.addButton(withTitle: "Allow Bluetooth Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
                 self.showAirPodsLocalization = true
                 self.triggerAirPodsConnectSimulation()
                 completion(true)
-            }
-        } else {
-            DispatchQueue.main.async {
+            } else {
                 self.showAirPodsLocalization = false
                 self.airPodsShowingCompact = false
                 completion(false)
@@ -842,28 +836,28 @@ class IslandModel: ObservableObject {
     }
     
     func requestMicPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Waveform Visualizer"
-        alert.informativeText = "Dynamic Notch requests microphone access for real-time FFT audio frequency analysis to animate music waveforms in the notch.\n\nWould you like to grant microphone access?"
-        alert.addButton(withTitle: "Allow Microphone Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                DispatchQueue.main.async {
-                    self.hasMicPermission = granted
-                    if granted {
-                        AudioAnalyzer.shared.startMonitoring()
-                    } else {
-                        AudioAnalyzer.shared.stopMonitoring()
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Waveform Visualizer"
+            alert.informativeText = "Dynamic Notch requests microphone access for real-time FFT audio frequency analysis to animate music waveforms in the notch.\n\nWould you like to grant microphone access?"
+            alert.addButton(withTitle: "Allow Microphone Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    DispatchQueue.main.async {
+                        self.hasMicPermission = granted
+                        if granted {
+                            AudioAnalyzer.shared.startMonitoring()
+                        } else {
+                            AudioAnalyzer.shared.stopMonitoring()
+                        }
+                        completion(granted)
                     }
-                    completion(granted)
                 }
-            }
-        } else {
-            DispatchQueue.main.async {
+            } else {
                 self.hasMicPermission = false
                 AudioAnalyzer.shared.stopMonitoring()
                 completion(false)
@@ -872,23 +866,23 @@ class IslandModel: ObservableObject {
     }
     
     func requestNotificationsPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Notifications"
-        alert.informativeText = "Dynamic Notch requires notification permissions to present floating alert banners inside the notch.\n\nWould you like to allow notifications?"
-        alert.addButton(withTitle: "Allow Notifications")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                DispatchQueue.main.async {
-                    self.showNotifications = granted
-                    completion(granted)
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Notifications"
+            alert.informativeText = "Dynamic Notch requires notification permissions to present floating alert banners inside the notch.\n\nWould you like to allow notifications?"
+            alert.addButton(withTitle: "Allow Notifications")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    DispatchQueue.main.async {
+                        self.showNotifications = granted
+                        completion(granted)
+                    }
                 }
-            }
-        } else {
-            DispatchQueue.main.async {
+            } else {
                 self.showNotifications = false
                 completion(false)
             }
@@ -896,28 +890,28 @@ class IslandModel: ObservableObject {
     }
     
     func requestPhonePermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for Phone & Calls"
-        alert.informativeText = "Dynamic Notch requires permission to detect active phone and FaceTime calls.\n\nWould you like to grant permission?"
-        alert.addButton(withTitle: "Allow Phone Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        let response = alert.runModal()
         DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for Phone & Calls"
+            alert.informativeText = "Dynamic Notch requires permission to detect active phone and FaceTime calls.\n\nWould you like to grant permission?"
+            alert.addButton(withTitle: "Allow Phone Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            let response = alert.runModal()
             self.showPhone = (response == .alertFirstButtonReturn)
             completion(self.showPhone)
         }
     }
     
     func requestAirDropPermission(completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = "Permission Required for AirDrop Sharing"
-        alert.informativeText = "Dynamic Notch requires permission to observe active incoming and outgoing AirDrop transfers.\n\nWould you like to grant AirDrop access?"
-        alert.addButton(withTitle: "Allow AirDrop Access")
-        alert.addButton(withTitle: "Don't Allow")
-        alert.alertStyle = .informational
-        let response = alert.runModal()
         DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Permission Required for AirDrop Sharing"
+            alert.informativeText = "Dynamic Notch requires permission to observe active incoming and outgoing AirDrop transfers.\n\nWould you like to grant AirDrop access?"
+            alert.addButton(withTitle: "Allow AirDrop Access")
+            alert.addButton(withTitle: "Don't Allow")
+            alert.alertStyle = .informational
+            let response = alert.runModal()
             self.showAirDrop = (response == .alertFirstButtonReturn)
             completion(self.showAirDrop)
         }

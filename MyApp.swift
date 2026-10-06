@@ -20,10 +20,6 @@ class IslandOverlayWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
     override var acceptsFirstResponder: Bool { false }
-    
-    override func updateConstraintsIfNeeded() {
-        // Safe no-op to eliminate layout constraint update loops on floating overlay
-    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -98,9 +94,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingView = NSHostingView(rootView: islandView)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingController = NSHostingController(rootView: islandView)
+        hostingController.view.wantsLayer = true
+        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
         let width: CGFloat = 700
         let height: CGFloat = 350
@@ -111,11 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        hostingView.autoresizingMask = [.width, .height]
-        hostingView.translatesAutoresizingMaskIntoConstraints = true
-        
-        win.contentView = hostingView
+        win.contentViewController = hostingController
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false
