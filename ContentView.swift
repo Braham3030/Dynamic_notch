@@ -981,6 +981,9 @@ class IslandModel: ObservableObject {
     @Published var physicalNotchHeight: CGFloat = 34 
     @Published var baseNotchWidth: CGFloat = 200 
     @Published var displayMode: ScreenDisplayMode = .both
+    @Published var settingsBackgroundStyle: SettingsBackgroundStyle = .liquidGlass
+    @Published var settingsGlassIntensity: Double = 0.75
+    @Published var settingsWindowOpacity: Double = 0.85
     
     var updaterController: SPUStandardUpdaterController?
     
@@ -1369,10 +1372,44 @@ struct MusicWaveform: View {
 }
 
 
-enum SettingsPane: String, CaseIterable, Identifiable {
-    case appearance = "Appearance & Physics"; case display = "Hardware Calibration"; case liveActivities = "Live Activities"; case systemControls = "System Controls"; case about = "About"
+enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
+    case liquidGlass = "Liquid Glass"
+    case obsidian = "Dark Obsidian"
+    case aurora = "Aurora Glow"
+    case sunset = "Sunset Mirage"
+    case slate = "Minimal Slate"
+    
     var id: String { rawValue }
-    var icon: String { switch self { case .appearance: return "sparkles"; case .display: return "display"; case .liveActivities: return "bolt.fill"; case .systemControls: return "switch.2"; case .about: return "info.circle" } }
+    var icon: String {
+        switch self {
+        case .liquidGlass: return "drop.fill"
+        case .obsidian: return "circle.fill"
+        case .aurora: return "sparkles"
+        case .sunset: return "sun.horizon.fill"
+        case .slate: return "square.fill"
+        }
+    }
+}
+
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case appearance = "Appearance & Physics"
+    case background = "Window & Background"
+    case display = "Hardware Calibration"
+    case liveActivities = "Live Activities"
+    case systemControls = "System Controls"
+    case about = "About"
+    
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .appearance: return "sparkles"
+        case .background: return "paintpalette.fill"
+        case .display: return "display"
+        case .liveActivities: return "bolt.fill"
+        case .systemControls: return "switch.2"
+        case .about: return "info.circle"
+        }
+    }
 }
 
 struct SkipButtonStyle: ButtonStyle {
@@ -1391,12 +1428,13 @@ struct PlayPauseButtonStyle: ButtonStyle {
 }
 
 struct ContentView: View {
+    @ObservedObject var model = IslandModel.shared
     @State private var selectedPane: SettingsPane = .appearance
     
     var body: some View {
         HStack(spacing: 0) {
-            // Sidebar
-            VStack(alignment: .leading, spacing: 6) {
+            // Sidebar Navigation
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Preferences")
                     .font(.headline.weight(.semibold))
                     .padding(.horizontal, 16)
@@ -1404,28 +1442,35 @@ struct ContentView: View {
                     .padding(.bottom, 12)
                 
                 ForEach(SettingsPane.allCases) { pane in
-                    Button(action: { selectedPane = pane }) {
+                    Button {
+                        selectedPane = pane
+                    } label: {
                         HStack(spacing: 12) {
                             Image(systemName: pane.icon)
-                                .frame(width: 20)
+                                .font(.system(size: 14))
+                                .frame(width: 22)
                             Text(pane.rawValue)
                                 .font(.system(size: 13, weight: selectedPane == pane ? .semibold : .regular))
                             Spacer()
                         }
                         .padding(.vertical, 8)
-                        .padding(.horizontal, 14)
-                        .background(selectedPane == pane ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .padding(.horizontal, 12)
+                        .background(selectedPane == pane ? Color.accentColor.opacity(0.2) : Color.clear)
                         .foregroundStyle(selectedPane == pane ? Color.accentColor : Color.primary)
                         .cornerRadius(8)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, 10)
                 }
                 Spacer()
             }
-            .frame(width: 225, alignment: .leading)
+            .frame(width: 235, alignment: .leading)
             .frame(maxHeight: .infinity)
-            .background(.thinMaterial)
+            .background(
+                VisualEffect()
+                    .opacity(model.settingsWindowOpacity)
+            )
             
             Divider().ignoresSafeArea()
             
@@ -1444,6 +1489,8 @@ struct ContentView: View {
                 switch selectedPane {
                 case .appearance:
                     AnimationSettingsView()
+                case .background:
+                    BackgroundSettingsView()
                 case .display:
                     HardwareCalibrationView()
                 case .liveActivities:
@@ -1455,10 +1502,45 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(
+                settingsPaneBackground
+            )
         }
         .ignoresSafeArea()
-        .frame(width: 820, height: 660)
+        .frame(width: 840, height: 680)
+    }
+    
+    @ViewBuilder private var settingsPaneBackground: some View {
+        ZStack {
+            VisualEffect()
+                .opacity(model.settingsWindowOpacity)
+            
+            switch model.settingsBackgroundStyle {
+            case .liquidGlass:
+                Color(NSColor.controlBackgroundColor).opacity(0.4 * model.settingsWindowOpacity)
+                LinearGradient(
+                    colors: [Color.white.opacity(0.12 * model.settingsGlassIntensity), Color.clear],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .obsidian:
+                Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.85 * model.settingsWindowOpacity)
+            case .aurora:
+                LinearGradient(
+                    colors: [Color.purple.opacity(0.25 * model.settingsWindowOpacity), Color.teal.opacity(0.20 * model.settingsWindowOpacity)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .sunset:
+                LinearGradient(
+                    colors: [Color.orange.opacity(0.22 * model.settingsWindowOpacity), Color.pink.opacity(0.18 * model.settingsWindowOpacity)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .slate:
+                Color(red: 0.16, green: 0.18, blue: 0.22).opacity(0.75 * model.settingsWindowOpacity)
+            }
+        }
     }
 }
 
@@ -2172,5 +2254,178 @@ struct AirPodsListeningModeSlider: View {
             .cornerRadius(8)
         }
         .frame(width: 146)
+    }
+}
+
+struct SettingsWindowPreviewer: View {
+    @ObservedObject var model: IslandModel
+    
+    var body: some View {
+        ZStack {
+            // Simulated macOS Desktop Wallpaper
+            GeometryReader { geo in
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.15, green: 0.35, blue: 0.75),
+                            Color(red: 0.65, green: 0.25, blue: 0.65),
+                            Color(red: 0.95, green: 0.55, blue: 0.35)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    
+                    // Desktop shapes to show off transparency and glass blur
+                    Circle()
+                        .fill(Color.yellow.opacity(0.7))
+                        .frame(width: 90, height: 90)
+                        .offset(x: -70, y: -20)
+                    
+                    RoundedRectangle(cornerRadius: 30)
+                        .fill(Color.cyan.opacity(0.6))
+                        .frame(width: 140, height: 80)
+                        .offset(x: 80, y: 30)
+                    
+                    // Mini Simulated Settings Window
+                    HStack(spacing: 0) {
+                        // Mini Sidebar
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color.red).frame(width: 6, height: 6)
+                                Circle().fill(Color.yellow).frame(width: 6, height: 6)
+                                Circle().fill(Color.green).frame(width: 6, height: 6)
+                            }
+                            .padding(.bottom, 4)
+                            
+                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.3)).frame(width: 35, height: 5)
+                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 45, height: 5)
+                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 30, height: 5)
+                            Spacer()
+                        }
+                        .padding(8)
+                        .frame(width: 75)
+                        .background(Color.black.opacity(0.35))
+                        
+                        Divider().opacity(0.3)
+                        
+                        // Mini Content Pane with selected background style applied!
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.4)).frame(width: 70, height: 8)
+                            HStack {
+                                RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 20)
+                                RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 20)
+                            }
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.2)).frame(height: 30)
+                            Spacer()
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            previewBackgroundLayer(style: model.settingsBackgroundStyle, opacity: model.settingsWindowOpacity, glass: model.settingsGlassIntensity)
+                        )
+                    }
+                    .frame(width: geo.size.width * 0.76, height: geo.size.height * 0.72)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(0.2 + (model.settingsGlassIntensity * 0.3)), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder func previewBackgroundLayer(style: SettingsBackgroundStyle, opacity: Double, glass: Double) -> some View {
+        ZStack {
+            switch style {
+            case .liquidGlass:
+                Color.black.opacity(0.45 * opacity)
+                LinearGradient(colors: [Color.white.opacity(0.15 * glass), Color.clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .obsidian:
+                Color(red: 0.05, green: 0.05, blue: 0.07).opacity(0.92 * opacity)
+            case .aurora:
+                LinearGradient(colors: [Color.purple.opacity(0.6 * opacity), Color.teal.opacity(0.5 * opacity)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .sunset:
+                LinearGradient(colors: [Color.orange.opacity(0.55 * opacity), Color.pink.opacity(0.5 * opacity)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .slate:
+                Color(red: 0.18, green: 0.20, blue: 0.24).opacity(0.85 * opacity)
+            }
+        }
+    }
+}
+
+struct BackgroundSettingsView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Top macOS-style Wallpaper & Window Previewer
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Live Window Preview")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    SettingsWindowPreviewer(model: model)
+                        .frame(height: 190)
+                        .cornerRadius(14)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+                }
+                .padding(.horizontal, 28)
+                
+                // Settings Form Controls
+                Form {
+                    Section(header: Text("Theme Preset")) {
+                        Picker("Background Style", selection: $model.settingsBackgroundStyle) {
+                            ForEach(SettingsBackgroundStyle.allCases) { style in
+                                Label(style.rawValue, systemImage: style.icon).tag(style)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    
+                    Section(
+                        header: Text("Liquid Glass & Materials"),
+                        footer: Text("Fine-tunes the liquid glass blur dispersion, specular edge sheen, and background distortion.")
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Liquid Glass Intensity")
+                                Spacer()
+                                Text("\(Int(model.settingsGlassIntensity * 100))%")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $model.settingsGlassIntensity, in: 0.0...1.0, step: 0.05)
+                        }
+                    }
+                    
+                    Section(
+                        header: Text("Window Transparency"),
+                        footer: Text("Adjusts how translucent the settings window is against your desktop background and open apps.")
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Desktop Transparency")
+                                Spacer()
+                                Text("\(Int((1.0 - model.settingsWindowOpacity) * 100))% transparent")
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $model.settingsWindowOpacity, in: 0.25...1.0, step: 0.05)
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+                .frame(minHeight: 320)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
     }
 }
