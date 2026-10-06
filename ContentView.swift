@@ -1246,17 +1246,27 @@ class IslandModel: ObservableObject {
         }
     }
 
-    @Published var listeningMode: Int = 3
+    @Published var listeningMode: Int = 2
     func setAirPodsMode(_ mode: Int) {
-        self.listeningMode = mode
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            self.listeningMode = mode
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
-            let sel = Selector("setListeningMode:")
+            let sel1 = Selector("setListeningMode:")
+            let sel2 = Selector("setNoiseCancellationMode:")
+            let sel3 = Selector("setListeningMode:error:")
             typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Bool
-            for device in devices where device.isConnected() && device.responds(to: sel) {
-                let imp = device.method(for: sel)
-                let function = unsafeBitCast(imp, to: SetListeningModeIMP.self)
-                _ = function(device, sel, UInt8(mode))
+            for device in devices where device.isConnected() {
+                if device.responds(to: sel1) {
+                    let imp = device.method(for: sel1)
+                    let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
+                    _ = fn(device, sel1, UInt8(mode))
+                } else if device.responds(to: sel2) {
+                    let imp = device.method(for: sel2)
+                    let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
+                    _ = fn(device, sel2, UInt8(mode))
+                }
             }
         }
     }
@@ -1575,27 +1585,28 @@ struct CustomSlider: View {
         return icon
     }
     
+    let sliderWidth: CGFloat = 140
+    let sliderHeight: CGFloat = 24
+    
     var body: some View { 
-        GeometryReader { geo in 
-            ZStack(alignment: .leading) { 
-                Capsule().fill(Color.white.opacity(0.15))
-                Capsule().fill(Color.white).frame(width: max(24, geo.size.width * CGFloat(value)))
-                Image(systemName: dynamicIcon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(value > 0.15 ? .black : .white)
-                    .contentTransition(.symbolEffect(.replace))
-                    .padding(.leading, 8) 
-            }
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in 
-                let newValue = min(max(0, drag.location.x / geo.size.width), 1)
-                if abs(value - newValue) > 0.01 {
-                    value = newValue
-                    action?(newValue)
-                }
-            }) 
+        ZStack(alignment: .leading) { 
+            Capsule().fill(Color.white.opacity(0.15))
+            Capsule().fill(Color.white).frame(width: max(24, sliderWidth * CGFloat(value)))
+            Image(systemName: dynamicIcon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(value > 0.15 ? .black : .white)
+                .contentTransition(.symbolEffect(.replace))
+                .padding(.leading, 8) 
         }
-        .frame(height: 24) 
+        .frame(width: sliderWidth, height: sliderHeight)
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 0).onChanged { drag in 
+            let newValue = min(max(0, drag.location.x / sliderWidth), 1)
+            if abs(value - newValue) > 0.01 {
+                value = newValue
+                action?(newValue)
+            }
+        }) 
     } 
 }
 
@@ -2124,67 +2135,48 @@ struct LiquidScrubber: View {
 
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
-    @GestureState private var isDragging: Bool = false
     
-    let modes = [2, 4, 3]
-    let icons = ["waveform.path", "waveform.path.badge.plus", "waveform"]
+    // Mode 2: Noise Cancellation, Mode 3: Off, Mode 1 or 4: Transparency
+    let modes = [2, 3, 4]
+    let icons = ["earbuds", "speaker.slash.fill", "waveform"]
+    let titles = ["ANC", "Off", "Transp."]
     
     var body: some View {
-        VStack(spacing: 6) {
-            Text("Listening Mode").font(.system(size: 10, weight: .semibold)).foregroundColor(.white.opacity(0.6))
+        VStack(spacing: 4) {
+            Text("AirPods Mode")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white.opacity(0.7))
             
-            ZStack {
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.1))
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { i in
+                    let modeVal = modes[i]
+                    let isSelected = model.listeningMode == modeVal
                     
-                    GeometryReader { geo in 
-                        let segmentWidth = (140 - 8) / 3.0
-                        let index = CGFloat(modes.firstIndex(of: model.listeningMode) ?? 0)
-                        
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.white.opacity(0.2))
-                            .glassEffect()
-                            .scaleEffect(isDragging ? 1.05 : 1.0)
-                            .shadow(color: .black.opacity(isDragging ? 0.3 : 0.1), radius: isDragging ? 5 : 2, x: 0, y: isDragging ? 3 : 1)
-                            .frame(width: segmentWidth, height: geo.size.height - 8)
-                            .offset(x: 4 + (index * segmentWidth), y: 4)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.65), value: model.listeningMode)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.65), value: isDragging)
-                    }
-                    
-                    HStack(spacing: 0) {
-                        ForEach(0..<3, id: \.self) { i in 
-                            let isSelected = model.listeningMode == modes[i]
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            model.setAirPodsMode(modeVal)
+                        }
+                    } label: {
+                        VStack(spacing: 2) {
                             Image(systemName: icons[i])
-                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.6))
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .scaleEffect(isSelected && isDragging ? 1.05 : 1.0)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        model.setAirPodsMode(modes[i])
-                                    }
-                                }
+                                .font(.system(size: 11, weight: isSelected ? .bold : .regular))
+                            Text(titles[i])
+                                .font(.system(size: 8, weight: .medium))
                         }
+                        .foregroundStyle(isSelected ? Color.black : Color.white)
+                        .frame(width: 44, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSelected ? Color.white : Color.white.opacity(0.12))
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
-                .frame(width: 140, height: 38)
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .updating($isDragging) { _, state, _ in state = true }
-                        .onChanged { value in
-                            let w: CGFloat = 140
-                            let index = Int(max(0, min(value.location.x / (w / 3.0), 2.0)))
-                            let newMode = modes[index]
-                            if model.listeningMode != newMode {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.6)) {
-                                    model.setAirPodsMode(newMode)
-                                }
-                            }
-                        }
-                )
             }
+            .padding(3)
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(8)
         }
+        .frame(width: 146)
     }
 }
