@@ -20,6 +20,14 @@ class IslandOverlayWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
     override var acceptsFirstResponder: Bool { false }
+    
+    override func updateConstraintsIfNeeded() {
+        // No-op to eliminate layout constraint update loops on floating overlay
+    }
+    
+    override func layoutIfNeeded() {
+        // No-op to eliminate layout constraint update loops on floating overlay
+    }
 }
 
 class PassthroughHostingView<Content: View>: NSHostingView<Content> {
@@ -43,7 +51,7 @@ class PassthroughHostingView<Content: View>: NSHostingView<Content> {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var islandWindows: [(window: NSWindow, screen: NSScreen)] = []
+    var islandWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     
@@ -78,50 +86,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        
-        // Dynamically resize overlay window to strictly match the notch size at all times
-        Publishers.MergeMany(
-            IslandModel.shared.$isHoverExpanded.map { _ in () }.eraseToAnyPublisher(),
-            IslandModel.shared.$state.map { _ in () }.eraseToAnyPublisher(),
-            IslandModel.shared.$isMusicPlaying.map { _ in () }.eraseToAnyPublisher(),
-            IslandModel.shared.$airPodsShowingCompact.map { _ in () }.eraseToAnyPublisher(),
-            IslandModel.shared.$baseNotchWidth.map { _ in () }.eraseToAnyPublisher(),
-            IslandModel.shared.$physicalNotchHeight.map { _ in () }.eraseToAnyPublisher()
-        )
-        .receive(on: RunLoop.main)
-        .sink { [weak self] _ in
-            self?.refreshAllWindowFrames()
-        }
-        .store(in: &cancellables)
-    }
-    
-    func refreshAllWindowFrames() {
-        for item in islandWindows {
-            updateIslandWindowFrame(for: item.window, on: item.screen)
-        }
-    }
-    
-    func updateIslandWindowFrame(for win: NSWindow, on screen: NSScreen) {
-        let model = IslandModel.shared
-        // Tight bounding box: notch dimensions + 8px margin for rounded corners and subtle shadows
-        let targetWidth = model.width + 16
-        let targetHeight = model.height + 16
-        
-        let originX = screen.frame.midX - (targetWidth / 2.0)
-        let originY = screen.frame.maxY - targetHeight
-        
-        let targetRect = NSRect(x: originX, y: originY, width: targetWidth, height: targetHeight)
-        
-        if win.frame != targetRect {
-            win.setFrame(targetRect, display: true, animate: false)
-        }
     }
     
     func updateWindows(for mode: ScreenDisplayMode) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            self.islandWindows.forEach { $0.window.orderOut(nil) }
+            self.islandWindows.forEach { $0.orderOut(nil) }
             self.islandWindows.removeAll()
 
             let screens = NSScreen.screens
@@ -144,7 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             for screen in targetScreens {
                 let win = self.createIslandWindow(for: screen)
-                self.islandWindows.append((window: win, screen: screen))
+                self.islandWindows.append(win)
             }
         }
     }
@@ -155,9 +126,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         
-        let model = IslandModel.shared
-        let width: CGFloat = model.width + 16
-        let height: CGFloat = model.height + 16
+        let width: CGFloat = 500
+        let height: CGFloat = 240
         
         let originX = screen.frame.midX - (width / 2.0)
         let originY = screen.frame.maxY - height
@@ -170,6 +140,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
         hostingView.autoresizingMask = [.width, .height]
+        hostingView.translatesAutoresizingMaskIntoConstraints = true
+        
         win.contentView = hostingView
         win.backgroundColor = .clear
         win.isOpaque = false

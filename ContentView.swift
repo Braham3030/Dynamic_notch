@@ -2114,98 +2114,68 @@ struct LiquidScrubber: View {
     @ObservedObject var model = IslandModel.shared
     @State private var isDragging: Bool = false
     @State private var dragProgress: Double = 0.0
+    
+    let scrubberWidth: CGFloat = 200
+    let scrubberHeight: CGFloat = 24
 
     var body: some View {
         let currentProgress = isDragging ? dragProgress : (model.playbackPosition / model.trackDuration)
         let safeProgress = currentProgress.isNaN ? 0.0 : max(0.0, min(1.0, currentProgress))
         let elapsed = Int(safeProgress * model.trackDuration)
         let remaining = Int(model.trackDuration) - elapsed
+        let currentTrackWidth = max(0, CGFloat(safeProgress) * scrubberWidth)
         
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Text(formatTime(elapsed))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.white.opacity(0.7))
-                .frame(width: 34, alignment: .trailing)
+                .frame(width: 32, alignment: .trailing)
             
-            GeometryReader { geo in
-                let currentWidth = max(0, CGFloat(safeProgress) * geo.size.width)
-                
-                ZStack(alignment: .leading) {
-                    // Base Track (Constant height 6)
-                    Capsule()
-                        .fill(Color.white.opacity(0.25))
-                        .frame(height: 6)
-                        
-                    // Fill Track (Constant height 6)
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: currentWidth, height: 6)
-                        .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
-                        
-                    // Liquid Glass Thumb
-                    Group {
-                        if #available(macOS 26.0, *) {
-                            Capsule()
-                                .fill(Color.white.opacity(isDragging ? 0.12 : 0.22))
-                                .glassEffect(.clear.tint(model.artworkColor.opacity(0.32)).interactive(), in: Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [.white.opacity(0.95), .white.opacity(0.28)],
-                                                startPoint: .top,
-                                                endPoint: .bottom
-                                            ),
-                                            lineWidth: 1
-                                        )
-                                )
-                        } else {
-                            Capsule()
-                                .fill(.ultraThinMaterial)
-                                .overlay(Capsule().stroke(Color.white.opacity(0.75), lineWidth: 1))
-                        }
-                    }
-                    .shadow(color: model.artworkColor.opacity(0.35), radius: isDragging ? 7 : 3, x: 0, y: 2)
-                    .frame(width: isDragging ? 32 : 10, height: isDragging ? 16 : 10)
-                    .offset(x: currentWidth - (isDragging ? 16 : 5))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0.2), value: isDragging)
+            ZStack(alignment: .leading) {
+                // Base Track
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: scrubberWidth, height: 6)
+                    
+                // Fill Track
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: currentTrackWidth, height: 6)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
-                }
-                .frame(height: 24, alignment: .center) // safe hit box
-                .frame(maxHeight: .infinity, alignment: .center)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if !isDragging {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0.2)) {
-                                    isDragging = true
-                                }
-                            }
-                            let percent = max(0, min(1, value.location.x / geo.size.width))
-                            dragProgress = percent
-                        }
-                        .onEnded { value in
-                            let percent = max(0, min(1, value.location.x / geo.size.width))
-                            let newPos = percent * model.trackDuration
-                            DispatchQueue.global(qos: .userInitiated).async {
-                                _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
-                            }
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0.2)) {
-                                isDragging = false
-                            }
-                            // Only update locally if needed, model syncing handles state perfectly
-                            model.playbackPosition = newPos 
-                        }
-                )
+                    
+                // Thumb
+                Capsule()
+                    .fill(Color.white)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.75), lineWidth: 1))
+                    .shadow(color: model.artworkColor.opacity(0.35), radius: isDragging ? 7 : 3, x: 0, y: 2)
+                    .frame(width: isDragging ? 24 : 10, height: isDragging ? 16 : 10)
+                    .offset(x: min(max(0, currentTrackWidth - (isDragging ? 12 : 5)), scrubberWidth - (isDragging ? 24 : 10)))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0.2), value: isDragging)
             }
-            .frame(height: 24) 
+            .frame(width: scrubberWidth, height: scrubberHeight, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if !isDragging { isDragging = true }
+                        dragProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
+                    }
+                    .onEnded { value in
+                        let finalProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
+                        let newPos = finalProgress * model.trackDuration
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
+                        }
+                        model.playbackPosition = newPos
+                        dragProgress = finalProgress
+                        isDragging = false
+                    }
+            )
             
             Text("-" + formatTime(remaining))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.white.opacity(0.7))
-                .contentTransition(.numericText())
-                .frame(width: 40, alignment: .leading)
+                .frame(width: 38, alignment: .leading)
         }
     }
     
@@ -2271,75 +2241,73 @@ struct SettingsWindowPreviewer: View {
     var body: some View {
         ZStack {
             // Simulated macOS Desktop Wallpaper
-            GeometryReader { geo in
-                ZStack {
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.15, green: 0.35, blue: 0.75),
-                            Color(red: 0.65, green: 0.25, blue: 0.65),
-                            Color(red: 0.95, green: 0.55, blue: 0.35)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    
-                    // Desktop shapes to show off transparency and glass blur
-                    Circle()
-                        .fill(Color.yellow.opacity(0.7))
-                        .frame(width: 90, height: 90)
-                        .offset(x: -70, y: -20)
-                    
-                    RoundedRectangle(cornerRadius: 30)
-                        .fill(Color.cyan.opacity(0.6))
-                        .frame(width: 140, height: 80)
-                        .offset(x: 80, y: 30)
-                    
-                    // Mini Simulated Settings Window
-                    HStack(spacing: 0) {
-                        // Mini Sidebar
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 4) {
-                                Circle().fill(Color.red).frame(width: 6, height: 6)
-                                Circle().fill(Color.yellow).frame(width: 6, height: 6)
-                                Circle().fill(Color.green).frame(width: 6, height: 6)
-                            }
-                            .padding(.bottom, 4)
-                            
-                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.3)).frame(width: 35, height: 5)
-                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 45, height: 5)
-                            RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 30, height: 5)
-                            Spacer()
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.15, green: 0.35, blue: 0.75),
+                        Color(red: 0.65, green: 0.25, blue: 0.65),
+                        Color(red: 0.95, green: 0.55, blue: 0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                
+                // Desktop shapes to show off transparency and glass blur
+                Circle()
+                    .fill(Color.yellow.opacity(0.7))
+                    .frame(width: 80, height: 80)
+                    .offset(x: -70, y: -20)
+                
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color.cyan.opacity(0.6))
+                    .frame(width: 130, height: 70)
+                    .offset(x: 80, y: 30)
+                
+                // Mini Simulated Settings Window
+                HStack(spacing: 0) {
+                    // Mini Sidebar
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.red).frame(width: 5, height: 5)
+                            Circle().fill(Color.yellow).frame(width: 5, height: 5)
+                            Circle().fill(Color.green).frame(width: 5, height: 5)
                         }
-                        .padding(8)
-                        .frame(width: 75)
-                        .background(Color.black.opacity(0.35))
+                        .padding(.bottom, 4)
                         
-                        Divider().opacity(0.3)
-                        
-                        // Mini Content Pane with selected background style applied!
-                        VStack(alignment: .leading, spacing: 8) {
-                            RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.4)).frame(width: 70, height: 8)
-                            HStack {
-                                RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 20)
-                                RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 20)
-                            }
-                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.2)).frame(height: 30)
-                            Spacer()
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            previewBackgroundLayer(style: model.settingsBackgroundStyle, opacity: model.settingsWindowOpacity, glass: model.settingsGlassIntensity)
-                        )
+                        RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.3)).frame(width: 35, height: 4)
+                        RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 45, height: 4)
+                        RoundedRectangle(cornerRadius: 2).fill(Color.white.opacity(0.2)).frame(width: 30, height: 4)
+                        Spacer()
                     }
-                    .frame(width: geo.size.width * 0.76, height: geo.size.height * 0.72)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.white.opacity(0.2 + (model.settingsGlassIntensity * 0.3)), lineWidth: 1)
+                    .padding(8)
+                    .frame(width: 75)
+                    .background(Color.black.opacity(0.35))
+                    
+                    Divider().opacity(0.3)
+                    
+                    // Mini Content Pane with selected background style applied!
+                    VStack(alignment: .leading, spacing: 8) {
+                        RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.4)).frame(width: 70, height: 6)
+                        HStack {
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 18)
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)).frame(height: 18)
+                        }
+                        RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.2)).frame(height: 28)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        previewBackgroundLayer(style: model.settingsBackgroundStyle, opacity: model.settingsWindowOpacity, glass: model.settingsGlassIntensity)
                     )
-                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
                 }
+                .frame(width: 360, height: 135)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.2 + (model.settingsGlassIntensity * 0.3)), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 6)
             }
         }
     }
