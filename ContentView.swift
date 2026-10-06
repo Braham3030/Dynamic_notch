@@ -219,33 +219,32 @@ struct IslandView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
-                // The Liquid Glass Background
-                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
-                    .fill(
-                        AnyShapeStyle(Color.black)
-                    )
-                    .overlay(
-                        Group {
-                            if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
-                                LinearGradient(
-                                    colors: [
-                                        model.artworkColor,
-                                        model.artworkColor.opacity(0.50)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            }
-                        }
-                        .frame(width: model.width, height: model.height)
-                        .compositingGroup()
-                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
-                    )
-                    .overlay(
-                        UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
-                            .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.0), lineWidth: 0.5)
-                    )
+                // The Full Dynamic Notch Background
+                ZStack {
+                    // 1. Black Dynamic Notch Base Underneath
+                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
+                        .fill(Color.black)
                     
+                    // 2. Full-bleed Dynamic Notch Gradient with Music
+                    if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                        LinearGradient(
+                            colors: [
+                                model.artworkColor,
+                                model.artworkColor.opacity(0.85),
+                                model.artworkColor.opacity(0.60)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                }
+                .frame(width: model.width, height: model.height)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
+                .overlay(
+                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
+                        .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
+                )
+                .shadow(color: ((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) ? model.artworkColor.opacity(0.5) : Color.black.opacity(0.3), radius: model.isExpanded ? 16 : 8, x: 0, y: 4)
 
                 if !model.isExpanded, model.isMusicPlaying {
                     compactMusicActivity
@@ -271,6 +270,8 @@ struct IslandView: View {
                         }.padding(.vertical, 4).padding(.horizontal, 16)
                     }
                 }
+                .frame(width: model.width, height: model.height, alignment: .top)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
                 
                 // Side Switcher Popout
