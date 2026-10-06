@@ -15,19 +15,23 @@ struct MyApp: App {
     } 
 }
 
+class IslandOverlayWindow: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        
         // Initialize and boot up Sparkle OTA background updater engine!
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
         
         IslandModel.shared.$displayMode
-            .receive(on: RunLoop.main) // PREVENT SWIFTUI STATE CONFLICT CRASHES
+            .receive(on: RunLoop.main)
             .sink { [weak self] mode in
                 self?.updateWindows(for: mode)
             }
@@ -46,7 +50,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Hide windows instead of forcibly closing them (which can crash AppKit if views are tracked)
             self.islandWindows.forEach { $0.orderOut(nil) }
             self.islandWindows.removeAll()
 
@@ -81,9 +84,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
-        let win = NSWindow(
+        let win = IslandOverlayWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -101,7 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let originY = screen.frame.maxY - height
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
-        win.makeKeyAndOrderFront(nil)
+        win.orderFrontRegardless()
         return win
     }
 }
