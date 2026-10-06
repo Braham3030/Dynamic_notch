@@ -553,6 +553,13 @@ class IslandModel: ObservableObject {
     @Published var autoCloseBehavior: AutoCloseBehavior = .immediate
     @Published var isHoverExpanded: Bool = false
     var hoverCloseTask: Task<Void, Never>? = nil
+
+    @Published var showAirPodsLocalization: Bool = false
+    @Published var showControlCenter: Bool = false
+    @Published var showMusic: Bool = false
+    @Published var showPhone: Bool = false
+    @Published var showNotifications: Bool = false
+    @Published var showAirDrop: Bool = false
     
     func handleHover(_ isHovering: Bool) {
         hoverCloseTask?.cancel()
@@ -1070,7 +1077,14 @@ struct SystemControlsView: View { @ObservedObject var model = IslandModel.shared
             ForEach(AutoCloseBehavior.allCases) { Text($0.rawValue).tag($0) } 
         }.pickerStyle(.menu) 
     }
-    Section(header: Text("Hardware Integrations")) { HStack { Image(systemName: "airpodspro").foregroundStyle(.secondary).frame(width: 24); Toggle("Connect AirPods", isOn: $model.airPodsConnected) } } 
+    Section(header: Text("Visible Items"), footer: Text("Some items require permission.")) {
+        HStack { Image(systemName: "airpodspro").frame(width: 24); Toggle("AirPods Localization", isOn: $model.showAirPodsLocalization) }
+        HStack { Image(systemName: "switch.2").frame(width: 24); Toggle("Control Center Controls", isOn: $model.showControlCenter) }
+        HStack { Image(systemName: "music.note").frame(width: 24); Toggle("Music", isOn: $model.showMusic) }
+        HStack { Image(systemName: "phone").frame(width: 24); Toggle("Phone", isOn: $model.showPhone) }
+        HStack { Image(systemName: "bell").frame(width: 24); Toggle("Notifications", isOn: $model.showNotifications) }
+        HStack { Image(systemName: "airdrop").frame(width: 24); Toggle("AirDrop", isOn: $model.showAirDrop) }
+    } 
 }.formStyle(.grouped) } }
 struct LiveActivitiesView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Global Settings"), footer: Text("Projects a lush, vibrant colored shadow directly onto the ambient background perfectly matched to the dominant color of the active Apple Music track artwork.")) { Toggle("Live Background Glow Effect", isOn: $model.enableArtworkGlow) }; Section(header: Text("Active Layout Modules")) { HStack { Image(systemName: "music.note.list").foregroundStyle(.orange).frame(width: 24); Text("Apple Music Overlay"); Spacer(); Button(model.state == .expandedMusic ? "Terminate" : "Simulate") { model.toggleState(.expandedMusic) } }; HStack { Image(systemName: "bag.fill").foregroundStyle(.green).frame(width: 24); Text("Food Delivery"); Spacer(); Button(model.state == .expandedFood ? "Terminate" : "Simulate") { model.toggleState(.expandedFood) } } } }.formStyle(.grouped) } }
 
