@@ -31,8 +31,8 @@ class PassthroughHostingView<Content: View>: NSHostingView<Content> {
         let islandX = (bounds.width - islandW) / 2.0
         let islandY = bounds.height - islandH
         
-        // Only accept mouse events within the active notch perimeter + 12pt margin
-        let interactiveRect = NSRect(x: islandX - 12, y: islandY - 12, width: islandW + 24, height: islandH + 24)
+        // Accept mouse clicks only strictly within the notch shape
+        let interactiveRect = NSRect(x: islandX, y: islandY, width: islandW, height: islandH)
         
         if interactiveRect.contains(point) {
             return super.hitTest(point)
@@ -43,7 +43,7 @@ class PassthroughHostingView<Content: View>: NSHostingView<Content> {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var islandWindows: [NSWindow] = []
+    var islandWindows: [(window: NSWindow, screen: NSScreen)] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     
@@ -78,13 +78,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        
+        // Dynamically resize overlay window to strictly match the notch size at all times
+        Publishers.MergeMany(
+            IslandModel.shared.$isHoverExpanded.map { _ in () }.eraseToAnyPublisher(),
+            IslandModel.shared.$state.map { _ in () }.eraseToAnyPublisher(),
+            IslandModel.shared.$isMusicPlaying.map { _ in () }.eraseToAnyPublisher(),
+            IslandModel.shared.$airPodsShowingCompact.map { _ in () }.eraseToAnyPublisher(),
+            IslandModel.shared.$baseNotchWidth.map { _ in () }.eraseToAnyPublisher(),
+            IslandModel.shared.$physicalNotchHeight.map { _ in () }.eraseToAnyPublisher()
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.refreshAllWindowFrames()
+        }
+        .store(in: &cancellables)
+    }
+    
+    func refreshAllWindowFrames() {
+        for item in islandWindows {
+            updateIslandWindowFrame(for: item.window, on: item.screen)
+        }
+    }
+    
+    func updateIslandWindowFrame(for win: NSWindow, on screen: NSScreen) {
+        let model = IslandModel.shared
+        // Tight bounding box: notch dimensions + 8px margin for rounded corners and subtle shadows
+        let targetWidth = model.width + 16
+        let targetHeight = model.height + 16
+        
+        let originX = screen.frame.midX - (targetWidth / 2.0)
+        let originY = screen.frame.maxY - targetHeight
+        
+        let targetRect = NSRect(x: originX, y: originY, width: targetWidth, height: targetHeight)
+        
+        if win.frame != targetRect {
+            win.setFrame(targetRect, display: true, animate: false)
+        }
     }
     
     func updateWindows(for mode: ScreenDisplayMode) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            self.islandWindows.forEach { $0.orderOut(nil) }
+            self.islandWindows.forEach { $0.window.orderOut(nil) }
             self.islandWindows.removeAll()
 
             let screens = NSScreen.screens
@@ -107,7 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             for screen in targetScreens {
                 let win = self.createIslandWindow(for: screen)
-                self.islandWindows.append(win)
+                self.islandWindows.append((window: win, screen: screen))
             }
         }
     }
@@ -118,11 +155,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         
-        let width: CGFloat = 700
-        let height: CGFloat = 350
+        let model = IslandModel.shared
+        let width: CGFloat = model.width + 16
+        let height: CGFloat = model.height + 16
+        
+        let originX = screen.frame.midX - (width / 2.0)
+        let originY = screen.frame.maxY - height
         
         let win = IslandOverlayWindow(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            contentRect: NSRect(x: originX, y: originY, width: width, height: height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -137,9 +178,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         win.isRestorable = false 
         win.ignoresMouseEvents = false
-        
-        let originX = screen.frame.midX - (width / 2)
-        let originY = screen.frame.maxY - height
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
         win.orderFrontRegardless()
