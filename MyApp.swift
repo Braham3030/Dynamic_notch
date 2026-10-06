@@ -15,23 +15,31 @@ struct MyApp: App {
     } 
 }
 
+class IslandOverlayWindow: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        
         // Initialize and boot up Sparkle OTA background updater engine!
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
         
         IslandModel.shared.$displayMode
-            .receive(on: RunLoop.main) // PREVENT SWIFTUI STATE CONFLICT CRASHES
+            .receive(on: RunLoop.main)
             .sink { [weak self] mode in
                 self?.updateWindows(for: mode)
             }
             .store(in: &cancellables)
+            
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.updateWindows(for: IslandModel.shared.displayMode)
+        }
             
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
             if IslandModel.shared.autoCloseBehavior == .clickOutside && IslandModel.shared.isHoverExpanded {
@@ -46,7 +54,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Hide windows instead of forcibly closing them (which can crash AppKit if views are tracked)
             self.islandWindows.forEach { $0.orderOut(nil) }
             self.islandWindows.removeAll()
 
@@ -81,9 +88,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
-        let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 200),
-            styleMask: [.borderless],
+        let width: CGFloat = 700
+        let height: CGFloat = 350
+        
+        let win = IslandOverlayWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -95,13 +105,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         win.isRestorable = false 
         
-        let width: CGFloat = 600
-        let height: CGFloat = 200 
         let originX = screen.frame.midX - (width / 2)
         let originY = screen.frame.maxY - height
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
-        win.makeKeyAndOrderFront(nil)
+        win.orderFrontRegardless()
         return win
     }
 }
