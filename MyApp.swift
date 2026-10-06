@@ -10,7 +10,7 @@ struct MyApp: App {
     var body: some Scene {
         WindowGroup("Dynamic Island Settings") {
             ContentView()
-                .frame(width: 820, height: 660)
+                .frame(width: 840, height: 680)
         }
         .windowResizability(.contentSize)
     } 
@@ -22,13 +22,33 @@ class IslandOverlayWindow: NSPanel {
     override var acceptsFirstResponder: Bool { false }
 }
 
+class PassthroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let model = IslandModel.shared
+        let islandW: CGFloat = model.width
+        let islandH: CGFloat = model.height
+        
+        let islandX = (bounds.width - islandW) / 2.0
+        let islandY = bounds.height - islandH
+        
+        // Only accept mouse events within the active notch perimeter + 12pt margin
+        let interactiveRect = NSRect(x: islandX - 12, y: islandY - 12, width: islandW + 24, height: islandH + 24)
+        
+        if interactiveRect.contains(point) {
+            return super.hitTest(point)
+        }
+        // Passthrough click to underlying windows (Settings, Finder, Browser, etc.)
+        return nil
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Initialize and boot up Sparkle OTA background updater engine!
+        // Initialize Sparkle OTA updater
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
         
@@ -94,9 +114,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingController = NSHostingController(rootView: islandView)
-        hostingController.view.wantsLayer = true
-        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingView = PassthroughHostingView(rootView: islandView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         
         let width: CGFloat = 700
         let height: CGFloat = 350
@@ -107,7 +127,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        win.contentViewController = hostingController
+        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        hostingView.autoresizingMask = [.width, .height]
+        win.contentView = hostingView
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false

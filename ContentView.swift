@@ -1430,6 +1430,7 @@ struct PlayPauseButtonStyle: ButtonStyle {
 struct ContentView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var selectedPane: SettingsPane = .appearance
+    @State private var hoveredPane: SettingsPane? = nil
     
     var body: some View {
         HStack(spacing: 0) {
@@ -1442,25 +1443,32 @@ struct ContentView: View {
                     .padding(.bottom, 12)
                 
                 ForEach(SettingsPane.allCases) { pane in
+                    let isSelected = selectedPane == pane
                     Button {
                         selectedPane = pane
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: pane.icon)
-                                .font(.system(size: 14))
-                                .frame(width: 22)
+                                .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                                .frame(width: 24, alignment: .center)
                             Text(pane.rawValue)
-                                .font(.system(size: 13, weight: selectedPane == pane ? .semibold : .regular))
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                             Spacer()
                         }
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 9)
                         .padding(.horizontal, 12)
-                        .background(selectedPane == pane ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .foregroundStyle(selectedPane == pane ? Color.accentColor : Color.primary)
-                        .cornerRadius(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isSelected ? Color.accentColor.opacity(0.22) : (hoveredPane == pane ? Color.primary.opacity(0.06) : Color.clear))
+                        )
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        if hovering { hoveredPane = pane } else if hoveredPane == pane { hoveredPane = nil }
+                    }
                     .padding(.horizontal, 10)
                 }
                 Spacer()
