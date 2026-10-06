@@ -369,6 +369,9 @@ struct IslandView: View {
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
         }
         .padding(.horizontal, 12)
+        .opacity(model.isScreenTransitioning ? 0 : 1)
+        .scaleEffect(model.isScreenTransitioning ? 0.75 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: model.isScreenTransitioning)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Music is playing")
     }
@@ -596,6 +599,9 @@ extension IslandModel {
         return state != .compact || isHoverExpanded
     }
     var width: CGFloat {
+        if isScreenTransitioning {
+            return baseNotchWidth
+        }
         if isExpanded {
             if state == .expandedMusic { return 420 }
             if state == .expandedControls && airPodsConnected { return 450 }
@@ -739,11 +745,48 @@ class IslandModel: ObservableObject {
     
     var updaterController: SPUStandardUpdaterController?
     
+    @Published var isScreenTransitioning: Bool = false
+    private var transitionDebounceTask: Task<Void, Never>? = nil
+
     init() {
         readSystemBrightness()
         readSystemVolume()
         startWifiMonitoring()
         startMusicMonitoring()
+        startScreenTransitionMonitoring()
+    }
+
+    func startScreenTransitionMonitoring() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.triggerScreenTransitionPulse()
+        }
+        
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.triggerScreenTransitionPulse()
+        }
+    }
+    
+    func triggerScreenTransitionPulse() {
+        transitionDebounceTask?.cancel()
+        transitionDebounceTask = Task { @MainActor in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                self.isScreenTransitioning = true
+            }
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            if !Task.isCancelled {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
+                    self.isScreenTransitioning = false
+                }
+            }
+        }
     }
     
     // Centralized Music Actions
