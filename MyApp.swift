@@ -19,11 +19,6 @@ struct MyApp: App {
 class IslandOverlayWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-    override var acceptsFirstResponder: Bool { false }
-    
-    override func updateConstraintsIfNeeded() {
-        // Safe no-op to eliminate layout constraint update loops
-    }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -57,14 +52,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         NSEvent.addGlobalMonitorForEvents(matching: .swipe) { event in
             if event.deltaX != 0 {
-                DispatchQueue.main.async {
-                    IslandModel.shared.beginSwipeCollapse()
-                }
-            }
-        }
-        
-        NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { event in
-            if event.phase == .began && abs(event.scrollingDeltaX) > 2.0 && event.hasPreciseScrollingDeltas {
                 DispatchQueue.main.async {
                     IslandModel.shared.beginSwipeCollapse()
                 }
@@ -106,9 +93,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingView = NSHostingView(rootView: islandView)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingController = NSHostingController(rootView: islandView)
+        hostingController.view.wantsLayer = true
+        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
         let width: CGFloat = 700
         let height: CGFloat = 350
@@ -119,16 +106,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        hostingView.autoresizingMask = [.width, .height]
-        hostingView.translatesAutoresizingMaskIntoConstraints = true
-        
-        win.contentView = hostingView
+        win.contentViewController = hostingController
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false
-        win.level = .screenSaver
-        win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        win.level = .statusBar
+        win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         win.isRestorable = false 
         
         let originX = screen.frame.midX - (width / 2)
