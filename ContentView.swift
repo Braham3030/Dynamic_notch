@@ -225,13 +225,13 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .fill(Color.black)
                     
-                    // 2. Full-bleed Dynamic Notch Gradient with Music (Only when expanded, starts solid black in compact/small size)
+                    // 2. Soft, Glassy Dynamic Notch Gradient with Music (Translucent & subtle, starts solid black in compact mode)
                     if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
                         LinearGradient(
                             colors: [
-                                model.artworkColor,
-                                model.artworkColor.opacity(0.85),
-                                model.artworkColor.opacity(0.60)
+                                model.artworkColor.opacity(0.40),
+                                model.artworkColor.opacity(0.22),
+                                model.artworkColor.opacity(0.08)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -245,7 +245,15 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
                 )
-                .shadow(color: ((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) ? model.artworkColor.opacity(0.5) : Color.black.opacity(0.3), radius: model.isExpanded ? 16 : 8, x: 0, y: 4)
+                // Ambient Colored Glow around notch in both compact and expanded music modes
+                .shadow(
+                    color: ((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) 
+                        ? model.artworkColor.opacity(model.isExpanded ? 0.45 : 0.65) 
+                        : Color.black.opacity(0.35), 
+                    radius: model.isExpanded ? 18 : 10, 
+                    x: 0, 
+                    y: model.isExpanded ? 6 : 3
+                )
 
                 if !model.isExpanded, model.isMusicPlaying {
                     compactMusicActivity
