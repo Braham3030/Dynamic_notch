@@ -1300,42 +1300,99 @@ struct ContentView: View {
 struct BezierGraph: View {
     @ObservedObject var model: IslandModel
     
+    let w: CGFloat = 460
+    let h: CGFloat = 200
+    let pad_x: CGFloat = 24
+    let pad_y: CGFloat = 32
+    
     var body: some View {
-        GeometryReader { geo in
-            let pad_x: CGFloat = 20; let pad_y: CGFloat = 70; let w = geo.size.width; let h = geo.size.height
-            let drawW = max(1, w - (pad_x * 2)); let drawH = max(1, h - (pad_y * 2))
+        let drawW = w - (pad_x * 2)
+        let drawH = h - (pad_y * 2)
+        
+        let c1 = model.animationCurve == .custom ? model.customC1 : model.animationCurve.defaultC1
+        let c2 = model.animationCurve == .custom ? model.customC2 : model.animationCurve.defaultC2
+        let pStart = CGPoint(x: pad_x, y: pad_y + drawH)
+        let pEnd = CGPoint(x: pad_x + drawW, y: pad_y)
+        let p1 = CGPoint(x: pad_x + (c1.x * drawW), y: pad_y + (1 - c1.y) * drawH)
+        let p2 = CGPoint(x: pad_x + (c2.x * drawW), y: pad_y + (1 - c2.y) * drawH)
+        
+        ZStack {
+            Path { p in
+                p.move(to: pStart)
+                p.addLine(to: CGPoint(x: pEnd.x, y: pStart.y))
+                p.addLine(to: pEnd)
+                p.addLine(to: CGPoint(x: pStart.x, y: pEnd.y))
+                p.closeSubpath()
+            }
+            .stroke(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4]))
             
-            let c1 = model.animationCurve == .custom ? model.customC1 : model.animationCurve.defaultC1
-            let c2 = model.animationCurve == .custom ? model.customC2 : model.animationCurve.defaultC2
-            let pStart = CGPoint(x: pad_x, y: pad_y + drawH); let pEnd = CGPoint(x: pad_x + drawW, y: pad_y)
-            let p1 = CGPoint(x: pad_x + (c1.x * drawW), y: pad_y + (1 - c1.y) * drawH)
-            let p2 = CGPoint(x: pad_x + (c2.x * drawW), y: pad_y + (1 - c2.y) * drawH)
-            
-            Path { p in p.move(to: pStart); p.addLine(to: CGPoint(x: pEnd.x, y: pStart.y)); p.addLine(to: pEnd); p.addLine(to: CGPoint(x: pStart.x, y: pEnd.y)); p.closeSubpath() }
-                .stroke(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4]))
-            
-            Path { p in p.move(to: pStart); p.addLine(to: p1) }.stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
-            Path { p in p.move(to: pEnd); p.addLine(to: p2) }.stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
-            Path { path in path.move(to: pStart); path.addCurve(to: pEnd, control1: p1, control2: p2) }.stroke(model.animationCurve == .custom ? Color.orange : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            Path { p in p.move(to: pStart); p.addLine(to: p1) }
+                .stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
+            Path { p in p.move(to: pEnd); p.addLine(to: p2) }
+                .stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
+            Path { path in
+                path.move(to: pStart)
+                path.addCurve(to: pEnd, control1: p1, control2: p2)
+            }
+            .stroke(model.animationCurve == .custom ? Color.orange : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             
             Circle().fill(Color.accentColor).frame(width: 8, height: 8).position(pStart)
             Circle().fill(Color.accentColor).frame(width: 8, height: 8).position(pEnd)
             Circle().fill(Color.white).frame(width: 16, height: 16).shadow(color: .black.opacity(0.5), radius: 3).overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: 2)).position(p1)
             Circle().fill(Color.white).frame(width: 16, height: 16).shadow(color: .black.opacity(0.5), radius: 3).overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: 2)).position(p2)
-                
-            Color.black.opacity(0.001).frame(width: w, height: h).contentShape(Rectangle()).gesture(
-                    DragGesture(minimumDistance: 0).onChanged { val in model.makeCustomIfNeeded(); let nx = min(max(0, (val.location.x - pad_x) / drawW), 1); let maxY = 1 + (pad_y / drawH); let minY = 0 - (pad_y / drawH); let ny = min(max(minY, 1 - ((val.location.y - pad_y) / drawH)), maxY); if val.startLocation.x < w / 2 { model.customC1 = CGPoint(x: nx, y: ny) } else { model.customC2 = CGPoint(x: nx, y: ny) } }
+            
+            Color.black.opacity(0.001)
+                .frame(width: w, height: h)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0).onChanged { val in
+                        model.makeCustomIfNeeded()
+                        let nx = min(max(0, (val.location.x - pad_x) / drawW), 1)
+                        let maxY = 1 + (pad_y / drawH)
+                        let minY = 0 - (pad_y / drawH)
+                        let ny = min(max(minY, 1 - ((val.location.y - pad_y) / drawH)), maxY)
+                        if val.startLocation.x < w / 2 {
+                            model.customC1 = CGPoint(x: nx, y: ny)
+                        } else {
+                            model.customC2 = CGPoint(x: nx, y: ny)
+                        }
+                    }
                 )
         }
+        .frame(width: w, height: h)
     }
 }
 
 struct AnimationSettingsView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Morphing Physics"), footer: Text("Drag anywhere inside the Sandbox Graph to instantly trace out custom trajectories.")) { VStack(alignment: .leading, spacing: 30) { VStack(alignment: .leading, spacing: 18) { Picker("Curve Algorithm", selection: $model.animationCurve) { ForEach(AnimationCurve.allCases, id: \.self) { curve in Text(curve.rawValue).tag(curve) } }; VStack(alignment: .leading, spacing: 6) { HStack { Text("Duration Time"); Spacer(); Text(String(format: "%.1fs", model.animationDuration)).monospacedDigit().foregroundStyle(.secondary) }; Slider(value: $model.animationDuration, in: 0.1...1.5, step: 0.1) } }; VStack(alignment: .leading) { Text(model.animationCurve == .custom ? "Live Physics Sandbox" : "System Easing Math").font(.subheadline.weight(.medium)).foregroundStyle(model.animationCurve == .custom ? .orange : .secondary).padding(.bottom, 6); BezierGraph(model: model).frame(height: 250).padding(.horizontal, 26).padding(.vertical, 20).background(Color(NSColor.textBackgroundColor)).cornerRadius(12).shadow(color: model.animationCurve == .custom ? Color.orange.opacity(0.3) : .clear, radius: 10).animation(.spring(response: 0.35, dampingFraction: 0.7), value: model.animationCurve) }.padding(.top, 4) }.padding(.vertical, 12) } }.formStyle(.grouped) } }
 struct HardwareCalibrationView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Screen Target"), footer: Text("Select which physical display panels should draw the notch overlay.")) { HStack { Spacer(); GlassSegmentControl(selection: $model.displayMode).padding(.vertical, 8); Spacer() } }; Section(header: Text("Display Bezels"), footer: Text("Use this diagnostic tool to match the simulated bounds precisely to your hardware sensors.")) { HStack(spacing: 16) { Text("Resting Camouflage Width"); Slider(value: $model.baseNotchWidth, in: 120...260, step: 2); Text("\(Int(model.baseNotchWidth))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) }; HStack(spacing: 16) { Text("Resting Corner Radius"); Slider(value: $model.compactCornerRadius, in: 2...30, step: 1); Text("\(Int(model.compactCornerRadius))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) } } }.formStyle(.grouped) } }
 struct GlassSegmentControl: View {
-    @Binding var selection: ScreenDisplayMode; @GestureState private var isDragging: Bool = false
+    @Binding var selection: ScreenDisplayMode
+    
     var body: some View {
-        GlassEffectContainer { ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)); GeometryReader { geo in let segmentWidth = (geo.size.width - 8) / CGFloat(ScreenDisplayMode.allCases.count); let index = CGFloat(ScreenDisplayMode.allCases.firstIndex(of: selection) ?? 0); RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.01)).glassEffect().scaleEffect(isDragging ? 1.05 : 1.0).shadow(color: .black.opacity(isDragging ? 0.3 : 0.1), radius: isDragging ? 5 : 2, x: 0, y: isDragging ? 3 : 1).frame(width: segmentWidth, height: geo.size.height - 8).offset(x: 4 + (index * segmentWidth), y: 4).animation(.spring(response: 0.3, dampingFraction: 0.65), value: selection).animation(.spring(response: 0.3, dampingFraction: 0.65), value: isDragging) }; HStack(spacing: 0) { ForEach(ScreenDisplayMode.allCases, id: \.self) { mode in let isSelected = selection == mode; Text(mode.rawValue).font(.system(size: 13, weight: isSelected ? .bold : .medium)).foregroundStyle(isSelected ? Color.primary : Color.secondary).frame(maxWidth: .infinity, maxHeight: .infinity).scaleEffect(isSelected && isDragging ? 1.05 : 1.0).contentShape(Rectangle()).onTapGesture { withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { selection = mode } } } } }.frame(width: 380, height: 38).gesture(DragGesture(minimumDistance: 0).updating($isDragging) { _, state, _ in state = true }.onChanged { value in let w: CGFloat = 380; let index = Int(max(0, min(value.location.x / (w / 3.0), 2.0))); let newMode = ScreenDisplayMode.allCases[index]; if selection != newMode { withAnimation(.spring(response: 0.28, dampingFraction: 0.6)) { selection = newMode } } }) }
+        HStack(spacing: 4) {
+            ForEach(ScreenDisplayMode.allCases, id: \.self) { mode in
+                let isSelected = selection == mode
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selection = mode
+                    }
+                }) {
+                    Text(mode.rawValue)
+                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity)
+                        .background(isSelected ? Color.accentColor : Color.primary.opacity(0.06))
+                        .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Color.primary.opacity(0.05))
+        .cornerRadius(10)
+        .frame(width: 400)
     }
 }
 struct BluetoothShape: Shape { func path(in rect: CGRect) -> Path { var path = Path(); let midX = rect.midX; let w = rect.width * 0.25; let h = rect.height * 0.4; let startY = rect.midY - h; let endY = rect.midY + h; path.move(to: CGPoint(x: midX - w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX + w, y: endY - h*0.5)); path.addLine(to: CGPoint(x: midX, y: endY)); path.addLine(to: CGPoint(x: midX, y: startY)); path.addLine(to: CGPoint(x: midX + w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX - w, y: endY - h*0.5)); return path } }
