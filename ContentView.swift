@@ -3226,10 +3226,25 @@ struct ContentView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Expanded Topbar (macOS traffic lights, dyNotch title, menu toggle & active pane title)
-                HStack(spacing: 16) {
-                    // Left area: spacing for close/minimize/maximize buttons + Menu Toggle + dyNotch brand
-                    HStack(spacing: 12) {
+                // Unified Native-Aligned Topbar (Vertically aligned with macOS traffic lights)
+                HStack(spacing: 14) {
+                    // Left area: traffic lights offset -> dyNotch title -> Menu Toggle to the RIGHT of dyNotch
+                    HStack(spacing: 10) {
+                        HStack(spacing: 5) {
+                            Text("dyNotch")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            
+                            Text("BETA")
+                                .font(.system(size: 8.5, weight: .heavy))
+                                .padding(.horizontal, 4.5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.orange.opacity(0.25))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                        
+                        // Menu Open/Close Toggle Button (Right of "dyNotch" text)
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                                 model.isSidebarCollapsed.toggle()
@@ -3255,46 +3270,32 @@ struct ContentView: View {
                                                     startPoint: .top,
                                                     endPoint: .bottom
                                                 ),
-                                                lineWidth: 1.0
+                                                lineWidth: 0.8
                                             )
                                     )
-                                    .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 1.5)
+                                    .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
                                 
                                 Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(isLightBg ? Color(red: 0.12, green: 0.12, blue: 0.18) : .white)
                             }
-                            .frame(width: 32, height: 32)
+                            .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
                         .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")
-                        
-                        HStack(spacing: 6) {
-                            Text("dyNotch")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                            
-                            Text("BETA")
-                                .font(.system(size: 9, weight: .heavy))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.25))
-                                .foregroundStyle(.orange)
-                                .clipShape(Capsule())
-                        }
                     }
-                    .padding(.leading, 80) // Leaves generous space for macOS close/minimize/maximize traffic light controls
+                    .padding(.leading, 78) // Inset aligned right after the traffic light buttons
                     
                     Spacer()
                     
-                    // Center Topbar Header: Active Pane Title & Icon
-                    HStack(spacing: 8) {
+                    // Center Topbar Header: Active Pane Title & Icon (Traffic-light aligned)
+                    HStack(spacing: 6) {
                         Image(systemName: selectedPane.icon)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.blue)
                         
                         Text(selectedPane.rawValue)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
                     }
                     
@@ -3302,10 +3303,10 @@ struct ContentView: View {
                     
                     // Right spacer matching left traffic light inset for centered symmetry
                     Color.clear
-                        .frame(width: 80, height: 32)
+                        .frame(width: 78, height: 24)
                 }
-                .frame(height: 52)
-                .background(isLightBg ? Color.black.opacity(0.04) : Color.black.opacity(0.22))
+                .frame(height: 38)
+                .background(isLightBg ? Color.black.opacity(0.03) : Color.black.opacity(0.18))
                 
                 Divider()
                     .opacity(0.25)
