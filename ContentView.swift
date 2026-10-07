@@ -8081,6 +8081,7 @@ struct WallpaperThumbnailCard: View {
     let isSelected: Bool
     let isLightBg: Bool
     let customImage: NSImage?
+    var onRemoveCustomImage: (() -> Void)? = nil
     let action: () -> Void
     
     var body: some View {
@@ -8118,14 +8119,50 @@ struct WallpaperThumbnailCard: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.blue, lineWidth: 3)
                 
+                // Show checkmark on bottom-left / top-left when custom cross is present, or top-right otherwise
+                VStack {
+                    HStack {
+                        if style == .customPicture && customImage != nil {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.blue)
+                                .background(Circle().fill(Color.white))
+                                .font(.system(size: 13))
+                                .padding(4)
+                            Spacer()
+                        } else {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.blue)
+                                .background(Circle().fill(Color.white))
+                                .font(.system(size: 13))
+                                .padding(4)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            
+            // Cross button in top right corner ONLY when user has selected/added a custom image
+            if style == .customPicture && customImage != nil {
                 VStack {
                     HStack {
                         Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .background(Circle().fill(Color.white))
-                            .font(.system(size: 13))
+                        Button {
+                            onRemoveCustomImage?()
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.black.opacity(0.75))
+                                    .frame(width: 18, height: 18)
+                                    .shadow(color: Color.black.opacity(0.4), radius: 2)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8.5, weight: .black))
+                                    .foregroundColor(.white)
+                            }
                             .padding(4)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove custom wallpaper image")
                     }
                     Spacer()
                 }
