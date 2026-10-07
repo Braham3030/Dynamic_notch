@@ -2105,7 +2105,7 @@ class IslandModel: ObservableObject {
             guard let script = self.precompiledMusicScript else { return }
             let desc = script.executeAndReturnError(&err)
             
-            if desc.numberOfItems < 2 {
+            if desc.descriptorType != 0x6c697374 /* 'list' */ || desc.numberOfItems < 5 {
                 DispatchQueue.main.async {
                     if self.isMusicPlaying {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -2127,23 +2127,27 @@ class IslandModel: ObservableObject {
             var parsedImage: NSImage? = nil
             var parsedColor: Color = .orange
             
-            // Check raw artwork data in descriptor
-            if let artDesc = desc.atIndex(6), artDesc.descriptorType != 0x6d736e67 /* 'msng' */ {
+            // Check raw artwork data in descriptor safely on background thread
+            if desc.numberOfItems >= 6, let artDesc = desc.atIndex(6), artDesc.descriptorType != 0x6d736e67 /* 'msng' */ {
                 let rawData = artDesc.data
                 if !rawData.isEmpty, let img = NSImage(data: rawData) {
                     parsedImage = img
                     parsedColor = img.averageColor
-                    self.artworkCache[cacheKey] = (img, parsedColor)
                 }
             }
             
-            // Check in-memory cache if direct decode wasn't present
-            if parsedImage == nil, let cached = self.artworkCache[cacheKey] {
-                parsedImage = cached.image
-                parsedColor = cached.color
-            }
-            
             DispatchQueue.main.async {
+                var finalImage = parsedImage
+                var finalColor = parsedColor
+                
+                // Thread-safe cache access on Main thread
+                if let img = parsedImage {
+                    self.artworkCache[cacheKey] = (img, parsedColor)
+                } else if let cached = self.artworkCache[cacheKey] {
+                    finalImage = cached.image
+                    finalColor = cached.color
+                }
+                
                 let isNewTrack = (self.currentTrackPersistentID != cacheKey || self.currentTrack != tTrack)
                 
                 self.trackDuration = tDuration > 0 ? tDuration : 1.0
@@ -2158,9 +2162,9 @@ class IslandModel: ObservableObject {
                     self.currentTrack = tTrack
                     self.currentArtist = tArtist
                     
-                    if let img = parsedImage {
+                    if let img = finalImage {
                         self.currentArtwork = img
-                        self.artworkColor = parsedColor
+                        self.artworkColor = finalColor
                         self.pendingArtworkRetry = false
                     } else {
                         // Reset to default music icon while loading — NEVER keep previous track's artwork
@@ -2171,10 +2175,10 @@ class IslandModel: ObservableObject {
                     }
                 } else {
                     // Ongoing track: if artwork was pending and now arrived, animate in
-                    if let img = parsedImage, self.pendingArtworkRetry {
+                    if let img = finalImage, self.pendingArtworkRetry {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             self.currentArtwork = img
-                            self.artworkColor = parsedColor
+                            self.artworkColor = finalColor
                         }
                         self.pendingArtworkRetry = false
                     }
