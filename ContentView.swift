@@ -1357,7 +1357,7 @@ struct IslandView: View {
     @ViewBuilder var musicView: some View {
         VStack(spacing: 8) {
             // Top Row: Artwork (Left) | Title & Artist (Center-Left) | Live Dynamic Waveform (Right)
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 // Large Rounded Artwork shifted left with 3D Flip
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
@@ -1388,10 +1388,11 @@ struct IslandView: View {
                 ZStack(alignment: .leading) {
                     // Real-Time Previous Track Title Preview text
                     if manualDragOffset > 0 {
+                        let prevDisplay = !model.prevTrackName.isEmpty ? model.prevTrackName : (!model.currentArtist.isEmpty ? "\(model.currentArtist) - Prev" : "Previous")
                         HStack(spacing: 6) {
                             Image(systemName: "backward.fill")
                                 .font(.system(size: 10, weight: .bold))
-                            Text(model.prevTrackName.isEmpty ? "Previous Track" : model.prevTrackName)
+                            Text(prevDisplay)
                                 .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                                 .lineLimit(1)
                         }
@@ -1410,12 +1411,14 @@ struct IslandView: View {
                             .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
+                    .padding(.leading, 4)
                     .offset(x: manualDragOffset)
                     
                     // Real-Time Next Track Title Preview text
                     if manualDragOffset < 0 {
+                        let nextDisplay = !model.nextTrackName.isEmpty ? model.nextTrackName : (!model.currentArtist.isEmpty ? "\(model.currentArtist) - Next" : "Next")
                         HStack(spacing: 6) {
-                            Text(model.nextTrackName.isEmpty ? "Next Track" : model.nextTrackName)
+                            Text(nextDisplay)
                                 .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                                 .lineLimit(1)
                             Image(systemName: "forward.fill")
@@ -1426,6 +1429,7 @@ struct IslandView: View {
                         .opacity(min(1.0, Double(-manualDragOffset) / 35.0))
                     }
                 }
+                .padding(.leading, 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .mask(
                     LinearGradient(gradient: Gradient(stops: [
@@ -2505,6 +2509,64 @@ class IslandModel: ObservableObject {
     @Published var currentArtist: String = ""
     @Published var nextTrackName: String = ""
     @Published var prevTrackName: String = ""
+    @Published var currentAlbum: String = ""
+    private var albumTracksCache: [String: [String]] = [:]
+    
+    private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
+        guard !track.isEmpty else { return }
+        
+        // If Apple Music already provided local playlist titles, keep them
+        if !self.nextTrackName.isEmpty && !self.prevTrackName.isEmpty { return }
+        
+        let cacheKey = "\(artist)_\(album)"
+        if let cachedList = self.albumTracksCache[cacheKey], let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+            DispatchQueue.main.async {
+                if self.prevTrackName.isEmpty, idx > 0 {
+                    self.prevTrackName = cachedList[idx - 1]
+                }
+                if self.nextTrackName.isEmpty, idx < cachedList.count - 1 {
+                    self.nextTrackName = cachedList[idx + 1]
+                }
+            }
+            return
+        }
+        
+        guard !artist.isEmpty else { return }
+        let queryTerm = "\(artist) \(album.isEmpty ? track : album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let url = URL(string: "https://itunes.apple.com/search?term=\(queryTerm)&entity=song&limit=30") else { return }
+        
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self, let data = data else { return }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let results = json["results"] as? [[String: Any]] {
+                // Sort by discNumber then trackNumber
+                var sortedSongs: [(name: String, trackNum: Int)] = []
+                for item in results {
+                    if let name = item["trackName"] as? String, let num = item["trackNumber"] as? Int {
+                        if !sortedSongs.contains(where: { $0.name.lowercased() == name.lowercased() }) {
+                            sortedSongs.append((name: name, trackNum: num))
+                        }
+                    }
+                }
+                sortedSongs.sort { $0.trackNum < $1.trackNum }
+                let names = sortedSongs.map { $0.name }
+                if !names.isEmpty {
+                    self.albumTracksCache[cacheKey] = names
+                    if let idx = names.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+                        DispatchQueue.main.async {
+                            if idx > 0 {
+                                self.prevTrackName = names[idx - 1]
+                            }
+                            if idx < names.count - 1 {
+                                self.nextTrackName = names[idx + 1]
+                            }
+                        }
+                    }
+                }
+            }
+        }.resume()
+    }
+
     @Published var trackDuration: Double = 1.0
     @Published var playbackPosition: Double = 0.0
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
@@ -3029,6 +3091,10 @@ class IslandModel: ObservableObject {
                     end try
                     set tTrack to name of curTrk
                     set tArtist to artist of curTrk
+                    set tAlbum to ""
+                    try
+                        set tAlbum to album of curTrk
+                    end try
                     set tDur to duration of curTrk
                     set tPos to player position
                     set rArt to missing value
@@ -3057,7 +3123,7 @@ class IslandModel: ObservableObject {
                             set rArt to raw data of artwork 1 of curTrk
                         end if
                     end try
-                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav, nxtName, prevName}
+                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav, nxtName, prevName, tAlbum}
                 end if
             end tell
         end if
@@ -3122,8 +3188,9 @@ class IslandModel: ObservableObject {
             let tDuration = desc.atIndex(4)?.doubleValue ?? 100.0
             let tPosition = desc.atIndex(5)?.doubleValue ?? 0.0
             let isFav = desc.numberOfItems >= 7 ? (desc.atIndex(7)?.booleanValue ?? false) : false
-            let nxtTitle = desc.numberOfItems >= 8 ? (desc.atIndex(8)?.stringValue ?? "") : ""
-            let prvTitle = desc.numberOfItems >= 9 ? (desc.atIndex(9)?.stringValue ?? "") : ""
+            var nxtTitle = desc.numberOfItems >= 8 ? (desc.atIndex(8)?.stringValue ?? "") : ""
+            var prvTitle = desc.numberOfItems >= 9 ? (desc.atIndex(9)?.stringValue ?? "") : ""
+            let tAlbum = desc.numberOfItems >= 10 ? (desc.atIndex(10)?.stringValue ?? "") : ""
             
             let cacheKey = !tID.isEmpty ? tID : "\(tTrack)_\(tArtist)"
             
@@ -3155,11 +3222,14 @@ class IslandModel: ObservableObject {
                 
                 self.trackDuration = tDuration
                 self.isCurrentTrackFavorited = isFav
-                self.nextTrackName = nxtTitle
-                self.prevTrackName = prvTitle
+                if !nxtTitle.isEmpty { self.nextTrackName = nxtTitle }
+                if !prvTitle.isEmpty { self.prevTrackName = prvTitle }
+                self.currentAlbum = tAlbum
                 self.playbackPosition = tPosition
                 self.lastPlaybackPollTime = Date()
                 self.isMusicPlaying = true
+                
+                self.resolveSurroundingTrackNames(track: tTrack, artist: tArtist, album: tAlbum)
                 
                 if isNewTrack {
                     if Date().timeIntervalSince(self.lastManualSkipTime) > 2.0 {
