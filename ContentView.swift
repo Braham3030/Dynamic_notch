@@ -4503,6 +4503,7 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     case pureWhite = "Pure White"
     case pureBlack = "Pure Black"
     case liquidGlass = "Liquid Glass"
+    case smokedGlass = "Smoked Glass"
     case sonoma = "Sonoma Sunset"
     case sequoia = "Sequoia Pines"
     case aurora = "Cupertino Aurora"
@@ -4535,6 +4536,7 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
         case .pureWhite: return "sun.max.fill"
         case .pureBlack: return "moon.fill"
         case .liquidGlass: return "drop.fill"
+        case .smokedGlass: return "smoke.fill"
         case .sonoma: return "sun.horizon.fill"
         case .sequoia: return "tree.fill"
         case .aurora: return "sparkles"
@@ -4556,6 +4558,7 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
         case .pureWhite: return "Minimalist crisp white frosted glass"
         case .pureBlack: return "Deep true black OLED noir"
         case .liquidGlass: return "Ultra frosted dynamic liquid glass"
+        case .smokedGlass: return "Velvety translucent charcoal smoked glass"
         case .sonoma: return "Warm twilight landscape glow"
         case .sequoia: return "Deep pine forest emerald"
         case .aurora: return "Vibrant cosmic radiance"
@@ -4881,6 +4884,16 @@ struct SettingsWindowBackground: View {
                     lightGlass,
                     darkGlass,
                     smokedBlack
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .smokedGlass:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.22, green: 0.22, blue: 0.26).opacity(0.70 * opacity),
+                    Color(red: 0.12, green: 0.12, blue: 0.15).opacity(0.85 * opacity),
+                    Color(red: 0.05, green: 0.05, blue: 0.07).opacity(0.95 * opacity)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -8356,7 +8369,7 @@ struct LiquidScrubber: View {
     @State private var dragProgress: Double = 0.0
     
     let scrubberWidth: CGFloat = 220
-    let scrubberHeight: CGFloat = 24
+    let scrubberHeight: CGFloat = 20
 
     var body: some View {
         let currentProgress = isDragging ? dragProgress : (model.playbackPosition / model.trackDuration)
@@ -8364,33 +8377,63 @@ struct LiquidScrubber: View {
         let elapsed = Int(safeProgress * model.trackDuration)
         let remaining = Int(model.trackDuration) - elapsed
         let currentTrackWidth = max(0, CGFloat(safeProgress) * scrubberWidth)
+        let progressTint = model.artworkColor
         
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(formatTime(elapsed))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.7))
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.60))
                 .frame(width: 32, alignment: .trailing)
             
             ZStack(alignment: .leading) {
-                // Base Track
+                // 1. Translucent Liquid Glass Background Track
                 Capsule()
-                    .fill(Color.white.opacity(0.25))
-                    .frame(width: scrubberWidth, height: 6)
+                    .fill(Color.white.opacity(0.14))
+                    .frame(width: scrubberWidth, height: 4.5)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
                     
-                // Fill Track
+                // 2. Liquid Glass Active Progress Track matching Waveform Color!
                 Capsule()
-                    .fill(Color.white)
-                    .frame(width: currentTrackWidth, height: 6)
+                    .fill(
+                        LinearGradient(
+                            colors: [progressTint.opacity(0.85), progressTint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: currentTrackWidth, height: 4.5)
+                    .shadow(color: progressTint.opacity(0.45), radius: 3, x: 0, y: 0)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
                     
-                // Thumb
-                Capsule()
-                    .fill(Color.white)
-                    .overlay(Capsule().stroke(Color.white.opacity(0.75), lineWidth: 1))
-                    .shadow(color: model.artworkColor.opacity(0.35), radius: isDragging ? 7 : 3, x: 0, y: 2)
-                    .frame(width: isDragging ? 24 : 10, height: isDragging ? 16 : 10)
-                    .offset(x: min(max(0, currentTrackWidth - (isDragging ? 12 : 5)), scrubberWidth - (isDragging ? 24 : 10)))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0.2), value: isDragging)
+                // 3. Apple-Style Liquid Glass Translucent Scrubber Knob
+                ZStack {
+                    // Soft circular ambient glow
+                    Circle()
+                        .fill(progressTint.opacity(isDragging ? 0.45 : 0.20))
+                        .frame(width: isDragging ? 22 : 14, height: isDragging ? 22 : 14)
+                        .blur(radius: isDragging ? 4 : 2)
+                    
+                    // Glass knob body
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white, Color(white: 0.92)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: isDragging ? 16 : 10, height: isDragging ? 16 : 10)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.95), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.35), radius: isDragging ? 4 : 2, x: 0, y: 1.5)
+                }
+                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 8 : 5)), scrubberWidth - (isDragging ? 16 : 10)))
+                .animation(.spring(response: 0.28, dampingFraction: 0.65), value: isDragging)
             }
             .frame(width: scrubberWidth, height: scrubberHeight, alignment: .center)
             .contentShape(Rectangle())
@@ -8413,8 +8456,8 @@ struct LiquidScrubber: View {
             )
             
             Text("-" + formatTime(remaining))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.7))
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.60))
                 .frame(width: 38, alignment: .leading)
         }
     }
