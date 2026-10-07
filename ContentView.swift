@@ -8243,16 +8243,40 @@ struct WallpaperThumbnailCard: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 5) {
-                thumbnailPreview
-                titleLabels
+        ZStack(alignment: .topTrailing) {
+            // Main clickable card area
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: 5) {
+                    thumbnailPreview
+                    titleLabels
+                }
+                .padding(5)
+                .background(cardBackground)
+                .overlay(cardBorder)
             }
-            .padding(5)
-            .background(cardBackground)
-            .overlay(cardBorder)
+            .buttonStyle(.plain)
+            
+            // Deletion Cross on top-right ONLY when custom image is chosen
+            if style == .customPicture && customImage != nil {
+                Button {
+                    onRemoveCustomImage?()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 20, height: 20)
+                            .shadow(color: Color.black.opacity(0.5), radius: 3, x: 0, y: 1)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9.5, weight: .black))
+                            .foregroundColor(.white)
+                    }
+                    .padding(8)
+                }
+                .buttonStyle(.plain)
+                .help("Remove custom wallpaper image and reset to default")
+                .zIndex(10)
+            }
         }
-        .buttonStyle(.plain)
     }
     
     @ViewBuilder
@@ -8295,32 +8319,6 @@ struct WallpaperThumbnailCard: View {
                                 .font(.system(size: 13))
                                 .padding(4)
                         }
-                    }
-                    Spacer()
-                }
-            }
-            
-            // Cross button in top right corner ONLY when user has selected/added a custom image
-            if style == .customPicture && customImage != nil {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button {
-                            onRemoveCustomImage?()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.black.opacity(0.75))
-                                    .frame(width: 18, height: 18)
-                                    .shadow(color: Color.black.opacity(0.4), radius: 2)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 8.5, weight: .black))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(4)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove custom wallpaper image")
                     }
                     Spacer()
                 }
@@ -8452,10 +8450,22 @@ struct BackgroundSettingsView: View {
                             style: style,
                             isSelected: model.settingsBackgroundStyle == style,
                             isLightBg: isLightBg,
-                            customImage: model.customWallpaperImage
+                            customImage: model.customWallpaperImage,
+                            onRemoveCustomImage: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                    model.customWallpaperImage = nil
+                                    model.settingsBackgroundStyle = .systemDefault
+                                }
+                            }
                         ) {
-                            if style == .customPicture && model.customWallpaperImage == nil {
-                                model.pickCustomWallpaper()
+                            if style == .customPicture {
+                                if model.customWallpaperImage == nil {
+                                    model.pickCustomWallpaper()
+                                } else {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        model.settingsBackgroundStyle = .customPicture
+                                    }
+                                }
                             } else {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                     model.settingsBackgroundStyle = style
