@@ -3971,10 +3971,15 @@ struct SettingsWindowBackground: View {
             
         case .customPicture:
             if let img = customImage {
-                Image(nsImage: img)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .opacity(opacity)
+                GeometryReader { geo in
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                        .opacity(opacity)
+                }
+                .allowsHitTesting(false)
             } else {
                 LinearGradient(
                     colors: [Color.blue.opacity(0.7 * opacity), Color.purple.opacity(0.8 * opacity)],
@@ -4637,6 +4642,7 @@ struct ContentView: View {
                 blurRadius: model.settingsWallpaperBlur,
                 customImage: model.customWallpaperImage
             )
+            .allowsHitTesting(false)
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -4856,6 +4862,7 @@ struct ContentView: View {
 
 struct BezierGraph: View {
     @ObservedObject var model: IslandModel
+    @State private var activeDragHandle: Int? = nil
     
     let w: CGFloat = 460
     let h: CGFloat = 200
@@ -4874,6 +4881,7 @@ struct BezierGraph: View {
         let p2 = CGPoint(x: pad_x + (c2.x * drawW), y: pad_y + (1 - c2.y) * drawH)
         
         ZStack {
+            // Background grid box
             Path { p in
                 p.move(to: pStart)
                 p.addLine(to: CGPoint(x: pEnd.x, y: pStart.y))
@@ -4883,37 +4891,82 @@ struct BezierGraph: View {
             }
             .stroke(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4]))
             
+            // Tangent Handle Lines
             Path { p in p.move(to: pStart); p.addLine(to: p1) }
-                .stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
+                .stroke(model.animationCurve == .custom ? (activeDragHandle == 1 ? Color.orange : Color.orange.opacity(0.6)) : Color.primary.opacity(0.25), lineWidth: activeDragHandle == 1 ? 2.5 : 1.5)
             Path { p in p.move(to: pEnd); p.addLine(to: p2) }
-                .stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : Color.primary.opacity(0.25), lineWidth: 1.5)
+                .stroke(model.animationCurve == .custom ? (activeDragHandle == 2 ? Color.orange : Color.orange.opacity(0.6)) : Color.primary.opacity(0.25), lineWidth: activeDragHandle == 2 ? 2.5 : 1.5)
+            
+            // Bezier Curve Trajectory
             Path { path in
                 path.move(to: pStart)
                 path.addCurve(to: pEnd, control1: p1, control2: p2)
             }
             .stroke(model.animationCurve == .custom ? Color.orange : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             
+            // Anchor Endpoints
             Circle().fill(Color.accentColor).frame(width: 8, height: 8).position(pStart)
             Circle().fill(Color.accentColor).frame(width: 8, height: 8).position(pEnd)
-            Circle().fill(Color.white).frame(width: 16, height: 16).shadow(color: .black.opacity(0.5), radius: 3).overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: 2)).position(p1)
-            Circle().fill(Color.white).frame(width: 16, height: 16).shadow(color: .black.opacity(0.5), radius: 3).overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: 2)).position(p2)
             
+            // Handle 1 (Control Point 1) Knob
+            ZStack {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: activeDragHandle == 1 ? 20 : 16, height: activeDragHandle == 1 ? 20 : 16)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
+                    .overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: activeDragHandle == 1 ? 3 : 2))
+                
+                Text("1")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(model.animationCurve == .custom ? .orange : .gray)
+            }
+            .position(p1)
+            
+            // Handle 2 (Control Point 2) Knob
+            ZStack {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: activeDragHandle == 2 ? 20 : 16, height: activeDragHandle == 2 ? 20 : 16)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
+                    .overlay(Circle().stroke(model.animationCurve == .custom ? Color.orange : Color.gray, lineWidth: activeDragHandle == 2 ? 3 : 2))
+                
+                Text("2")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(model.animationCurve == .custom ? .orange : .gray)
+            }
+            .position(p2)
+            
+            // Interactive Drag Hit Surface with Euclidean distance-based handle locking
             Color.black.opacity(0.001)
                 .frame(width: w, height: h)
                 .contentShape(Rectangle())
                 .gesture(
-                    DragGesture(minimumDistance: 0).onChanged { val in
-                        model.makeCustomIfNeeded()
-                        let nx = min(max(0, (val.location.x - pad_x) / drawW), 1)
-                        let maxY = 1 + (pad_y / drawH)
-                        let minY = 0 - (pad_y / drawH)
-                        let ny = min(max(minY, 1 - ((val.location.y - pad_y) / drawH)), maxY)
-                        if val.startLocation.x < w / 2 {
-                            model.customC1 = CGPoint(x: nx, y: ny)
-                        } else {
-                            model.customC2 = CGPoint(x: nx, y: ny)
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { val in
+                            model.makeCustomIfNeeded()
+                            
+                            // On initial press, lock onto the closest knob by geometric distance
+                            if activeDragHandle == nil {
+                                let start = val.startLocation
+                                let dist1 = hypot(start.x - p1.x, start.y - p1.y)
+                                let dist2 = hypot(start.x - p2.x, start.y - p2.y)
+                                activeDragHandle = (dist1 <= dist2) ? 1 : 2
+                            }
+                            
+                            let nx = min(max(0.0, (val.location.x - pad_x) / drawW), 1.0)
+                            let maxY = 1.0 + (pad_y / drawH) * 1.5
+                            let minY = 0.0 - (pad_y / drawH) * 1.5
+                            let ny = min(max(minY, 1.0 - ((val.location.y - pad_y) / drawH)), maxY)
+                            
+                            if activeDragHandle == 1 {
+                                model.customC1 = CGPoint(x: nx, y: ny)
+                            } else if activeDragHandle == 2 {
+                                model.customC2 = CGPoint(x: nx, y: ny)
+                            }
                         }
-                    }
+                        .onEnded { _ in
+                            activeDragHandle = nil
+                        }
                 )
         }
         .frame(width: w, height: h)
