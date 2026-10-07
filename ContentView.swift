@@ -1637,9 +1637,11 @@ struct IslandView: View {
             .offset(y: showsExpandedMusicDetails ? 0 : -36)
             .allowsHitTesting(showsExpandedMusicDetails)
             
-            // Interactive AirPlay Device Routing Underneath the Music Tab
+            // Interactive AirPlay Device Routing Underneath the Music Tab (Full Notch Width)
             if model.isShowingAirPlayInMusic {
                 AirPlayDevicePickerInMusicView(model: model)
+                    .frame(width: model.width - 24)
+                    .offset(x: 15)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .offset(y: 8)),
                         removal: .opacity.combined(with: .offset(y: 4))
