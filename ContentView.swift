@@ -929,6 +929,62 @@ class IslandModel: ObservableObject {
     @Published var isAirDropSending: Bool = false
     @Published var airDropSentSuccess: Bool = false
     
+    // System Permission On/Off Switchers (reflect real macOS settings state)
+    @Published var isAccessibilityEnabled: Bool = AXIsProcessTrusted()
+    @Published var isMusicScriptingEnabled: Bool = true
+    @Published var isMicrophoneEnabled: Bool = (AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+    @Published var isNotificationsEnabled: Bool = true
+    @Published var isBluetoothPermissionEnabled: Bool = true
+    
+    func refreshPermissionStates() {
+        self.isAccessibilityEnabled = AXIsProcessTrusted()
+        self.isMicrophoneEnabled = (AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+    }
+    
+    func toggleAccessibility(enabled: Bool) {
+        if enabled {
+            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            let trusted = AXIsProcessTrustedWithOptions(options)
+            self.isAccessibilityEnabled = trusted
+            self.showControlCenter = true
+        } else {
+            self.isAccessibilityEnabled = false
+            self.showControlCenter = false
+        }
+    }
+    
+    func toggleMicrophone(enabled: Bool) {
+        if enabled {
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    self.isMicrophoneEnabled = granted
+                    self.hasMicPermission = granted
+                    if granted {
+                        AudioAnalyzer.shared.startMonitoring()
+                    }
+                }
+            }
+        } else {
+            self.isMicrophoneEnabled = false
+            self.hasMicPermission = false
+            AudioAnalyzer.shared.stopMonitoring()
+        }
+    }
+    
+    func toggleNotifications(enabled: Bool) {
+        if enabled {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                DispatchQueue.main.async {
+                    self.isNotificationsEnabled = granted
+                    self.showNotifications = granted
+                }
+            }
+        } else {
+            self.isNotificationsEnabled = false
+            self.showNotifications = false
+        }
+    }
+    
     func sendAirDrop(to targetName: String? = nil) {
         guard !droppedAirDropFiles.isEmpty else { return }
         isAirDropSending = true
@@ -1204,6 +1260,7 @@ class IslandModel: ObservableObject {
     private var transitionDebounceTask: Task<Void, Never>? = nil
 
     init() {
+        refreshPermissionStates()
         readSystemBrightness()
         readSystemVolume()
         startWifiMonitoring()
@@ -2255,7 +2312,7 @@ struct SystemControlsView: View {
                 .pickerStyle(.menu)
             }
             
-            Section(header: Text("macOS Permissions"), footer: Text("Dynamic Notch requests native macOS permissions to control brightness & volume, access Apple Music playback, and capture system alerts.")) {
+            Section(header: Text("System Permissions & Features"), footer: Text("Toggle individual permissions on or off. If already granted in macOS System Settings, it stays ON automatically.")) {
                 HStack {
                     Image(systemName: "hand.raised.fill")
                         .foregroundStyle(.blue)
@@ -2268,11 +2325,11 @@ struct SystemControlsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Grant Access") {
-                        model.requestControlCenterPermission { _ in }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    Toggle("", isOn: Binding(
+                        get: { model.isAccessibilityEnabled },
+                        set: { val in model.toggleAccessibility(enabled: val) }
+                    ))
+                    .labelsHidden()
                 }
                 
                 HStack {
@@ -2287,11 +2344,8 @@ struct SystemControlsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Grant Access") {
-                        model.requestMusicPermission { _ in }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    Toggle("", isOn: $model.isMusicScriptingEnabled)
+                        .labelsHidden()
                 }
                 
                 HStack {
@@ -2306,20 +2360,11 @@ struct SystemControlsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if model.hasMicPermission {
-                        Button("Granted") {
-                            model.requestMicPermission { _ in }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(true)
-                    } else {
-                        Button("Grant Access") {
-                            model.requestMicPermission { _ in }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                    }
+                    Toggle("", isOn: Binding(
+                        get: { model.isMicrophoneEnabled },
+                        set: { val in model.toggleMicrophone(enabled: val) }
+                    ))
+                    .labelsHidden()
                 }
                 
                 HStack {
@@ -2334,15 +2379,31 @@ struct SystemControlsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Grant Access") {
-                        model.requestNotificationsPermission { _ in }
+                    Toggle("", isOn: Binding(
+                        get: { model.isNotificationsEnabled },
+                        set: { val in model.toggleNotifications(enabled: val) }
+                    ))
+                    .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "airpodspro")
+                        .foregroundStyle(.cyan)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Bluetooth & AirPods Detection")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Enables paired AirPods connection and battery monitoring")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    Spacer()
+                    Toggle("", isOn: $model.isBluetoothPermissionEnabled)
+                        .labelsHidden()
                 }
             }
             
-            Section(footer: Text("If a permission was previously denied, open System Settings to enable permissions manually.")) {
+            Section(footer: Text("If a permission was previously denied in macOS, open System Settings to adjust permissions manually.")) {
                 Button(action: { model.openSystemPrivacySettings() }) {
                     HStack {
                         Image(systemName: "lock.shield.fill")
@@ -2352,6 +2413,9 @@ struct SystemControlsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            model.refreshPermissionStates()
+        }
     }
 }
 
