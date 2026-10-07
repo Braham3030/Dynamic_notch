@@ -7988,24 +7988,14 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable AirDrop Sharing Module", isOn: $model.showAirDrop)
                 
-                // 1:1 Exact Liquid Glass Slider Matching macOS Settings Layout
                 HStack(spacing: 16) {
                     Text("Drag-To-Open Delay")
-                        .font(.system(size: 13, weight: .regular))
-                    
-                    SettingsLiquidGlassSlider(
-                        value: $model.fileDragOpenDelay,
-                        range: 0.0...10.0,
-                        step: 0.5,
-                        totalDots: 11
-                    )
-                    
+                    Slider(value: $model.fileDragOpenDelay, in: 0.0...10.0, step: 0.5)
                     Text(model.fileDragOpenDelay == 0 ? "0.0s" : String(format: "%.1fs", model.fileDragOpenDelay))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .trailing)
                 }
-                .padding(.vertical, 2)
                 
                 HStack {
                     Text("Interactive Notch State")
@@ -8730,143 +8720,6 @@ struct AirPodsListeningModeSlider: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
-    }
-}
-
-struct SettingsLiquidGlassSlider: View {
-    @Binding var value: Double
-    var range: ClosedRange<Double> = 0.0...10.0
-    var step: Double = 0.5
-    var totalDots: Int = 11 // Exact spaced tick dots like native slider
-    
-    @State private var isDragging: Bool = false
-    
-    private var normalizedProgress: Double {
-        let span = range.upperBound - range.lowerBound
-        guard span > 0 else { return 0 }
-        return max(0.0, min(1.0, (value - range.lowerBound) / span))
-    }
-    
-    var body: some View {
-        VStack(spacing: 5) {
-            GeometryReader { geo in
-                let trackWidth = geo.size.width
-                let trackHeight: CGFloat = 6.5
-                let knobWidth: CGFloat = 26
-                let knobHeight: CGFloat = 20
-                let progress = CGFloat(normalizedProgress)
-                let knobX = min(max(knobWidth / 2.0, progress * trackWidth), trackWidth - (knobWidth / 2.0))
-                
-                ZStack(alignment: .leading) {
-                    // 1. Dark Frosted Translucent Track (Matching screenshot)
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.14))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(Color.black.opacity(0.35), lineWidth: 0.5)
-                        )
-                        .frame(height: trackHeight)
-                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
-                    
-                    // 2. Vivid Blue Progress Track
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.0, green: 0.48, blue: 1.0), Color(red: 0.1, green: 0.58, blue: 1.0)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(trackHeight, knobX), height: trackHeight)
-                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
-                    
-                    // 3. Exact 1:1 macOS Liquid Glass Knob (Translucent glass with dark rim & specular reflection)
-                    ZStack {
-                        // Glass Body
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(white: 0.35).opacity(0.55),
-                                        Color(white: 0.15).opacity(0.70)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.15))
-                                    .blur(radius: 1)
-                            )
-                        
-                        // Dark Metallic Outer Rim
-                        Capsule(style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.black.opacity(0.85), Color.black.opacity(0.65)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 1.2
-                            )
-                        
-                        // Inner Glass Specular Edge Highlight
-                        Capsule(style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.05)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
-                            .padding(0.8)
-                        
-                        // Center Indicator Tick Line on Knob
-                        Rectangle()
-                            .fill(Color.white.opacity(0.40))
-                            .frame(width: 1, height: 4.5)
-                            .offset(y: 4)
-                    }
-                    .frame(width: isDragging ? knobWidth + 4 : knobWidth, height: isDragging ? knobHeight + 2 : knobHeight)
-                    .shadow(color: Color.black.opacity(0.55), radius: isDragging ? 5 : 3, x: 0, y: 1.5)
-                    .scaleEffect(isDragging ? 1.05 : 1.0)
-                    .offset(x: knobX - ((isDragging ? knobWidth + 4 : knobWidth) / 2.0))
-                    .animation(.spring(response: 0.28, dampingFraction: 0.70), value: isDragging)
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { gesture in
-                            if !isDragging { isDragging = true }
-                            let fraction = max(0.0, min(1.0, Double(gesture.location.x / trackWidth)))
-                            let span = range.upperBound - range.lowerBound
-                            let rawVal = range.lowerBound + (fraction * span)
-                            let steppedVal = (rawVal / step).rounded() * step
-                            let clamped = min(max(range.lowerBound, steppedVal), range.upperBound)
-                            if abs(value - clamped) > 0.01 {
-                                value = clamped
-                            }
-                        }
-                        .onEnded { _ in
-                            isDragging = false
-                        }
-                )
-            }
-            .frame(height: 20)
-            
-            // 4. Subtle Tick Dots Row Spaced Underneath (1:1 with macOS slider)
-            HStack(spacing: 0) {
-                ForEach(0..<totalDots, id: \.self) { dotIdx in
-                    Circle()
-                        .fill(Color.white.opacity(0.25))
-                        .frame(width: 2.2, height: 2.2)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.horizontal, 4)
-        }
     }
 }
 
