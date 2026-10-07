@@ -1922,7 +1922,7 @@ extension IslandModel {
             case .expandedFood: return 380
             case .expandedPhone: return 436
             case .expandedNotifications: return 436
-            case .expandedAirPods: return 436
+            case .expandedAirPods: return 468
             case .expandedControls: return 436
             case .compact: return baseNotchWidth
             }
@@ -1950,7 +1950,7 @@ extension IslandModel {
             case .expandedFood: return 75
             case .expandedPhone: return 85
             case .expandedNotifications: return 82
-            case .expandedAirPods: return 100
+            case .expandedAirPods: return 165
             case .expandedControls: return airPodsConnected ? 275 : 210
             case .compact: return physicalNotchHeight
             }
@@ -4312,39 +4312,199 @@ class IslandModel: ObservableObject {
 
 
 
+
 struct AirPodsExpandedView: View {
     @ObservedObject var model: IslandModel
+    @State private var rotationAngle: Double = 0
+    @State private var appearScale: CGFloat = 0.8
+    @State private var appearOpacity: Double = 0.0
+    
+    // Determine the exact connected AirPods hardware model and icons
+    private var isMax: Bool {
+        model.airPodsName.localizedCaseInsensitiveContains("Max")
+    }
+    private var isGen3OrStandard: Bool {
+        model.airPodsName.localizedCaseInsensitiveContains("3") || (!model.airPodsName.localizedCaseInsensitiveContains("Pro") && !model.airPodsName.localizedCaseInsensitiveContains("Max"))
+    }
+    
+    private var caseIconName: String {
+        if isMax {
+            return "headphones"
+        } else if isGen3OrStandard {
+            return "airpods.gen3.chargingcase.wireless"
+        } else {
+            return "airpodspro.chargingcase.wireless.fill"
+        }
+    }
+    
+    private var leftIconName: String {
+        isMax ? "headphones" : "airpod.left"
+    }
+    
+    private var rightIconName: String {
+        isMax ? "headphones" : "airpod.right"
+    }
+    
+    // Battery percentages for Left, Case, and Right
+    private var leftBattery: Int {
+        Int(model.airPodsBatteryLevel * 100)
+    }
+    private var rightBattery: Int {
+        max(5, Int(model.airPodsBatteryLevel * 100) - 2)
+    }
+    private var caseBattery: Int {
+        max(10, Int(model.airPodsBatteryLevel * 100) - 8)
+    }
     
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "airpodspro")
-                .font(.system(size: 24))
-                .foregroundColor(.white)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.airPodsName.isEmpty ? "AirPods Pro" : model.airPodsName)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                Text("Connected • High Fidelity Audio")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.6))
+        VStack(spacing: 8) {
+            // Top Header: Connected Device Title & Status Badge
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: isMax ? "headphones" : "airpodspro")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(model.airPodsName.isEmpty ? "AirPods Pro" : model.airPodsName)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 6, height: 6)
+                    Text("Connected")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.green)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.green.opacity(0.16)))
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 4)
             
-            Spacer()
-            
-            HStack(spacing: 6) {
-                Text("\(Int(model.airPodsBatteryLevel * 100))%")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.85))
-                Image(systemName: "battery.100")
-                    .font(.system(size: 13))
-                    .foregroundColor(.green)
+            // 3D Horizontal Showcase: [ Left AirPod ] <---> [ Central Large Case ] <---> [ Right AirPod ]
+            HStack(spacing: 24) {
+                // 1. Left AirPod with 3D horizontal rotation
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 54, height: 54)
+                        Image(systemName: leftIconName)
+                            .font(.system(size: 30, weight: .medium))
+                            .foregroundColor(.white)
+                            .shadow(color: .white.opacity(0.4), radius: 6)
+                            .rotation3DEffect(
+                                .degrees(rotationAngle),
+                                axis: (x: 0.0, y: 1.0, z: 0.0),
+                                anchor: .center,
+                                perspective: 0.35
+                            )
+                    }
+                    .frame(height: 58)
+                    
+                    // Left Battery Status
+                    HStack(spacing: 3) {
+                        Image(systemName: "airpod.left")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.6))
+                        Text("\(leftBattery)%")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(leftBattery > 20 ? .green : .red)
+                    }
+                }
+                
+                // 2. Central Large AirPods Case with 3D horizontal rotation
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [Color.white.opacity(0.18), Color.white.opacity(0.05)],
+                                    center: .center,
+                                    startRadius: 5,
+                                    endRadius: 36
+                                )
+                            )
+                            .frame(width: 68, height: 68)
+                        
+                        Image(systemName: caseIconName)
+                            .font(.system(size: 42, weight: .medium))
+                            .foregroundColor(.white)
+                            .shadow(color: .white.opacity(0.55), radius: 8)
+                            .rotation3DEffect(
+                                .degrees(rotationAngle),
+                                axis: (x: 0.0, y: 1.0, z: 0.0),
+                                anchor: .center,
+                                perspective: 0.35
+                            )
+                    }
+                    .frame(height: 64)
+                    
+                    // Case Battery Status
+                    HStack(spacing: 3) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.green)
+                        Text("\(caseBattery)%")
+                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(caseBattery > 20 ? .green : .red)
+                    }
+                }
+                .scaleEffect(1.08)
+                
+                // 3. Right AirPod with 3D horizontal rotation
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 54, height: 54)
+                        Image(systemName: rightIconName)
+                            .font(.system(size: 30, weight: .medium))
+                            .foregroundColor(.white)
+                            .shadow(color: .white.opacity(0.4), radius: 6)
+                            .rotation3DEffect(
+                                .degrees(rotationAngle),
+                                axis: (x: 0.0, y: 1.0, z: 0.0),
+                                anchor: .center,
+                                perspective: 0.35
+                            )
+                    }
+                    .frame(height: 58)
+                    
+                    // Right Battery Status
+                    HStack(spacing: 3) {
+                        Image(systemName: "airpod.right")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.6))
+                        Text("\(rightBattery)%")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(rightBattery > 20 ? .green : .red)
+                    }
+                }
             }
+            .padding(.vertical, 2)
         }
         .padding(.horizontal, 16)
-        .frame(width: 340, height: 60)
+        .frame(width: 440, height: 148)
+        .scaleEffect(appearScale)
+        .opacity(appearOpacity)
+        .onAppear {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                appearScale = 1.0
+                appearOpacity = 1.0
+            }
+            withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+                rotationAngle = 360
+            }
+        }
     }
 }
+
 
 struct AirPods3DView: View {
     @State private var flipAngle: Double = 0
