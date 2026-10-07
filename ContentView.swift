@@ -8970,7 +8970,7 @@ struct LiquidScrubber: View {
                             )
                         )
                         .frame(width: isDragging ? 22 : 11, height: isDragging ? 16 : 11)
-                        // Specular Light Refraction Border
+                        // Specular Light Refraction Border (Cleanly hidden in drag mode!)
                         .overlay(
                             Capsule()
                                 .stroke(
@@ -8979,8 +8979,9 @@ struct LiquidScrubber: View {
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: isDragging ? 1.3 : 1.0
+                                    lineWidth: 1.0
                                 )
+                                .opacity(isDragging ? 0.0 : 1.0)
                         )
                         // Inner Liquid Glass Glow Pill
                         .overlay(
