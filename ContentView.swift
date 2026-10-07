@@ -716,12 +716,11 @@ struct IslandView: View {
                                     intensity: model.artworkGlowIntensity,
                                     motionVideoURL: videoURL
                                 )
-                                .matchedGeometryEffect(id: "liveMotionTakeover", in: musicActivityNamespace)
                                 .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                                .transition(.opacity)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    withAnimation(.spring(response: 0.46, dampingFraction: 0.78)) {
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
                                         model.isLiveWallpaperExpanded = false
                                     }
                                 }
@@ -1570,11 +1569,11 @@ struct IslandView: View {
         VStack(spacing: 8) {
             // Top Row: Interactive Live Artwork Card | Drag Title | Dynamic Waveform
             HStack(spacing: 14) {
-                // Artwork Card: When clicked, disappears and animates directly into the full live wallpaper!
+                // Artwork Card: Clean in-place fade & scale directly into background live wallpaper
                 if !(model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded) {
                     Button {
                         if model.hasLiveMotionWallpaper {
-                            withAnimation(.spring(response: 0.46, dampingFraction: 0.78)) {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
                                 model.isLiveWallpaperExpanded = true
                             }
                         }
@@ -1616,14 +1615,10 @@ struct IslandView: View {
                             .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                             .transition(.flip3D(isForward: model.isForward))
                         }
-                        .matchedGeometryEffect(id: "liveMotionTakeover", in: musicActivityNamespace)
                         .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.55) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.7).combined(with: .opacity),
-                        removal: .scale(scale: 1.15).combined(with: .opacity)
-                    ))
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
                     .zIndex(1)
                 }
                 
