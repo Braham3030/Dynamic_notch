@@ -2631,6 +2631,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case display = "Hardware Calibration"
     case liveActivities = "Live Activities"
     case systemControls = "System Controls"
+    case softwareUpdate = "Software Update"
     case about = "About"
     
     var id: String { rawValue }
@@ -2642,6 +2643,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .display: return "display"
         case .liveActivities: return "bolt.fill"
         case .systemControls: return "switch.2"
+        case .softwareUpdate: return "arrow.triangle.2.circlepath.circle.fill"
         case .about: return "info.circle"
         }
     }
@@ -3333,6 +3335,8 @@ struct ContentView: View {
                         LiveActivitiesView()
                     case .systemControls:
                         SystemControlsView()
+                    case .softwareUpdate:
+                        SoftwareUpdateView()
                     case .about:
                         AboutView()
                     }
@@ -3752,43 +3756,54 @@ struct ControlButton: View {
         .buttonStyle(.plain)
     }
 }
-struct AboutView: View {
+struct SoftwareUpdateView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var isChecking: Bool = false
     @State private var statusText: String? = nil
     @State private var statusIsError: Bool = false
     
     var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.2"
     }
     
     var buildVersion: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2"
     }
 
     var body: some View {
         Form {
-            Section {
-                VStack(spacing: 16) {
-                    Image(systemName: "capsule.portrait.fill")
-                        .font(.system(size: 64))
-                        .rotationEffect(.degrees(90))
-                        .foregroundStyle(.primary)
-                    
-                    VStack(spacing: 4) {
-                        Text("Dynamic Island for Mac")
-                            .font(.title2.bold())
-                        Text("Version \(appVersion) (Build \(buildVersion))")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            Section(header: Text("Software Updates")) {
+                VStack(spacing: 20) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.blue)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Text("dyNotch")
+                                    .font(.title2.bold())
+                                
+                                Text("BETA")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.2))
+                                    .foregroundStyle(.orange)
+                                    .clipShape(Capsule())
+                            }
+                            
+                            Text("Current Version: \(appVersion) (Beta)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
                     }
+                    .padding(.vertical, 6)
                     
-                    Text("Brings the fluid Apple iOS Dynamic Island straight into your macOS menu bar.")
-                        .font(.body)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                    Divider()
                     
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         Button(action: checkForUpdates) {
                             HStack(spacing: 8) {
                                 if isChecking {
@@ -3796,10 +3811,10 @@ struct AboutView: View {
                                         .controlSize(.small)
                                 }
                                 Text(isChecking ? "Checking GitHub Releases..." : "Check for Updates...")
-                                    .fontWeight(.medium)
+                                    .fontWeight(.semibold)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.blue)
@@ -3807,17 +3822,24 @@ struct AboutView: View {
                         
                         if let status = statusText {
                             Text(status)
-                                .font(.caption)
+                                .font(.callout)
                                 .foregroundStyle(statusIsError ? .red : .secondary)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .transition(.opacity)
                         }
                     }
-                    .padding(.top, 8)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
+                .padding(.vertical, 8)
+            }
+            
+            Section(header: Text("Update Channel"), footer: Text("dyNotch is currently in active Beta stage development. Updates are delivered directly via GitHub Releases through Sparkle.")) {
+                HStack {
+                    Text("Release Channel")
+                    Spacer()
+                    Text("Beta (GitHub Releases)")
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
@@ -3826,7 +3848,7 @@ struct AboutView: View {
     
     private func checkForUpdates() {
         isChecking = true
-        statusText = "Checking github.com/Braham3030/Dynamic_notch for latest tags..."
+        statusText = "Checking github.com/Braham3030/Dynamic_notch for latest releases..."
         statusIsError = false
         
         // Trigger Sparkle native update prompt
@@ -3846,7 +3868,7 @@ struct AboutView: View {
             DispatchQueue.main.async {
                 isChecking = false
                 if let error = error {
-                    statusText = "Sparkle update check initiated. (GitHub query error: \(error.localizedDescription))"
+                    statusText = "Sparkle update check initiated. (GitHub query: \(error.localizedDescription))"
                     return
                 }
                 
@@ -3859,12 +3881,120 @@ struct AboutView: View {
                 
                 let cleanTag = tagName.replacingOccurrences(of: "v", with: "")
                 if cleanTag == appVersion {
-                    statusText = "You are running the latest version (\(tagName))!"
+                    statusText = "You are running the latest beta release (\(tagName))!"
                 } else {
                     statusText = "Found new release on GitHub: \(tagName)! Triggering Sparkle update..."
                 }
             }
         }.resume()
+    }
+}
+
+struct AboutView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.2"
+    }
+    
+    var buildVersion: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 18) {
+                    if let appIcon = NSApplication.shared.applicationIconImage {
+                        Image(nsImage: appIcon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                    } else {
+                        Image(systemName: "capsule.portrait.fill")
+                            .font(.system(size: 64))
+                            .rotationEffect(.degrees(90))
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    VStack(spacing: 6) {
+                        HStack(spacing: 8) {
+                            Text("dyNotch")
+                                .font(.title.bold())
+                            
+                            Text("BETA")
+                                .font(.system(size: 11, weight: .heavy))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Color.orange.opacity(0.2))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                        
+                        Text("Version \(appVersion) (Build \(buildVersion)) • Beta Software")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    Text("The fluid Apple iOS Dynamic Island experience designed for macOS.")
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                    
+                    Divider()
+                        .padding(.horizontal, 40)
+                    
+                    VStack(spacing: 10) {
+                        Button(action: {
+                            if let url = URL(string: "https://github.com/Braham3030/Dynamic_notch/issues/new") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "ladybug.fill")
+                                Text("Report an Issue / Bug")
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red.opacity(0.85))
+                        
+                        Button(action: {
+                            if let url = URL(string: "https://github.com/Braham3030/Dynamic_notch") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "link")
+                                Text("GitHub Repository")
+                            }
+                            .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
+                    .padding(.top, 4)
+                    
+                    VStack(spacing: 4) {
+                        Text("© 2026 dyNotch. All rights reserved.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text("Crafted with SwiftUI for macOS")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.top, 12)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 }
 struct SystemControlsView: View {
