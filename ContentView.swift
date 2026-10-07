@@ -1,3 +1,43 @@
+
+struct ArcShape: Shape {
+    var startAngle: Angle
+    var endAngle: Angle
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+        return path
+    }
+}
+
+struct AirDropSymbolView: View {
+    var size: CGFloat = 24
+    var color: Color = .cyan
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color)
+                .frame(width: size * 0.22, height: size * 0.22)
+            
+            ArcShape(startAngle: .degrees(130), endAngle: .degrees(50))
+                .stroke(color, style: StrokeStyle(lineWidth: max(1.2, size * 0.085), lineCap: .round))
+                .frame(width: size * 0.50, height: size * 0.50)
+            
+            ArcShape(startAngle: .degrees(130), endAngle: .degrees(50))
+                .stroke(color, style: StrokeStyle(lineWidth: max(1.2, size * 0.085), lineCap: .round))
+                .frame(width: size * 0.76, height: size * 0.76)
+            
+            ArcShape(startAngle: .degrees(130), endAngle: .degrees(50))
+                .stroke(color, style: StrokeStyle(lineWidth: max(1.2, size * 0.085), lineCap: .round))
+                .frame(width: size * 1.0, height: size * 1.0)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 struct AirDropPerson: Identifiable {
     let id = UUID()
     let name: String
@@ -322,9 +362,7 @@ struct IslandView: View {
                                 Circle()
                                     .fill(Color.cyan.opacity(0.18))
                                     .frame(width: 44, height: 44)
-                                Image(systemName: "airdrop")
-                                    .font(.system(size: 24, weight: .bold))
-                                    .foregroundColor(.cyan)
+                                AirDropSymbolView(size: 26, color: .cyan)
                             }
                             
                             Text("Drop Files to AirDrop")
@@ -539,7 +577,7 @@ struct IslandView: View {
                 }
             } else if model.state == .expandedAirDrop {
                 if model.showAirDrop {
-                    HStack(spacing: 16) { Image(systemName: "airdrop"); Text("AirDrop Enabled").font(.headline) }.foregroundColor(.white)
+                    HStack(spacing: 16) { AirDropSymbolView(size: 20, color: .cyan); Text("AirDrop Enabled").font(.headline) }.foregroundColor(.white)
                 } else {
                     disabledFeatureNotice("AirDrop Sharing Disabled")
                 }
@@ -3053,8 +3091,7 @@ struct LiveActivitiesView: View {
                 }
                 
                 HStack {
-                    Image(systemName: "airdrop")
-                        .foregroundStyle(.cyan)
+                    AirDropSymbolView(size: 20, color: .cyan)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("AirDrop Sharing")
@@ -3356,38 +3393,40 @@ struct AirPodsHeadIcon: View {
             if mode == 2 {
                 // Noise Cancellation: Solid dome arc over head
                 ZStack {
-                    Circle()
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.5), lineWidth: 2)
+                    ArcShape(startAngle: .degrees(130), endAngle: .degrees(50))
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                         .frame(width: 20, height: 20)
                     
                     Image(systemName: "person.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
                 }
-            } else if mode == 1 {
-                // Off: Thin single ring over head
+            } else if mode == 4 {
+                // Adaptive: iOS Starburst Sparkles around head
                 ZStack {
-                    Circle()
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.3), lineWidth: 1.5)
-                        .frame(width: 18, height: 18)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.75))
+                        .offset(x: 6, y: -6)
                     
                     Image(systemName: "person.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.45))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
                 }
             } else {
                 // Transparency: Radiating dotted rays around head
                 ZStack {
-                    Circle()
-                        .stroke(isSelected ? Color.white : Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.8, dash: [2, 3]))
+                    ArcShape(startAngle: .degrees(130), endAngle: .degrees(50))
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [2, 3]))
                         .frame(width: 20, height: 20)
                     
                     Image(systemName: "person.fill")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(isSelected ? .white : .white.opacity(0.55))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
                 }
             }
         }
+        .frame(width: 32, height: 32)
     }
 }
 
@@ -3506,9 +3545,15 @@ struct AirDropReceivingModeSlider: View {
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
     
-    // Modes matching screenshot 1:1: 2: Noise Cancellation, 1: Off, 3: Transparency
-    let modes = [2, 1, 3]
-    let titles = ["Noise Cancellation", "Off", "Transparency"]
+    // Modes matching iOS 1:1: 2: Noise Cancellation, 4: Adaptive, 3: Transparency
+    let modes = [2, 4, 3]
+    let titles = ["Noise Cancellation", "Adaptive", "Transparency"]
+    
+    @State private var dragX: CGFloat? = nil
+    
+    private func currentModeIndex() -> Int {
+        modes.firstIndex(of: model.listeningMode) ?? 1
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -3518,51 +3563,72 @@ struct AirPodsListeningModeSlider: View {
                     .foregroundColor(.white.opacity(0.45))
                     .padding(.leading, 2)
                 Spacer()
-                if let idx = modes.firstIndex(of: model.listeningMode) {
-                    Text(titles[idx])
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(.blue)
-                        .padding(.trailing, 2)
-                }
+                let idx = currentModeIndex()
+                Text(titles[idx])
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundColor(.blue)
+                    .padding(.trailing, 2)
             }
             
             VStack(spacing: 5) {
-                // Liquid Glass Capsule Track
+                // Liquid Glass Capsule Track with Smooth Sliding & Dragging Pill
                 GeometryReader { geo in
+                    let totalWidth = geo.size.width
+                    let segmentWidth = totalWidth / 3.0
+                    let pillSize: CGFloat = 32
+                    let activeIndex = currentModeIndex()
+                    let standardPillCenter = (CGFloat(activeIndex) * segmentWidth) + (segmentWidth / 2.0)
+                    let pillCenterX = dragX ?? standardPillCenter
+                    let pillLeadingX = pillCenterX - (pillSize / 2.0)
+                    
                     ZStack(alignment: .leading) {
+                        // Frosted Liquid Glass Track
                         Capsule(style: .continuous)
                             .fill(Color.white.opacity(0.12))
                             .background(
                                 Capsule(style: .continuous)
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.22), Color.white.opacity(0.08)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 0.6
+                                    )
                             )
                         
+                        // Floating Liquid Glass Sliding Indicator
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 0.1, green: 0.58, blue: 1.0), Color.blue],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: pillSize, height: pillSize)
+                            .shadow(color: Color.blue.opacity(0.5), radius: 5, x: 0, y: 1.5)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.35), lineWidth: 0.75)
+                            )
+                            .offset(x: max(2, min(totalWidth - pillSize - 2, pillLeadingX)))
+                            .animation(dragX == nil ? .spring(response: 0.32, dampingFraction: 0.75) : .none, value: pillLeadingX)
+                        
+                        // Buttons & Icons
                         HStack(spacing: 0) {
                             ForEach(0..<3, id: \.self) { i in
                                 let modeVal = modes[i]
-                                let isSelected = model.listeningMode == modeVal
+                                let isSelected = (dragX == nil ? model.listeningMode : modes[min(2, max(0, Int(pillCenterX / segmentWidth)))]) == modeVal
                                 
                                 Button {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                        dragX = nil
                                         model.setAirPodsMode(modeVal)
                                     }
                                 } label: {
-                                    ZStack {
-                                        if isSelected {
-                                            Circle()
-                                                .fill(
-                                                    LinearGradient(
-                                                        colors: [Color(red: 0.1, green: 0.55, blue: 1.0), Color.blue],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                )
-                                                .frame(width: 32, height: 32)
-                                                .shadow(color: Color.blue.opacity(0.45), radius: 5, x: 0, y: 1)
-                                        }
-                                        AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -3572,13 +3638,19 @@ struct AirPodsListeningModeSlider: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { gesture in
-                                let fraction = max(0.0, min(1.0, gesture.location.x / geo.size.width))
-                                let index = min(2, max(0, Int(fraction * 3.0)))
-                                let newMode = modes[index]
+                                dragX = max(pillSize / 2.0, min(totalWidth - (pillSize / 2.0), gesture.location.x))
+                                let closestIndex = min(2, max(0, Int(gesture.location.x / segmentWidth)))
+                                let newMode = modes[closestIndex]
                                 if model.listeningMode != newMode {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                        model.setAirPodsMode(newMode)
-                                    }
+                                    model.setAirPodsMode(newMode)
+                                }
+                            }
+                            .onEnded { gesture in
+                                let closestIndex = min(2, max(0, Int(gesture.location.x / segmentWidth)))
+                                let finalMode = modes[closestIndex]
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                    dragX = nil
+                                    model.setAirPodsMode(finalMode)
                                 }
                             }
                     )
@@ -3592,7 +3664,7 @@ struct AirPodsListeningModeSlider: View {
                         let isSelected = model.listeningMode == modeVal
                         Text(titles[i])
                             .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? .white : .white.opacity(0.55))
+                            .foregroundColor(isSelected ? .blue : .white.opacity(0.55))
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
