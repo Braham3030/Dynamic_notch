@@ -1624,7 +1624,7 @@ struct IslandView: View {
                 
                 // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & continuous sliding track titles
                 ZStack(alignment: .leading) {
-                    // 1. Real-Time Previous Track Title (positioned to the left at -180pt, smoothly slides right into view on right drag)
+                    // 1. Real-Time Previous Track Title (positioned comfortably to the left at -260pt with generous margin)
                     if manualDragOffset > 0 {
                         let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack) 
                             ? model.prevTrackName 
@@ -1640,11 +1640,11 @@ struct IslandView: View {
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset - 180)
-                        .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 25.0)))
+                        .offset(x: manualDragOffset - 260)
+                        .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 30.0)))
                     }
                     
-                    // 2. Active Playing Track (slides smoothly with the drag gesture)
+                    // 2. Active Playing Track (slides smoothly with drag and button transitions)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -1655,11 +1655,16 @@ struct IslandView: View {
                             .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
+                    .id("ActiveTrack_\(model.currentTrackPersistentID)")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: model.isForward ? .trailing : .leading).combined(with: .opacity),
+                        removal: .move(edge: model.isForward ? .leading : .trailing).combined(with: .opacity)
+                    ))
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
-                    .opacity(max(0.15, 1.0 - Double(abs(manualDragOffset)) / 120.0))
+                    .opacity(max(0.15, 1.0 - Double(abs(manualDragOffset)) / 140.0))
                     
-                    // 3. Real-Time Next Track Title (positioned to the right at +180pt, smoothly slides left into view on left drag)
+                    // 3. Real-Time Next Track Title (positioned to the right at +260pt)
                     if manualDragOffset < 0 {
                         let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack) 
                             ? model.nextTrackName 
@@ -1675,8 +1680,8 @@ struct IslandView: View {
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset + 180)
-                        .opacity(min(1.0, max(0.0, Double(-manualDragOffset) / 25.0)))
+                        .offset(x: manualDragOffset + 260)
+                        .opacity(min(1.0, max(0.0, Double(-manualDragOffset) / 30.0)))
                     }
                 }
                 .padding(.leading, 2)
@@ -1693,13 +1698,13 @@ struct IslandView: View {
                                 model.isForward = true
                                 model.lastManualSkipTime = Date()
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                    manualDragOffset = -220
+                                    manualDragOffset = -260
                                 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: true)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = 220
+                                        manualDragOffset = 260
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
                                             manualDragOffset = 0
                                         }
@@ -1710,13 +1715,13 @@ struct IslandView: View {
                                 model.isForward = false
                                 model.lastManualSkipTime = Date()
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                    manualDragOffset = 220
+                                    manualDragOffset = 260
                                 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: false)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = -220
+                                        manualDragOffset = -260
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
                                             manualDragOffset = 0
                                         }
@@ -1773,24 +1778,23 @@ struct IslandView: View {
                 
                 Spacer()
                 
-                // Center Controls: Backward | Play/Pause | Forward (with Apple Spring Animations)
+                // Center Controls: Backward (with Rewind Long-Press) | Play/Pause | Forward (with Fast-Forward Long-Press)
                 HStack(spacing: 32) {
-                    Button(action: {
-                        bouncePrev += 1
-                        model.skipTrack(forward: false)
-                    }) {
-                        ZStack {
-                            Rectangle()
-                                .fill(Color.clear)
-                                .frame(width: 44, height: 40)
-                                .contentShape(Rectangle())
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(.white)
-                                .symbolEffect(.bounce, value: bouncePrev)
+                    // Previous Track (Tap) / Fast-Rewind (Press & Hold)
+                    RepeatablePlaybackButton(
+                        icon: "backward.fill",
+                        direction: -1,
+                        onTap: {
+                            bouncePrev += 1
+                            model.skipTrack(forward: false)
+                        },
+                        onLongPressStart: {
+                            model.startFastSeeking(forward: false)
+                        },
+                        onLongPressEnd: {
+                            model.stopFastSeeking()
                         }
-                    }
-                    .buttonStyle(SkipButtonStyle(direction: -1))
+                    )
                     
                     Button(action: {
                         model.togglePlayPause()
@@ -1808,22 +1812,21 @@ struct IslandView: View {
                     }
                     .buttonStyle(PlayPauseButtonStyle())
                     
-                    Button(action: {
-                        bounceNext += 1
-                        model.skipTrack(forward: true)
-                    }) {
-                        ZStack {
-                            Rectangle()
-                                .fill(Color.clear)
-                                .frame(width: 44, height: 40)
-                                .contentShape(Rectangle())
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(.white)
-                                .symbolEffect(.bounce, value: bounceNext)
+                    // Next Track (Tap) / Fast-Forward (Press & Hold)
+                    RepeatablePlaybackButton(
+                        icon: "forward.fill",
+                        direction: 1,
+                        onTap: {
+                            bounceNext += 1
+                            model.skipTrack(forward: true)
+                        },
+                        onLongPressStart: {
+                            model.startFastSeeking(forward: true)
+                        },
+                        onLongPressEnd: {
+                            model.stopFastSeeking()
                         }
-                    }
-                    .buttonStyle(SkipButtonStyle(direction: 1))
+                    )
                 }
                 
                 Spacer()
@@ -3368,15 +3371,43 @@ class IslandModel: ObservableObject {
         }
     }
 
+    private var fastSeekTimer: Timer?
+
+    func startFastSeeking(forward: Bool) {
+        stopFastSeeking()
+        // Execute immediately
+        fastSeekStep(forward: forward)
+        fastSeekTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            self?.fastSeekStep(forward: forward)
+        }
+    }
+
+    func stopFastSeeking() {
+        fastSeekTimer?.invalidate()
+        fastSeekTimer = nil
+    }
+
+    private func fastSeekStep(forward: Bool) {
+        let delta: Double = forward ? 5.0 : -5.0
+        let newPos = max(0.0, min(self.trackDuration, self.playbackPosition + delta))
+        self.playbackPosition = newPos
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
+        }
+    }
+
     // Centralized Music Actions
+    @Published var buttonSkipTrigger: Int = 0
+
     func skipTrack(forward: Bool) {
         DispatchQueue.main.async {
             self.isForward = forward
             self.lastManualSkipTime = Date()
+            self.buttonSkipTrigger += (forward ? 1 : -1)
         }
         DispatchQueue.global(qos: .userInitiated).async {
             _ = NSAppleScript(source: forward ? "tell application \"Music\" to next track" : "tell application \"Music\" to previous track")?.executeAndReturnError(nil)
-            Thread.sleep(forTimeInterval: 0.15)
+            Thread.sleep(forTimeInterval: 0.20)
             self.fetchCurrentMusicState()
         }
     }
@@ -3533,7 +3564,7 @@ class IslandModel: ObservableObject {
         let scriptSource = """
         if application "Music" is running then
             tell application "Music"
-                if player state is playing then
+                if player state is playing or player state is paused then
                     set curTrk to current track
                     set tID to ""
                     try
@@ -3558,47 +3589,21 @@ class IslandModel: ObservableObject {
                             set isFav to loved of curTrk
                         end try
                     end try
+                    
+                    -- Accurate playlist track sequence indexing
                     try
                         set curPl to current playlist
-                        set curPlTracks to (get name of tracks of curPl)
-                        set c to count of curPlTracks
-                        repeat with i from 1 to c
-                            if (item i of curPlTracks) is equal to tTrack then
-                                if i > 1 then
-                                    set prevName to (item (i - 1) of curPlTracks)
-                                end if
-                                if i < c then
-                                    set nxtName to (item (i + 1) of curPlTracks)
-                                end if
-                                exit repeat
-                            end if
-                        end repeat
+                        set curTrackIndex to index of curTrk
+                        set totalPlTracks to count of tracks of curPl
+                        if curTrackIndex > 1 then
+                            set prevName to name of track (curTrackIndex - 1) of curPl
+                        end if
+                        if curTrackIndex < totalPlTracks then
+                            set nxtName to name of track (curTrackIndex + 1) of curPl
+                        end if
                     end try
                     
-                    if nxtName is "" and prevName is "" then
-                        repeat with pl in (every playlist)
-                            try
-                                set plTracks to (get name of tracks of pl)
-                                if plTracks contains tTrack then
-                                    set c to count of plTracks
-                                    repeat with i from 1 to c
-                                        if (item i of plTracks) is equal to tTrack then
-                                            if i > 1 then
-                                                set prevName to (item (i - 1) of plTracks)
-                                            end if
-                                            if i < c then
-                                                set nxtName to (item (i + 1) of plTracks)
-                                            end if
-                                            exit repeat
-                                        end if
-                                    end repeat
-                                    if nxtName is not "" or prevName is not "" then
-                                        exit repeat
-                                    end if
-                                end if
-                            end try
-                        end repeat
-                    end if
+                    -- Direct Raw High-Res Artwork
                     try
                         if (count of artworks of curTrk) > 0 then
                             set rArt to raw data of artwork 1 of curTrk
@@ -4637,6 +4642,63 @@ struct SkipButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.3, dampingFraction: 0.5), value: configuration.isPressed)
     }
 }
+struct RepeatablePlaybackButton: View {
+    let icon: String
+    let direction: CGFloat
+    let onTap: () -> Void
+    let onLongPressStart: () -> Void
+    let onLongPressEnd: () -> Void
+    
+    @State private var isPressed: Bool = false
+    @State private var isLongPressing: Bool = false
+    @State private var bounceTrigger: Int = 0
+    @State private var longPressTimer: Timer?
+    
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 44, height: 40)
+                .contentShape(Rectangle())
+            
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(.white)
+                .scaleEffect(isPressed ? 0.82 : 1.0)
+                .offset(x: isPressed ? direction * 4 : 0)
+                .symbolEffect(.bounce, value: bounceTrigger)
+                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                        isLongPressing = false
+                        longPressTimer?.invalidate()
+                        longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.40, repeats: false) { _ in
+                            isLongPressing = true
+                            onLongPressStart()
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    isPressed = false
+                    longPressTimer?.invalidate()
+                    longPressTimer = nil
+                    if isLongPressing {
+                        isLongPressing = false
+                        onLongPressEnd()
+                    } else {
+                        bounceTrigger += 1
+                        onTap()
+                    }
+                }
+        )
+    }
+}
+
 struct PlayPauseButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label.foregroundStyle(.white).scaleEffect(configuration.isPressed ? 0.8 : 1.0).opacity(configuration.isPressed ? 0.7 : 1.0).animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed) }
 }
