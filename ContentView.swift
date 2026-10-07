@@ -1646,7 +1646,7 @@ struct IslandView: View {
                         .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 30.0)))
                     }
                     
-                    // 2. Active Playing Track (slides smoothly with drag and button transitions)
+                    // 2. Active Playing Track (smoothly slides out and in on any track switch)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -1657,14 +1657,15 @@ struct IslandView: View {
                             .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
-                    .id("ActiveTrack_\(model.currentTrackPersistentID)")
+                    .id(model.currentTrack)
                     .transition(.asymmetric(
-                        insertion: .move(edge: model.isForward ? .trailing : .leading).combined(with: .opacity),
-                        removal: .move(edge: model.isForward ? .leading : .trailing).combined(with: .opacity)
+                        insertion: .offset(x: model.isForward ? 120 : -120).combined(with: .opacity),
+                        removal: .offset(x: model.isForward ? -120 : 120).combined(with: .opacity)
                     ))
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
                     .opacity(max(0.15, 1.0 - Double(abs(manualDragOffset)) / 140.0))
+                    .animation(.spring(response: 0.38, dampingFraction: 0.72), value: model.currentTrack)
                     
                     // 3. Real-Time Next Track Title (positioned to the right at +260pt)
                     if manualDragOffset < 0 {
@@ -2796,21 +2797,19 @@ class IslandModel: ObservableObject {
     
     private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
         guard !track.isEmpty else { return }
-        // If next and previous titles are already resolved directly from Apple Music, skip network query
-        guard self.nextTrackName.isEmpty || self.prevTrackName.isEmpty else { return }
         
-        let isSingle = album.lowercased().contains("single") || album.lowercased().contains("ep") || album.isEmpty
         let cleanArtist = artist.components(separatedBy: "&").first?.components(separatedBy: "feat").first?.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? artist
-        let searchTerm = isSingle ? (cleanArtist.isEmpty ? track : cleanArtist) : "\(cleanArtist) \(album)"
-        let cacheKey = "\(cleanArtist)_\(album.isEmpty ? track : album)"
+        let cleanAlbum = album.replacingOccurrences(of: "(Deluxe)", with: "").replacingOccurrences(of: "[Deluxe]", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let searchTerm = cleanAlbum.isEmpty ? "\(cleanArtist) \(track)" : "\(cleanArtist) \(cleanAlbum)"
+        let cacheKey = "\(cleanArtist)_\(cleanAlbum.isEmpty ? track : cleanAlbum)"
         
         if let cachedList = self.albumTracksCache[cacheKey],
            let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
             DispatchQueue.main.async {
                 let p = idx > 0 ? cachedList[idx - 1] : (cachedList.count > 1 ? cachedList.last! : "")
                 let n = idx < cachedList.count - 1 ? cachedList[idx + 1] : (cachedList.count > 1 ? cachedList.first! : "")
-                if p != track { self.prevTrackName = p }
-                if n != track { self.nextTrackName = n }
+                if !p.isEmpty { self.prevTrackName = p }
+                if !n.isEmpty { self.nextTrackName = n }
             }
             return
         }
@@ -2823,39 +2822,31 @@ class IslandModel: ObservableObject {
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let results = json["results"] as? [[String: Any]] {
                 
-                // 1. If full album, sort by album track number
                 var matchedNames: [String] = []
-                if !isSingle {
-                    let albumResults = results.filter {
-                        if let cName = $0["collectionName"] as? String {
-                            return cName.localizedCaseInsensitiveContains(album) || album.localizedCaseInsensitiveContains(cName)
-                        }
-                        return false
+                
+                // 1. Check matching album collections first
+                var albumResults = results.filter {
+                    if let cName = $0["collectionName"] as? String {
+                        return !cleanAlbum.isEmpty && (cName.localizedCaseInsensitiveContains(cleanAlbum) || cleanAlbum.localizedCaseInsensitiveContains(cName))
                     }
-                    if albumResults.count > 1 {
-                        var sortedAlbum: [(name: String, trackNum: Int)] = []
-                        for item in albumResults {
-                            if let name = item["trackName"] as? String, let num = item["trackNumber"] as? Int {
-                                if !sortedAlbum.contains(where: { $0.name.lowercased() == name.lowercased() }) {
-                                    sortedAlbum.append((name: name, trackNum: num))
-                                }
-                            }
-                        }
-                        sortedAlbum.sort { $0.trackNum < $1.trackNum }
-                        matchedNames = sortedAlbum.map { $0.name }
-                    }
+                    return false
                 }
                 
-                // 2. If single or album matching was not multi-track, collect distinct top artist tracks
-                if matchedNames.count < 2 {
-                    for item in results {
-                        if let name = item["trackName"] as? String {
-                            if !matchedNames.contains(where: { $0.lowercased() == name.lowercased() }) {
-                                matchedNames.append(name)
-                            }
+                if albumResults.isEmpty {
+                    albumResults = results
+                }
+                
+                var sortedAlbum: [(name: String, trackNum: Int)] = []
+                for item in albumResults {
+                    if let name = item["trackName"] as? String {
+                        let num = item["trackNumber"] as? Int ?? 1
+                        if !sortedAlbum.contains(where: { $0.name.lowercased() == name.lowercased() }) {
+                            sortedAlbum.append((name: name, trackNum: num))
                         }
                     }
                 }
+                sortedAlbum.sort { $0.trackNum < $1.trackNum }
+                matchedNames = sortedAlbum.map { $0.name }
                 
                 if !matchedNames.isEmpty {
                     self.albumTracksCache[cacheKey] = matchedNames
@@ -2863,18 +2854,9 @@ class IslandModel: ObservableObject {
                         let p = idx > 0 ? matchedNames[idx - 1] : (matchedNames.count > 1 ? matchedNames.last! : "")
                         let n = idx < matchedNames.count - 1 ? matchedNames[idx + 1] : (matchedNames.count > 1 ? matchedNames.first! : "")
                         DispatchQueue.main.async {
-                            if p != track { self.prevTrackName = p }
-                            if n != track { self.nextTrackName = n }
-                        }
-                    } else if matchedNames.count >= 2 {
-                        let filtered = matchedNames.filter { !$0.localizedCaseInsensitiveContains(track) }
-                        DispatchQueue.main.async {
-                            if filtered.count > 1 {
-                                self.prevTrackName = filtered[1]
-                                self.nextTrackName = filtered[0]
-                            } else if let first = filtered.first {
-                                self.nextTrackName = first
-                                self.prevTrackName = first
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                if !p.isEmpty { self.prevTrackName = p }
+                                if !n.isEmpty { self.nextTrackName = n }
                             }
                         }
                     }
@@ -3374,27 +3356,36 @@ class IslandModel: ObservableObject {
     }
 
     private var fastSeekTimer: Timer?
+    @Published var isFastSeeking: Bool = false
 
     func startFastSeeking(forward: Bool) {
         stopFastSeeking()
-        // Execute immediately
-        fastSeekStep(forward: forward)
-        fastSeekTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.fastSeekStep(forward: forward)
+        isFastSeeking = true
+        // 1. Tell Apple Music to engage high-speed scanning
+        DispatchQueue.global(qos: .userInitiated).async {
+            let cmd = forward ? "tell application \"Music\" to fast forward" : "tell application \"Music\" to rewind"
+            _ = NSAppleScript(source: cmd)?.executeAndReturnError(nil)
+        }
+        
+        // 2. Continuous UI playbackPosition stepper for live scrubber feedback
+        fastSeekTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let delta: Double = forward ? 3.0 : -3.0
+            let targetPos = max(0.0, min(self.trackDuration, self.playbackPosition + delta))
+            self.playbackPosition = targetPos
         }
     }
 
     func stopFastSeeking() {
         fastSeekTimer?.invalidate()
         fastSeekTimer = nil
-    }
-
-    private func fastSeekStep(forward: Bool) {
-        let delta: Double = forward ? 5.0 : -5.0
-        let newPos = max(0.0, min(self.trackDuration, self.playbackPosition + delta))
-        self.playbackPosition = newPos
-        DispatchQueue.global(qos: .userInitiated).async {
-            _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
+        if isFastSeeking {
+            isFastSeeking = false
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                _ = NSAppleScript(source: "tell application \"Music\" to resume")?.executeAndReturnError(nil)
+                Thread.sleep(forTimeInterval: 0.1)
+                self?.fetchCurrentMusicState()
+            }
         }
     }
 
@@ -4652,9 +4643,10 @@ struct RepeatablePlaybackButton: View {
     let onLongPressEnd: () -> Void
     
     @State private var isPressed: Bool = false
-    @State private var isLongPressing: Bool = false
+    @State private var isSeeking: Bool = false
     @State private var bounceTrigger: Int = 0
-    @State private var longPressTimer: Timer?
+    @State private var pressStartTime: Date? = nil
+    @State private var holdCheckTimer: Timer? = nil
     
     var body: some View {
         ZStack {
@@ -4663,34 +4655,37 @@ struct RepeatablePlaybackButton: View {
                 .frame(width: 44, height: 40)
                 .contentShape(Rectangle())
             
-            Image(systemName: icon)
+            Image(systemName: isSeeking ? (direction > 0 ? "forward.fill" : "backward.fill") : icon)
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.white)
-                .scaleEffect(isPressed ? 0.82 : 1.0)
-                .offset(x: isPressed ? direction * 4 : 0)
+                .foregroundColor(isSeeking ? Color.cyan : .white)
+                .scaleEffect(isPressed ? 0.80 : 1.0)
+                .offset(x: isPressed ? direction * 3 : 0)
                 .symbolEffect(.bounce, value: bounceTrigger)
                 .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
         }
         .contentShape(Rectangle())
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        isLongPressing = false
-                        longPressTimer?.invalidate()
-                        longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.40, repeats: false) { _ in
-                            isLongPressing = true
+                        isSeeking = false
+                        pressStartTime = Date()
+                        holdCheckTimer?.invalidate()
+                        holdCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.30, repeats: false) { _ in
+                            isSeeking = true
                             onLongPressStart()
                         }
                     }
                 }
                 .onEnded { _ in
+                    let elapsed = Date().timeIntervalSince(pressStartTime ?? Date())
+                    holdCheckTimer?.invalidate()
+                    holdCheckTimer = nil
                     isPressed = false
-                    longPressTimer?.invalidate()
-                    longPressTimer = nil
-                    if isLongPressing {
-                        isLongPressing = false
+                    
+                    if isSeeking || elapsed >= 0.30 {
+                        isSeeking = false
                         onLongPressEnd()
                     } else {
                         bounceTrigger += 1
