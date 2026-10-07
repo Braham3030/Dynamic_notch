@@ -2673,13 +2673,27 @@ struct WindowAccessor: NSViewRepresentable {
                 window.isOpaque = false
                 window.backgroundColor = .clear
                 window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+                window.toolbar = nil
                 window.styleMask.insert(.fullSizeContentView)
                 window.isMovableByWindowBackground = true
             }
         }
         return view
     }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let window = nsView.window {
+                window.isOpaque = false
+                window.backgroundColor = .clear
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+                window.toolbar = nil
+                window.styleMask.insert(.fullSizeContentView)
+                window.isMovableByWindowBackground = true
+            }
+        }
+    }
 }
 
 struct SettingsWindowBackground: View {

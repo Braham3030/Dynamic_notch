@@ -13,6 +13,7 @@ struct MyApp: App {
                 .frame(width: 840, height: 680)
         }
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     } 
 }
 
