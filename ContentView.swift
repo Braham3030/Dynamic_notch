@@ -545,7 +545,7 @@ struct IslandView: View {
                 }
             } else {
                 if model.showControlCenter {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 9) {
                         // 1. Top Row: WiFi & Bluetooth Cards with Titles & Connected Networks
                         HStack(spacing: 8) {
                             ConnectivityCard(
@@ -567,21 +567,40 @@ struct IslandView: View {
                                 action: model.toggleBluetooth
                             )
                         }
-                        .frame(width: 320)
+                        .frame(width: 335)
                         
-                        // 2. Middle Row: Extra-Long Full-Width Brightness & Volume Sliders
-                        VStack(spacing: 7) { 
-                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
-                                .frame(width: 320, height: 28)
-                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
-                                .frame(width: 320, height: 28)
+                        // 2. Middle Row: Brightness Slider with Title
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("BRIGHTNESS")
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.45))
+                                .padding(.leading, 2)
+                            
+                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in 
+                                model.applySystemBrightness(forcedValue: val) 
+                            }
+                            .frame(width: 335, height: 28)
                         }
-                        .frame(width: 320)
+                        .frame(width: 335)
                         
-                        // 3. Bottom Row: AirPods Noise Control Slider
+                        // 3. Middle Row: Volume Slider with Title
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("VOLUME")
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.45))
+                                .padding(.leading, 2)
+                            
+                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in 
+                                model.applySystemVolume(forcedValue: val) 
+                            }
+                            .frame(width: 335, height: 28)
+                        }
+                        .frame(width: 335)
+                        
+                        // 4. Bottom Row: AirPods Noise Control Slider
                         if model.airPodsConnected && model.showAirPodsLocalization {
                             AirPodsListeningModeSlider(model: model)
-                                .frame(width: 320)
+                                .frame(width: 335)
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
@@ -1007,9 +1026,9 @@ extension IslandModel {
             if state == .expandedFood { return 85 }
             if state == .expandedControls {
                 if airPodsConnected && showAirPodsLocalization {
-                    return 245
+                    return 275
                 }
-                return 165
+                return 195
             }
         }
         return physicalNotchHeight
@@ -3362,7 +3381,7 @@ struct AirPodsListeningModeSlider: View {
                 }
             }
         }
-        .frame(width: 320)
+        .frame(width: 335)
     }
 }
 
