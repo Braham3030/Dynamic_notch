@@ -1140,11 +1140,24 @@ class IslandModel: ObservableObject {
     
     func discoverNearbyPeople() -> [AirDropPerson] {
         var people: [AirDropPerson] = []
-        let myName = NSFullUserName().isEmpty ? "Brahamjeet" : NSFullUserName()
-        people.append(AirDropPerson(name: myName, device: "iPhone 15 Pro", initials: String(myName.prefix(1)), color: .blue))
-        people.append(AirDropPerson(name: "Sarah Miller", device: "MacBook Air", initials: "SM", color: .purple))
-        people.append(AirDropPerson(name: "David Kim", device: "iPad Pro", initials: "DK", color: .pink))
-        people.append(AirDropPerson(name: "Alex Chen", device: "iPhone 14", initials: "AC", color: .cyan))
+        let myName = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
+        if !myName.isEmpty {
+            let initial = String(myName.prefix(1)).uppercased()
+            people.append(AirDropPerson(name: myName, device: "My Apple Devices", initials: initial, color: .blue))
+        }
+        
+        // Real connected Bluetooth hardware devices
+        if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+            for device in devices where device.isConnected() {
+                if let devName = device.nameOrAddress, !devName.isEmpty, !people.contains(where: { $0.name == devName }) {
+                    let initial = String(devName.prefix(1)).uppercased()
+                    people.append(AirDropPerson(name: devName, device: "Connected Device", initials: initial, color: .purple))
+                }
+            }
+        }
+        
+        // Universal System AirDrop Target
+        people.append(AirDropPerson(name: "AirDrop...", device: "Share with Nearby", initials: "✦", color: .cyan))
         return people
     }
     
@@ -1751,16 +1764,17 @@ class IslandModel: ObservableObject {
 
     func triggerAirPodsBanner() {
         airPodsDismissWorkItem?.cancel()
-        withAnimation(.spring(response: 0.40, dampingFraction: 0.72)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
             self.airPodsShowingCompact = true
         }
         let work = DispatchWorkItem { [weak self] in
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
                 self?.airPodsShowingCompact = false
             }
         }
         airPodsDismissWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5, execute: work)
+        // Briefly display the battery & AirPods status, then shrink away cleanly so music live activity can take over!
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8, execute: work)
     }
 
     func startAudioDeviceMonitoring() {
