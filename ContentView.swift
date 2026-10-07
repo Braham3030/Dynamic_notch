@@ -239,6 +239,31 @@ struct IslandView: View {
                         )
                         .transition(.opacity)
                     }
+                    
+                    // 3. AirDrop File/Photo Overflow Ambient Gradient across the whole Notch!
+                    if (model.isExpanded && model.state == .expandedAirDrop) || model.isAirDropTargeted {
+                        ZStack {
+                            if let thumb = model.droppedFileThumbnail {
+                                Image(nsImage: thumb)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: model.width, height: model.height)
+                                    .blur(radius: 28)
+                                    .opacity(0.42)
+                                    .clipped()
+                            }
+                            LinearGradient(
+                                colors: [
+                                    model.droppedFileColor.opacity(0.48),
+                                    model.droppedFileColor.opacity(0.22),
+                                    Color.black.opacity(0.75)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        }
+                        .transition(.opacity)
+                    }
                 }
                 .frame(width: model.width, height: model.height)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
@@ -246,12 +271,14 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
                 )
-                // Ambient Colored Glow around notch in both compact and expanded music modes
+                // Ambient Colored Glow around notch
                 .shadow(
-                    color: ((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) 
-                        ? model.artworkColor.opacity(model.isExpanded ? 0.45 : 0.65) 
-                        : Color.black.opacity(0.35), 
-                    radius: model.isExpanded ? 18 : 10, 
+                    color: ((model.isExpanded && model.state == .expandedAirDrop) || model.isAirDropTargeted)
+                        ? model.droppedFileColor.opacity(0.65)
+                        : (((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) 
+                            ? model.artworkColor.opacity(model.isExpanded ? 0.45 : 0.65) 
+                            : Color.black.opacity(0.35)), 
+                    radius: model.isExpanded ? 20 : 10, 
                     x: 0, 
                     y: model.isExpanded ? 6 : 3
                 )
@@ -921,8 +948,45 @@ class IslandModel: ObservableObject {
     @Published var showAirDrop: Bool = true
     
     // Interactive AirDrop Drag & Drop State
-    @Published var droppedAirDropFiles: [URL] = []
+    @Published var droppedAirDropFiles: [URL] = [] {
+        didSet {
+            updateAirDropAmbientColor()
+        }
+    }
     @Published var isAirDropTargeted: Bool = false
+    @Published var droppedFileThumbnail: NSImage? = nil
+    @Published var droppedFileColor: Color = Color.cyan
+    
+    private func updateAirDropAmbientColor() {
+        guard let first = droppedAirDropFiles.first else {
+            droppedFileThumbnail = nil
+            droppedFileColor = Color.cyan
+            return
+        }
+        let ext = first.pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "icns"].contains(ext), let img = NSImage(contentsOf: first) {
+            self.droppedFileThumbnail = img
+            // Extract dominant color if available
+            DispatchQueue.global(qos: .userInitiated).async {
+                if let cgImage = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                    let thumb = NSBitmapImageRep(cgImage: cgImage)
+                    if let c = thumb.colorAt(x: thumb.pixelsWide / 2, y: thumb.pixelsHigh / 2) {
+                        DispatchQueue.main.async {
+                            self.droppedFileColor = Color(nsColor: c)
+                        }
+                        return
+                    }
+                }
+                DispatchQueue.main.async {
+                    self.droppedFileColor = Color.blue
+                }
+            }
+        } else {
+            let icon = NSWorkspace.shared.icon(forFile: first.path)
+            self.droppedFileThumbnail = icon
+            self.droppedFileColor = Color.cyan
+        }
+    }
     @Published var isAirDropSending: Bool = false
     @Published var airDropSentSuccess: Bool = false
     
@@ -1767,20 +1831,38 @@ struct CircularBatteryGauge: View {
 struct MusicWaveform: View {
     var isPlaying: Bool
     var color: Color = .white
-    @State private var isAnimating = false
     
-    let heights: [CGFloat] = [8, 14, 10, 16, 12]
-    let durations: [Double] = [0.35, 0.4, 0.25, 0.45, 0.3]
+    // Wave frequencies & phase offsets for continuous fluid Apple Music waveform animation
+    let frequencies: [Double] = [3.8, 5.2, 4.1, 6.0, 4.7]
+    let phases: [Double] = [0.0, 1.2, 2.4, 0.8, 1.9]
+    let minHeight: CGFloat = 3.5
+    let maxHeight: CGFloat = 16.0
     
     var body: some View {
-        HStack(spacing: 2.5) {
-            ForEach(0..<5, id: \.self) { i in
-                Capsule().fill(color).frame(width: 3.5, height: isAnimating ? heights[i] : 4)
-                    .animation(isPlaying ? .easeInOut(duration: durations[i]).repeatForever(autoreverses: true).delay(Double(i) * 0.1) : .spring(response: 0.3, dampingFraction: 0.6), value: isAnimating)
+        if isPlaying {
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                HStack(spacing: 2.2) {
+                    ForEach(0..<5, id: \.self) { i in
+                        let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
+                        let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 3.2, height: h)
+                    }
+                }
+                .frame(height: maxHeight, alignment: .center)
             }
-        }.frame(height: 16, alignment: .center)
-        .onChange(of: isPlaying) { _, play in isAnimating = play }
-        .onAppear { isAnimating = isPlaying }
+        } else {
+            HStack(spacing: 2.2) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Capsule()
+                        .fill(color.opacity(0.6))
+                        .frame(width: 3.2, height: minHeight)
+                }
+            }
+            .frame(height: maxHeight, alignment: .center)
+        }
     }
 }
 
