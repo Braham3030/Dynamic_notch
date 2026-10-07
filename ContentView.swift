@@ -276,89 +276,133 @@ struct IslandView: View {
                     let cornerRadius = model.isExpanded ? 24.0 : model.compactCornerRadius
                     let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius, topTrailingRadius: 0, style: .continuous)
                     
-                    switch model.notchTheme {
-                    case .classicBlack:
+                    if !model.isExpanded && model.notchCompactAlwaysBlack {
                         shape.fill(Color.black)
-                    case .liquidGlass:
-                        ZStack {
-                            shape.fill(Color.black.opacity(0.85))
-                            shape.fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.20 * model.notchGlassOpacity), Color.clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                    } else {
+                        switch model.notchTheme {
+                        case .classicBlack:
+                            shape.fill(Color.black)
+                            
+                        case .iosGlassCapsule:
+                            // Authentic iOS Siri Smoked Glass Capsule Acrylic
+                            ZStack {
+                                shape.fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.92 * model.notchGlassOpacity),
+                                            Color(red: 0.14, green: 0.13, blue: 0.16).opacity(0.72 * model.notchGlassOpacity),
+                                            Color(white: 0.22).opacity(0.42 * model.notchGlassOpacity)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                shape.fill(
+                                    RadialGradient(
+                                        colors: [Color.white.opacity(0.18 * model.notchGlassOpacity), Color.clear],
+                                        center: .top,
+                                        startRadius: 10,
+                                        endRadius: 180
+                                    )
+                                )
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.20 * model.notchGlowIntensity),
+                                            Color.white.opacity(0.50 * model.notchGlowIntensity),
+                                            Color.white.opacity(0.80 * model.notchGlowIntensity)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1.2
                                 )
                             )
-                        }
-                        .overlay(
-                            shape.stroke(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.35 * model.notchGlassOpacity), Color.white.opacity(0.10 * model.notchGlassOpacity)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 1.0
-                            )
-                        )
-                    case .neonCyber:
-                        ZStack {
-                            shape.fill(Color(red: 0.05, green: 0.02, blue: 0.10))
-                        }
-                        .overlay(
-                            shape.stroke(
-                                LinearGradient(
-                                    colors: [Color(red: 0.0, green: 0.9, blue: 1.0).opacity(model.notchGlowIntensity), Color(red: 1.0, green: 0.1, blue: 0.6).opacity(model.notchGlowIntensity)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                lineWidth: 1.5
-                            )
-                            .shadow(color: Color.cyan.opacity(0.6 * model.notchGlowIntensity), radius: 6)
-                        )
-                    case .titaniumFrost:
-                        ZStack {
-                            shape.fill(Color(red: 0.12, green: 0.13, blue: 0.16))
-                            shape.fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.12), Color.clear],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                            .shadow(color: Color.black.opacity(0.45), radius: 10, y: 5)
+                            
+                        case .liquidGlass:
+                            ZStack {
+                                shape.fill(Color.black.opacity(0.85))
+                                shape.fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.20 * model.notchGlassOpacity), Color.clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.35 * model.notchGlassOpacity), Color.white.opacity(0.10 * model.notchGlassOpacity)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1.0
                                 )
                             )
-                        }
-                        .overlay(
-                            shape.stroke(Color.white.opacity(0.25), lineWidth: 1.0)
-                        )
-                    case .auroraGlow:
-                        ZStack {
-                            shape.fill(Color(red: 0.04, green: 0.03, blue: 0.08))
-                        }
-                        .overlay(
-                            shape.stroke(
-                                LinearGradient(
-                                    colors: [Color.purple.opacity(model.notchGlowIntensity), Color.teal.opacity(model.notchGlowIntensity)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
+                        case .neonCyber:
+                            ZStack {
+                                shape.fill(Color(red: 0.05, green: 0.02, blue: 0.10))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.0, green: 0.9, blue: 1.0).opacity(model.notchGlowIntensity), Color(red: 1.0, green: 0.1, blue: 0.6).opacity(model.notchGlowIntensity)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color.cyan.opacity(0.6 * model.notchGlowIntensity), radius: 6)
                             )
-                            .shadow(color: Color.purple.opacity(0.5 * model.notchGlowIntensity), radius: 6)
-                        )
-                    case .goldenTwilight:
-                        ZStack {
-                            shape.fill(Color(red: 0.08, green: 0.04, blue: 0.02))
-                        }
-                        .overlay(
-                            shape.stroke(
-                                LinearGradient(
-                                    colors: [Color.orange.opacity(model.notchGlowIntensity), Color.pink.opacity(model.notchGlowIntensity)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
+                        case .titaniumFrost:
+                            ZStack {
+                                shape.fill(Color(red: 0.12, green: 0.13, blue: 0.16))
+                                shape.fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.12), Color.clear],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                            }
+                            .overlay(
+                                shape.stroke(Color.white.opacity(0.25), lineWidth: 1.0)
                             )
-                            .shadow(color: Color.orange.opacity(0.5 * model.notchGlowIntensity), radius: 6)
-                        )
+                        case .auroraGlow:
+                            ZStack {
+                                shape.fill(Color(red: 0.04, green: 0.03, blue: 0.08))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color.purple.opacity(model.notchGlowIntensity), Color.teal.opacity(model.notchGlowIntensity)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color.purple.opacity(0.5 * model.notchGlowIntensity), radius: 6)
+                            )
+                        case .goldenTwilight:
+                            ZStack {
+                                shape.fill(Color(red: 0.08, green: 0.04, blue: 0.02))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color.orange.opacity(model.notchGlowIntensity), Color.pink.opacity(model.notchGlowIntensity)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color.orange.opacity(0.5 * model.notchGlowIntensity), radius: 6)
+                            )
+                        }
                     }
                     
                     // 2. Soft, Glassy Dynamic Notch Gradient with Music (Translucent & subtle, starts solid black in compact mode)
@@ -1845,6 +1889,16 @@ class IslandModel: ObservableObject {
     @Published var settingsWallpaperBlur: Double = 0.0
     @Published var customWallpaperImage: NSImage? = nil
     @Published var isSidebarCollapsed: Bool = false
+    @Published var notchCompactAlwaysBlack: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_notchCompactAlwaysBlack") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_notchCompactAlwaysBlack")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(notchCompactAlwaysBlack, forKey: "saved_notchCompactAlwaysBlack")
+        }
+    }
     @Published var notchTheme: NotchTheme = {
         if let saved = UserDefaults.standard.string(forKey: "saved_notchTheme"),
            let theme = NotchTheme(rawValue: saved) {
@@ -2436,6 +2490,7 @@ struct MusicWaveform: View {
 
 enum NotchTheme: String, CaseIterable, Identifiable {
     case classicBlack = "Classic Obsidian"
+    case iosGlassCapsule = "iOS Smoked Glass"
     case liquidGlass = "Liquid Glass"
     case neonCyber = "Cyberpunk Neon"
     case titaniumFrost = "Titanium Slate"
@@ -2447,6 +2502,7 @@ enum NotchTheme: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .classicBlack: return "circle.fill"
+        case .iosGlassCapsule: return "magnifyingglass.circle.fill"
         case .liquidGlass: return "drop.fill"
         case .neonCyber: return "bolt.fill"
         case .titaniumFrost: return "square.fill"
@@ -2458,6 +2514,7 @@ enum NotchTheme: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .classicBlack: return "Authentic Apple OLED Jet Black"
+        case .iosGlassCapsule: return "iOS Siri smoked acrylic with glass bevel rim"
         case .liquidGlass: return "Frosted glass with specular rim"
         case .neonCyber: return "Glowing neon cyan & magenta rim"
         case .titaniumFrost: return "Brushed dark titanium finish"
@@ -2814,6 +2871,12 @@ struct NotchCardView: View {
         switch theme {
         case .classicBlack:
             Color.black
+        case .iosGlassCapsule:
+            LinearGradient(
+                colors: [Color.black.opacity(0.95), Color(red: 0.18, green: 0.16, blue: 0.20), Color(white: 0.35)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         case .liquidGlass:
             LinearGradient(colors: [Color.blue.opacity(0.4), Color.black.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
         case .neonCyber:
@@ -2850,6 +2913,7 @@ struct NotchCardView: View {
             .stroke(isSelected ? Color.blue.opacity(0.6) : (isLightBg ? Color.black.opacity(0.1) : Color.white.opacity(0.12)), lineWidth: 1)
     }
 }
+
 struct NotchStylingView: View {
     @ObservedObject var model = IslandModel.shared
     @Environment(\.colorScheme) var colorScheme
@@ -2870,45 +2934,73 @@ struct NotchStylingView: View {
                         .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
                     
                     ZStack {
+                        // Blurred wallpaper ambient backdrop
                         LinearGradient(
-                            colors: [Color(red: 0.10, green: 0.12, blue: 0.18), Color(red: 0.05, green: 0.06, blue: 0.10)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                            colors: [Color(red: 0.35, green: 0.25, blue: 0.18), Color(red: 0.12, green: 0.10, blue: 0.15)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                        .frame(height: 110)
+                        .frame(height: 125)
                         
                         VStack(spacing: 0) {
                             HStack(spacing: 12) {
                                 Circle().fill(Color.green).frame(width: 8, height: 8)
-                                Text("dyNotch • " + model.notchTheme.rawValue)
+                                Text("Search or Ask • " + model.notchTheme.rawValue)
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
                                 Spacer()
-                                Image(systemName: "waveform")
-                                    .foregroundColor(.cyan)
-                                    .font(.system(size: 11))
+                                Image(systemName: "mic.fill")
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .font(.system(size: 12))
                             }
-                            .padding(.horizontal, 14)
-                            .frame(width: 260, height: 34)
+                            .padding(.horizontal, 16)
+                            .frame(width: 280, height: 38)
                             .background(
-                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 18, bottomTrailingRadius: 18, topTrailingRadius: 0, style: .continuous)
+                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 19, bottomTrailingRadius: 19, topTrailingRadius: 0, style: .continuous)
                                     .fill(notchPreviewBase)
                             )
                             .overlay(
-                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 18, bottomTrailingRadius: 18, topTrailingRadius: 0, style: .continuous)
+                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 19, bottomTrailingRadius: 19, topTrailingRadius: 0, style: .continuous)
                                     .stroke(notchPreviewBorder, lineWidth: 1.2)
                             )
-                            .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 4)
+                            .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 5)
                             
                             Spacer()
                         }
                     }
-                    .frame(height: 110)
+                    .frame(height: 125)
                     .cornerRadius(12)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(isLightBg ? Color.black.opacity(0.15) : Color.white.opacity(0.18), lineWidth: 1)
                     )
+                }
+                .padding(.horizontal, 28)
+                
+                // Resting vs Expanded Notch Color Option
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Resting Notch Behavior")
+                        .font(.headline)
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    
+                    VStack(spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Keep Notch Solid Black in Compact Mode")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                Text(model.notchCompactAlwaysBlack ? "Resting notch stays pure black to blend invisibly with hardware sensors." : "Resting notch uses the chosen theme colors & glass speculars.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                            }
+                            Spacer()
+                            Toggle("", isOn: $model.notchCompactAlwaysBlack)
+                                .labelsHidden()
+                        }
+                    }
+                    .padding(14)
+                    .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                    .cornerRadius(10)
                 }
                 .padding(.horizontal, 28)
                 
@@ -2934,7 +3026,7 @@ struct NotchStylingView: View {
                 }
                 .padding(.horizontal, 28)
                 
-                // Visual Effects Section
+                // Visual Effects & Translucency Controls
                 VStack(spacing: 12) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -2971,7 +3063,7 @@ struct NotchStylingView: View {
                     
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Label("Rim Glow & Specular Intensity", systemImage: "sparkles")
+                            Label("Rim Glow & Glass Bevel Specular", systemImage: "sparkles")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
                             Spacer()
@@ -2992,25 +3084,61 @@ struct NotchStylingView: View {
         }
     }
     
-    private var notchPreviewBase: Color {
+    private var notchPreviewBase: AnyShapeStyle {
         switch model.notchTheme {
-        case .classicBlack: return .black
-        case .liquidGlass: return Color.black.opacity(0.8)
-        case .neonCyber: return Color(red: 0.05, green: 0.02, blue: 0.10)
-        case .titaniumFrost: return Color(red: 0.12, green: 0.13, blue: 0.16)
-        case .auroraGlow: return Color(red: 0.04, green: 0.03, blue: 0.08)
-        case .goldenTwilight: return Color(red: 0.08, green: 0.04, blue: 0.02)
+        case .classicBlack:
+            return AnyShapeStyle(Color.black)
+        case .iosGlassCapsule:
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.92 * model.notchGlassOpacity),
+                        Color(red: 0.14, green: 0.13, blue: 0.16).opacity(0.72 * model.notchGlassOpacity),
+                        Color(white: 0.25).opacity(0.45 * model.notchGlassOpacity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        case .liquidGlass:
+            return AnyShapeStyle(Color.black.opacity(0.8))
+        case .neonCyber:
+            return AnyShapeStyle(Color(red: 0.05, green: 0.02, blue: 0.10))
+        case .titaniumFrost:
+            return AnyShapeStyle(Color(red: 0.12, green: 0.13, blue: 0.16))
+        case .auroraGlow:
+            return AnyShapeStyle(Color(red: 0.04, green: 0.03, blue: 0.08))
+        case .goldenTwilight:
+            return AnyShapeStyle(Color(red: 0.08, green: 0.04, blue: 0.02))
         }
     }
     
-    private var notchPreviewBorder: Color {
+    private var notchPreviewBorder: AnyShapeStyle {
         switch model.notchTheme {
-        case .classicBlack: return .clear
-        case .liquidGlass: return Color.white.opacity(0.4)
-        case .neonCyber: return Color.cyan
-        case .titaniumFrost: return Color.white.opacity(0.3)
-        case .auroraGlow: return Color.purple
-        case .goldenTwilight: return Color.orange
+        case .classicBlack:
+            return AnyShapeStyle(Color.clear)
+        case .iosGlassCapsule:
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.20 * model.notchGlowIntensity),
+                        Color.white.opacity(0.55 * model.notchGlowIntensity),
+                        Color.white.opacity(0.85 * model.notchGlowIntensity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        case .liquidGlass:
+            return AnyShapeStyle(Color.white.opacity(0.4))
+        case .neonCyber:
+            return AnyShapeStyle(Color.cyan)
+        case .titaniumFrost:
+            return AnyShapeStyle(Color.white.opacity(0.3))
+        case .auroraGlow:
+            return AnyShapeStyle(Color.purple)
+        case .goldenTwilight:
+            return AnyShapeStyle(Color.orange)
         }
     }
 }
