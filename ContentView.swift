@@ -558,7 +558,47 @@ struct IslandView: View {
                         }
                     }
                     
-                    // 2. Music theme maintains 100% crisp solid glass / black background with zero blur overlap on text
+                    // 2. Music Ambient Artwork Gradient Glow & Larger Live Wallpaper on Left Part of Notch
+                    if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                        ZStack(alignment: .leading) {
+                            // Vibrant ambient artwork gradient glow across the notch
+                            LinearGradient(
+                                colors: [
+                                    model.artworkColor.opacity(0.38 * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity(0.14 * model.artworkGlowIntensity),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: model.width, height: model.height)
+                            
+                            // Larger Live Artwork Wallpaper covering the left portion of the Notch
+                            if let art = model.currentArtwork {
+                                Image(nsImage: art)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: model.width * 0.65, height: model.height)
+                                    .blur(radius: 20)
+                                    .opacity(0.36 * model.artworkGlowIntensity)
+                                    .mask(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.black.opacity(0.95),
+                                                Color.black.opacity(0.50),
+                                                Color.clear
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .clipped()
+                                    .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                                    .transition(.opacity)
+                            }
+                        }
+                        .animation(.spring(response: 0.5, dampingFraction: 0.78), value: model.artworkColor)
+                    }
                     
                     // 3. AirDrop File/Photo Overflow Ambient Gradient across the whole Notch!
                     if (model.isExpanded && model.state == .expandedAirDrop) || model.isAirDropTargeted {
@@ -3521,6 +3561,7 @@ class IslandModel: ObservableObject {
                         self.currentArtwork = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
                         self.artworkColor = .orange
                         self.pendingArtworkRetry = true
+                        self.fetchArtworkFromWeb(track: tTrack, artist: tArtist, album: tAlbum, cacheKey: cacheKey)
                         self.scheduleArtworkRetry(for: cacheKey, attempt: 1)
                     }
                 } else {
@@ -3537,6 +3578,53 @@ class IslandModel: ObservableObject {
         }
     }
     
+    func fetchArtworkFromWeb(track: String, artist: String, album: String, cacheKey: String) {
+        guard !track.isEmpty, track != "Unknown Track" else { return }
+        let cleanTrack = track.components(separatedBy: "(").first?.trimmingCharacters(in: .whitespaces) ?? track
+        let cleanArtist = (artist == "Unknown Artist" || artist.isEmpty) ? "" : artist
+        let searchTerm = "\(cleanTrack) \(cleanArtist)".trimmingCharacters(in: .whitespaces)
+        guard !searchTerm.isEmpty else { return }
+        
+        var components = URLComponents(string: "https://itunes.apple.com/search")
+        components?.queryItems = [
+            URLQueryItem(name: "term", value: searchTerm),
+            URLQueryItem(name: "media", value: "music"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+        guard let url = components?.url else { return }
+        
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, err in
+            guard let self = self, let data = data, err == nil else { return }
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let results = json["results"] as? [[String: Any]],
+                   let first = results.first,
+                   var artUrlStr = first["artworkUrl100"] as? String {
+                    
+                    artUrlStr = artUrlStr.replacingOccurrences(of: "100x100bb.jpg", with: "600x600bb.jpg")
+                        .replacingOccurrences(of: "100x100bb.png", with: "600x600bb.png")
+                    
+                    if let artUrl = URL(string: artUrlStr) {
+                        URLSession.shared.dataTask(with: artUrl) { imgData, _, _ in
+                            guard let imgData = imgData, let img = NSImage(data: imgData) else { return }
+                            let color = img.averageColor
+                            DispatchQueue.main.async {
+                                self.artworkCache[cacheKey] = (img, color)
+                                if self.currentTrackPersistentID == cacheKey {
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                                        self.currentArtwork = img
+                                        self.artworkColor = color
+                                        self.pendingArtworkRetry = false
+                                    }
+                                }
+                            }
+                        }.resume()
+                    }
+                }
+            } catch {}
+        }.resume()
+    }
+
     private func scheduleArtworkRetry(for trackKey: String, attempt: Int) {
         guard attempt <= 5 else { return }
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + (Double(attempt) * 0.35)) { [weak self] in
