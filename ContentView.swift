@@ -2190,6 +2190,54 @@ class IslandModel: ObservableObject {
         }
     }
 
+    @Published var macBatteryDepletionTimeText: String = "Calculating..."
+    @Published var macBatteryTimeToEmpty: Int = -1
+    @Published var macBatteryTimeToFull: Int = -1
+    
+    @Published var liquidGlassTone: Double = {
+        if UserDefaults.standard.object(forKey: "saved_liquidGlassTone") != nil {
+            return UserDefaults.standard.double(forKey: "saved_liquidGlassTone")
+        }
+        return 0.5
+    }() {
+        didSet {
+            UserDefaults.standard.set(liquidGlassTone, forKey: "saved_liquidGlassTone")
+        }
+    }
+    
+    @Published var settingsLiquidGlassTone: Double = {
+        if UserDefaults.standard.object(forKey: "saved_settingsLiquidGlassTone") != nil {
+            return UserDefaults.standard.double(forKey: "saved_settingsLiquidGlassTone")
+        }
+        return 0.5
+    }() {
+        didSet {
+            UserDefaults.standard.set(settingsLiquidGlassTone, forKey: "saved_settingsLiquidGlassTone")
+        }
+    }
+    
+    @Published var pulsateArtworkGlow: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_pulsateArtworkGlow") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_pulsateArtworkGlow")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(pulsateArtworkGlow, forKey: "saved_pulsateArtworkGlow")
+        }
+    }
+    
+    @Published var waveformTrackSynchronized: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_waveformTrackSynchronized") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_waveformTrackSynchronized")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(waveformTrackSynchronized, forKey: "saved_waveformTrackSynchronized")
+        }
+    }
+
     @Published var alwaysShowMacBatteryInNotch: Bool = {
         if UserDefaults.standard.object(forKey: "saved_alwaysShowMacBatteryInNotch") != nil {
             return UserDefaults.standard.bool(forKey: "saved_alwaysShowMacBatteryInNotch")
@@ -2256,11 +2304,41 @@ class IslandModel: ObservableObject {
             let level = maxCap > 0 ? (Double(currentCap) / Double(maxCap)) : 1.0
             let lpm = ProcessInfo.processInfo.isLowPowerModeEnabled
             
+            let timeToEmpty = desc[kIOPSTimeToEmptyKey as String] as? Int ?? -1
+            let timeToFull = desc[kIOPSTimeToFullChargeKey as String] as? Int ?? -1
+            
+            var depletionStr = ""
+            if charging {
+                if timeToFull > 0 && timeToFull < 6000 {
+                    let hrs = timeToFull / 60
+                    let mins = timeToFull % 60
+                    depletionStr = hrs > 0 ? "\(hrs)h \(mins)m until full charge" : "\(mins)m until full charge"
+                } else {
+                    depletionStr = "Charging on AC Power..."
+                }
+            } else if pluggedIn {
+                depletionStr = "Fully Charged (AC Power Adapter)"
+            } else {
+                if timeToEmpty > 0 && timeToEmpty < 6000 {
+                    let hrs = timeToEmpty / 60
+                    let mins = timeToEmpty % 60
+                    depletionStr = hrs > 0 ? "\(hrs)h \(mins)m remaining" : "\(mins)m remaining"
+                } else {
+                    let estimatedHours = max(0.5, Double(level) * 10.0)
+                    let hrs = Int(estimatedHours)
+                    let mins = Int((estimatedHours - Double(hrs)) * 60)
+                    depletionStr = "~\(hrs)h \(mins)m remaining (Estimated)"
+                }
+            }
+            
             DispatchQueue.main.async {
                 self.macBatteryLevel = level
                 self.isMacCharging = charging
                 self.isMacPluggedIn = pluggedIn
                 self.isMacLowPowerMode = lpm
+                self.macBatteryDepletionTimeText = depletionStr
+                self.macBatteryTimeToEmpty = timeToEmpty
+                self.macBatteryTimeToFull = timeToFull
                 
                 // Trigger live activity banner when charger gets connected
                 if let prevCharging = self.lastChargingState {
@@ -2999,16 +3077,46 @@ struct MusicWaveform: View {
         if isPlaying {
             TimelineView(.animation) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                HStack(spacing: 2.2) {
-                    ForEach(0..<5, id: \.self) { i in
-                        let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
-                        let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
-                        Capsule()
-                            .fill(color)
-                            .frame(width: 3.2, height: h)
+                
+                if model.waveformTrackSynchronized {
+                    let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+                    let hash = Double(abs(trackKey.hashValue % 1000))
+                    let bpm = 120.0 + Double(abs(trackKey.hashValue % 30) - 15)
+                    let elapsed = max(0, min(2.0, Date().timeIntervalSince(model.lastPlaybackPollTime)))
+                    let liveTrackPos = model.playbackPosition + elapsed
+                    let beatPhase = liveTrackPos * (bpm / 60.0) * Double.pi * 2.0
+                    
+                    HStack(spacing: 2.2) {
+                        ForEach(0..<5, id: \.self) { i in
+                            let bandWeights = [1.0, 1.45, 1.75, 1.35, 0.95][i]
+                            let phaseShift = [0.0, 1.1, 2.3, 3.6, 4.9][i] + (hash * 0.004)
+                            let speed = [5.2, 7.8, 10.4, 8.1, 12.0][i]
+                            
+                            let kickPulse = pow(max(0.0, sin(beatPhase + phaseShift)), 2.0)
+                            let ambientFlow = (sin(time * speed + phaseShift) + 1.0) * 0.35
+                            let microJitter = cos(time * (speed * 1.5) + phaseShift) * 0.15
+                            
+                            let energy = max(0.12, min(1.0, (kickPulse * 0.55 + ambientFlow * 0.35 + microJitter * 0.10) * bandWeights * 0.85 + 0.15))
+                            let h = minHeight + CGFloat(energy) * (maxHeight - minHeight)
+                            
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 3.2, height: h)
+                        }
                     }
+                    .frame(height: maxHeight, alignment: .center)
+                } else {
+                    HStack(spacing: 2.2) {
+                        ForEach(0..<5, id: \.self) { i in
+                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
+                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 3.2, height: h)
+                        }
+                    }
+                    .frame(height: maxHeight, alignment: .center)
                 }
-                .frame(height: maxHeight, alignment: .center)
             }
         } else {
             HStack(spacing: 2.2) {
@@ -3022,6 +3130,7 @@ struct MusicWaveform: View {
         }
     }
 }
+
 
 enum NotchTheme: String, CaseIterable, Identifiable {
     case classicBlack = "Classic Obsidian"
@@ -3123,7 +3232,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case notchStyling = "Notch Styling"
     case background = "Window & Background"
     case display = "Hardware Calibration"
-    case battery = "Battery"
+    case battery = "Battery & Power"
     case liveActivities = "Live Activities"
     case systemControls = "System Controls"
     case softwareUpdate = "Software Update"
@@ -3144,18 +3253,31 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         }
     }
     
-    var keywords: [String] {
+    var subfeatures: [String] {
         switch self {
-        case .appearance: return ["physics", "animation", "curve", "spring", "speed", "timing", "bezier", "duration"]
-        case .notchStyling: return ["theme", "glass", "glow", "liquid", "obsidian", "capsule", "neon", "titanium", "frost", "aurora", "twilight"]
-        case .background: return ["wallpaper", "window", "blur", "opacity", "translucency", "color", "backdrop"]
-        case .display: return ["screen", "display", "macbook", "external", "monitor", "target", "width", "radius", "camouflage", "hardware", "calibration"]
-        case .battery: return ["power", "charging", "battery", "adapter", "low power mode", "reduce motion", "warning", "percent", "plug"]
-        case .liveActivities: return ["activities", "music", "player", "waveform", "audio", "phone", "call", "facetime", "airdrop", "airpods", "notification", "simulate"]
-        case .systemControls: return ["wifi", "bluetooth", "brightness", "volume", "sound", "network", "control center", "permissions"]
-        case .softwareUpdate: return ["update", "version", "sparkle", "github", "release notes", "tag", "beta", "changelog"]
-        case .about: return ["about", "author", "license", "credits", "app", "dyNotch"]
+        case .appearance:
+            return ["Spring Physics", "Animation Curve", "Damping Fraction", "Compact Corner Radius"]
+        case .notchStyling:
+            return ["Liquid Glass Tone", "Light Dark Glass", "Music Artwork Ambient Glow", "Pulsate Glow with Rhythm", "Keep Notch Solid Black", "Obsidian Jet Black", "Neon Cyber Glow"]
+        case .background:
+            return ["Liquid Glass Window", "Glass Tint Tone", "Wallpaper Blur", "Custom Image Wallpaper", "Window Translucency"]
+        case .display:
+            return ["Screen Target Preview", "External Monitor Camouflage", "Hardware Notch Width", "Multi-Screen Overlay"]
+        case .battery:
+            return ["Battery Depletion Time", "MacBook Runtime Remaining", "Low Power Mode Motion", "Low Battery Warnings", "Charging Banners"]
+        case .liveActivities:
+            return ["Music Live Activity", "Apple Music Player", "Track-Synchronized Waveform", "Silky Waveform", "Phone & FaceTime Calls", "AirDrop Sharing", "AirPods Integration", "System Notifications", "Control Center Quick Toggles", "Reorder Stack Layout"]
+        case .systemControls:
+            return ["Wi-Fi Toggle", "Bluetooth Toggle", "Screen Brightness", "System Volume", "Noise Control"]
+        case .softwareUpdate:
+            return ["In-Window Updates", "Latest Release Notes", "Download Progress & Timing", "Check GitHub Releases"]
+        case .about:
+            return ["Version Information", "GitHub Repository", "Developer Credits", "Open Source License"]
         }
+    }
+    
+    var keywords: [String] {
+        return subfeatures.map { $0.lowercased() }
     }
 }
 
@@ -3300,11 +3422,15 @@ struct SettingsWindowBackground: View {
                 )
             }
         case .liquidGlass:
+            let tone = IslandModel.shared.settingsLiquidGlassTone
+            let lightGlass = Color.white.opacity(0.28 * (1.0 - tone) + 0.08)
+            let darkGlass = Color(red: 0.08, green: 0.14, blue: 0.24).opacity(0.35 + tone * 0.45)
+            let smokedBlack = Color.black.opacity(0.25 + tone * 0.65)
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.18 * glass),
-                    Color(red: 0.12, green: 0.22, blue: 0.38).opacity(0.40 * opacity),
-                    Color.black.opacity(0.50 * opacity)
+                    lightGlass,
+                    darkGlass,
+                    smokedBlack
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -3599,28 +3725,80 @@ struct NotchStylingView: View {
                 }
                 .padding(.horizontal, 28)
                 
-                // Visual Effects & Translucency Controls
+                // Visual Effects, Liquid Glass Slider & Pulsating Glow Controls
                 VStack(spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Music Artwork Ambient Glow")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                            Text("Projects a vibrant colored aura under the notch matching active album artwork.")
-                                .font(.system(size: 11))
-                                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                    // 1. Ambient Music Glow & Pulsating Option
+                    VStack(spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Music Artwork Ambient Glow")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                Text("Projects a vibrant colored aura under the notch matching active album artwork.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                            }
+                            Spacer()
+                            Toggle("", isOn: $model.enableArtworkGlow)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
                         }
-                        Spacer()
-                        Toggle("", isOn: $model.enableArtworkGlow)
-                            .labelsHidden()
+                        
+                        if model.enableArtworkGlow {
+                            Divider().opacity(0.2)
+                            
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Pulsate Glow with Music Rhythm")
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                    Text("Fluidly breathes and pulses the ambient halo in sync with track dynamics.")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                                }
+                                Spacer()
+                                Toggle("", isOn: $model.pulsateArtworkGlow)
+                                    .toggleStyle(.switch)
+                                    .labelsHidden()
+                            }
+                        }
                     }
                     .padding(14)
                     .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
-                    .cornerRadius(10)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     
+                    // 2. Liquid Glass Tone Slider (Light Frost to Dark Obsidian)
+                    if model.notchTheme == .liquidGlass {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Label("Liquid Glass Tone & Tint", systemImage: "drop.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                Spacer()
+                                Text(model.liquidGlassTone < 0.35 ? "Light Frost Glass" : (model.liquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            HStack(spacing: 12) {
+                                Text("Light")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Slider(value: $model.liquidGlassTone, in: 0.0...1.0)
+                                Text("Dark")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(14)
+                        .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    
+                    // 3. Liquid Glass Translucency
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Label("Liquid Glass Translucency", systemImage: "drop.fill")
+                            Label("Liquid Glass Translucency", systemImage: "circle.lefthalf.filled")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
                             Spacer()
@@ -3632,8 +3810,9 @@ struct NotchStylingView: View {
                     }
                     .padding(14)
                     .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
-                    .cornerRadius(10)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     
+                    // 4. Rim Glow Specular
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Label("Rim Glow & Glass Bevel Specular", systemImage: "sparkles")
@@ -3648,7 +3827,7 @@ struct NotchStylingView: View {
                     }
                     .padding(14)
                     .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
-                    .cornerRadius(10)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .padding(.horizontal, 28)
                 .padding(.bottom, 24)
@@ -5624,6 +5803,8 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable Apple Music Module", isOn: $model.showMusic)
                 
+                Toggle("Track-Synchronized Audio Waveform", isOn: $model.waveformTrackSynchronized)
+                
                 HStack {
                     Text("Interactive Notch State")
                     Spacer()
@@ -6872,6 +7053,33 @@ struct BackgroundSettingsView: View {
     @ViewBuilder
     private var controlsSection: some View {
         VStack(spacing: 10) {
+            // Liquid Glass Tone Slider (Only when Liquid Glass is selected)
+            if model.settingsBackgroundStyle == .liquidGlass {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Label("Settings Window Liquid Glass Tone", systemImage: "drop.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                        Spacer()
+                        Text(model.settingsLiquidGlassTone < 0.35 ? "Light Frost Glass" : (model.settingsLiquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.blue)
+                    }
+                    HStack(spacing: 12) {
+                        Text("Light")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Slider(value: $model.settingsLiquidGlassTone, in: 0.0...1.0)
+                        Text("Dark")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(12)
+                .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12), lineWidth: 1))
+                .cornerRadius(10)
+            }
             // Wallpaper Blur Slider
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
