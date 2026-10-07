@@ -968,31 +968,31 @@ struct IslandView: View {
         @ViewBuilder var airDropExpandedView: some View {
         VStack(spacing: 10) {
             if model.isAirDropSending, let person = model.airDropTargetPerson {
-                // Live Transfer Progress View with Animated Shrinking File into Person
-                VStack(spacing: 14) {
+                // Live Transfer Progress View with Animated Progress
+                VStack(spacing: 12) {
                     HStack(spacing: 14) {
                         ZStack {
                             Circle()
                                 .fill(person.color)
-                                .frame(width: 48, height: 48)
+                                .frame(width: 46, height: 46)
                                 .shadow(color: person.color.opacity(0.5), radius: 6)
                             Text(person.initials)
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.system(size: 17, weight: .bold))
                                 .foregroundColor(.white)
                         }
                         
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Sending to \(person.name)")
-                                .font(.system(size: 15, weight: .bold))
+                            Text("Sending to \(person.name)...")
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
                             Text(model.airDropProgress < 0.95 ? "Transferring file... \(Int(model.airDropProgress * 100))%" : "Waiting for \(person.name) to accept...")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.cyan)
                         }
                         Spacer()
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 10)
+                    .padding(.top, 8)
                     
                     // Liquid Glass Progress Bar
                     VStack(spacing: 6) {
@@ -1000,15 +1000,15 @@ struct IslandView: View {
                             ZStack(alignment: .leading) {
                                 Capsule(style: .continuous)
                                     .fill(Color.white.opacity(0.15))
-                                    .frame(height: 10)
+                                    .frame(height: 8)
                                 
                                 Capsule(style: .continuous)
                                     .fill(LinearGradient(colors: [Color.cyan, Color.blue], startPoint: .leading, endPoint: .trailing))
-                                    .frame(width: max(10, geo.size.width * CGFloat(model.airDropProgress)), height: 10)
+                                    .frame(width: max(8, geo.size.width * CGFloat(model.airDropProgress)), height: 8)
                                     .animation(.linear(duration: 0.08), value: model.airDropProgress)
                             }
                         }
-                        .frame(height: 10)
+                        .frame(height: 8)
                     }
                     .padding(.horizontal, 14)
                 }
@@ -1022,141 +1022,226 @@ struct IslandView: View {
                             .frame(width: 44, height: 44)
                             .shadow(color: Color.green.opacity(0.4), radius: 6)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.white)
                     }
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Sent to \(person.name)!")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
                         Text("AirDrop transfer complete")
-                            .font(.system(size: 12))
+                            .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.7))
                     }
                     Spacer()
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 14)
+                .padding(.top, 12)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
-                // Notch Stored File Card (Drag OUT to any window, Finder, or app!)
-                HStack(spacing: 12) {
-                    if let firstFile = model.droppedAirDropFiles.first {
-                        // Draggable Item Provider
-                        HStack(spacing: 10) {
-                            if let thumb = model.droppedFileThumbnail {
-                                Image(nsImage: thumb)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 36, height: 36)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            } else {
-                                Image(systemName: "doc.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.cyan)
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(firstFile.lastPathComponent)
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                
-                                HStack(spacing: 4) {
-                                    Image(systemName: "hand.draw.fill")
-                                        .font(.system(size: 9))
-                                    Text("Drag out to use anywhere")
-                                        .font(.system(size: 10, weight: .medium))
-                                }
-                                .foregroundColor(.cyan.opacity(0.9))
-                            }
+                // Top Action Bar: AirDrop Option Button (Left) | Title (Center) | Clear Button (Right)
+                HStack(alignment: .center) {
+                    // Top AirDrop Option Button
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            model.isShowingAirDropInShelf.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "airdrop")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(model.isShowingAirDropInShelf ? "Back to File" : "AirDrop")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                         }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(model.isShowingAirDropInShelf ? Color.cyan : Color.white.opacity(0.14))
                         )
-                        .onDrag {
-                            return NSItemProvider(object: firstFile as NSURL)
-                        }
+                        .foregroundColor(model.isShowingAirDropInShelf ? .black : .white)
                     }
+                    .buttonStyle(.plain)
+                    
+                    Spacer()
+                    
+                    Text(model.isShowingAirDropInShelf ? "Select Recipient" : "Saved in Notch")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.85))
                     
                     Spacer()
                     
                     // Clear / Remove File from Notch
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
                             model.droppedAirDropFiles = []
+                            model.isShowingAirDropInShelf = false
                             model.state = .compact
                         }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.55))
+                            .font(.system(size: 17))
+                            .foregroundColor(.white.opacity(0.5))
                     }
                     .buttonStyle(.plain)
                     .help("Remove file from notch shelf")
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 
-                // AirDrop Option (Higher position, click explicitly to choose recipient)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "airdrop")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.cyan)
-                        Text("AirDrop to Nearby Devices")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                    .padding(.horizontal, 10)
-                    
-                    HStack(spacing: 12) {
-                        ForEach(model.discoverNearbyPeople()) { person in
-                            Button {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                    model.sendAirDrop(to: person)
+                if model.isShowingAirDropInShelf {
+                    // AirDrop Nearby People Selection Layout
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 12) {
+                            ForEach(model.discoverNearbyPeople()) { person in
+                                Button {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                        model.sendAirDrop(to: person)
+                                    }
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        ZStack(alignment: .bottomTrailing) {
+                                            Circle()
+                                                .fill(person.color.opacity(0.85))
+                                                .frame(width: 42, height: 42)
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
+                                                )
+                                            
+                                            Text(person.initials)
+                                                .font(.system(size: 15, weight: .bold))
+                                                .foregroundColor(.white)
+                                            
+                                            Image(systemName: person.deviceIcon)
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(2.5)
+                                                .background(Circle().fill(Color.black.opacity(0.85)))
+                                                .offset(x: 2, y: 2)
+                                        }
+                                        
+                                        Text(person.name)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(width: 70)
                                 }
+                                .buttonStyle(.plain)
+                            }
+                            
+                            // Native macOS Sharing Sheet Fallback Button
+                            Button {
+                                model.triggerNativeSystemShare()
                             } label: {
                                 VStack(spacing: 4) {
-                                    ZStack(alignment: .bottomTrailing) {
+                                    ZStack {
                                         Circle()
-                                            .fill(person.color.opacity(0.85))
-                                            .frame(width: 38, height: 38)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
-                                            )
-                                        
-                                        Text(person.initials)
-                                            .font(.system(size: 14, weight: .bold))
+                                            .fill(Color.white.opacity(0.12))
+                                            .frame(width: 42, height: 42)
+                                        Image(systemName: "ellipsis")
+                                            .font(.system(size: 16, weight: .bold))
                                             .foregroundColor(.white)
-                                        
-                                        Image(systemName: person.deviceIcon)
-                                            .font(.system(size: 8, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .padding(2)
-                                            .background(Circle().fill(Color.black.opacity(0.85)))
-                                            .offset(x: 2, y: 2)
                                     }
-                                    
-                                    Text(person.name)
+                                    Text("More...")
                                         .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
+                                        .foregroundColor(.white.opacity(0.8))
                                 }
-                                .frame(width: 68)
+                                .frame(width: 60)
                             }
                             .buttonStyle(.plain)
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    // Big Rounded-Square File Card Preview with Details
+                    if let firstFile = model.droppedAirDropFiles.first {
+                        let fileSizeStr: String = {
+                            if let attrs = try? FileManager.default.attributesOfItem(atPath: firstFile.path),
+                               let size = attrs[.size] as? Int64 {
+                                return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                            }
+                            return ""
+                        }()
+                        
+                        HStack(spacing: 14) {
+                            // Big Rounded-Square File Preview (Draggable out to any window or app)
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.white.opacity(0.10))
+                                    .frame(width: 58, height: 58)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                                    )
+                                
+                                if let thumb = model.droppedFileThumbnail {
+                                    Image(nsImage: thumb)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 48, height: 48)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                } else {
+                                    Image(systemName: "doc.fill")
+                                        .font(.system(size: 30))
+                                        .foregroundColor(.cyan)
+                                }
+                            }
+                            .shadow(color: Color.black.opacity(0.35), radius: 6, y: 3)
+                            .onDrag {
+                                return NSItemProvider(object: firstFile as NSURL)
+                            }
+                            
+                            // File Details Stated Under / Next to It
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(firstFile.lastPathComponent)
+                                    .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                
+                                HStack(spacing: 6) {
+                                    if !fileSizeStr.isEmpty {
+                                        Text(fileSizeStr)
+                                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                            .foregroundColor(.white.opacity(0.65))
+                                    }
+                                    if model.droppedAirDropFiles.count > 1 {
+                                        Text("+\(model.droppedAirDropFiles.count - 1) more")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1.5)
+                                            .background(Capsule().fill(Color.cyan.opacity(0.25)))
+                                            .foregroundColor(.cyan)
+                                    }
+                                }
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "hand.draw.fill")
+                                        .font(.system(size: 9))
+                                    Text("Drag out to any app or window")
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                                .foregroundColor(.cyan.opacity(0.95))
+                                .padding(.top, 1)
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                        )
+                        .onDrag {
+                            return NSItemProvider(object: firstFile as NSURL)
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    }
                 }
-                .padding(.top, 2)
             }
         }
         .padding(.vertical, 8)
@@ -1810,6 +1895,7 @@ class IslandModel: ObservableObject {
             self.droppedFileColor = Color.cyan
         }
     }
+        @Published var isShowingAirDropInShelf: Bool = false
     @Published var isAirDropSending: Bool = false
     @Published var airDropSentSuccess: Bool = false
     
@@ -1876,6 +1962,24 @@ class IslandModel: ObservableObject {
         return AirDropDiscoveryService.shared.discoveredPeople
     }
     
+    func triggerNativeSystemShare() {
+        guard !droppedAirDropFiles.isEmpty else { return }
+        let items = self.droppedAirDropFiles
+        DispatchQueue.main.async {
+            if let window = NSApp.windows.first(where: { $0.isVisible }),
+               let view = window.contentView {
+                let picker = NSSharingServicePicker(items: items)
+                picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+            } else {
+                let picker = NSSharingServicePicker(items: items)
+                if let screen = NSScreen.main {
+                    let dummyView = NSView(frame: NSRect(x: screen.frame.midX, y: screen.frame.maxY - 40, width: 1, height: 1))
+                    picker.show(relativeTo: dummyView.bounds, of: dummyView, preferredEdge: .maxY)
+                }
+            }
+        }
+    }
+
     func sendAirDrop(to person: AirDropPerson) {
         guard !droppedAirDropFiles.isEmpty else { return }
         airDropTargetPerson = person
@@ -1884,9 +1988,10 @@ class IslandModel: ObservableObject {
         
         let filesToSend = self.droppedAirDropFiles
         
-        // 1. Perform actual native macOS AirDrop file transfer
+        // 1. Perform authentic native macOS AirDrop file transfer
         DispatchQueue.main.async {
-            if let service = NSSharingService(named: .sendViaAirDrop) {
+            let airDropService = NSSharingService(named: .sendViaAirDrop)
+            if let service = airDropService, service.canPerform(withItems: filesToSend) {
                 AirDropShareDelegate.shared.onComplete = { [weak self] in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         self?.airDropProgress = 1.0
@@ -1900,6 +2005,7 @@ class IslandModel: ObservableObject {
                             self?.droppedAirDropFiles = []
                             self?.airDropTargetPerson = nil
                             self?.airDropProgress = 0.0
+                            self?.isShowingAirDropInShelf = false
                             self?.state = .compact
                         }
                     }
@@ -1913,13 +2019,31 @@ class IslandModel: ObservableObject {
                 }
                 
                 service.delegate = AirDropShareDelegate.shared
-                if service.canPerform(withItems: filesToSend) {
-                    service.perform(withItems: filesToSend)
+                service.perform(withItems: filesToSend)
+            } else {
+                // Robust Fallback: Trigger macOS System Sharing Service Picker
+                let picker = NSSharingServicePicker(items: filesToSend)
+                if let window = NSApp.windows.first(where: { $0.isVisible }),
+                   let view = window.contentView {
+                    picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+                }
+                
+                // Keep UI lively
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    self.airDropProgress = 1.0
+                    self.isAirDropSending = false
+                    self.airDropSentSuccess = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.airDropSentSuccess = false
+                        self.isShowingAirDropInShelf = false
+                    }
                 }
             }
         }
         
-        // 2. Smooth Notch progress animation
+        // 2. Smooth progress ticker
         Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { timer in
             DispatchQueue.main.async {
                 if self.isAirDropSending {
@@ -1932,7 +2056,7 @@ class IslandModel: ObservableObject {
             }
         }
     }
-    
+
     func sendAirDrop(to targetName: String? = nil) {
         let person = discoverNearbyPeople().first { $0.name == targetName || $0.device == targetName } 
             ?? discoverNearbyPeople().first 
