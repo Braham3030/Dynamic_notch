@@ -8574,7 +8574,6 @@ struct LiquidScrubber: View {
     @State private var dragProgress: Double = 0.0
     
     let scrubberWidth: CGFloat = 220
-    let scrubberHeight: CGFloat = 22
 
     var body: some View {
         let currentProgress = isDragging ? dragProgress : (model.playbackPosition / model.trackDuration)
@@ -8583,57 +8582,64 @@ struct LiquidScrubber: View {
         let remaining = Int(model.trackDuration) - elapsed
         let currentTrackWidth = max(0, CGFloat(safeProgress) * scrubberWidth)
         let progressTint = model.artworkColor
+        let trackHeight: CGFloat = isDragging ? 9.0 : 4.5
+        let containerHeight: CGFloat = isDragging ? 28 : 20
         
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            // Left (Elapsed) - Larger & Bolder
             Text(formatTime(elapsed))
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.60))
-                .frame(width: 32, alignment: .trailing)
+                .font(.system(size: 12.0, weight: .bold, design: .monospaced))
+                .foregroundColor(isDragging ? .white : .white.opacity(0.85))
+                .frame(width: 36, alignment: .trailing)
+                .scaleEffect(isDragging ? 1.06 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
             
             ZStack(alignment: .leading) {
-                // 1. Translucent Liquid Glass Background Groove Track
+                // 1. Translucent Liquid Glass Background Groove Track (Expands in height on drag)
                 Capsule()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: scrubberWidth, height: 5)
+                    .fill(Color.white.opacity(isDragging ? 0.20 : 0.12))
+                    .frame(width: scrubberWidth, height: trackHeight)
                     .overlay(
                         Capsule()
-                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
                     )
+                    .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
-                // 2. Liquid Glass Active Progress Track matching Waveform Color
+                // 2. Liquid Glass Active Progress Track matching Waveform Color (Expands in height on drag)
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [progressTint.opacity(0.75), progressTint],
+                            colors: [progressTint.opacity(0.85), progressTint],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: currentTrackWidth, height: 5)
-                    .shadow(color: progressTint.opacity(0.45), radius: 3, x: 0, y: 0)
+                    .frame(width: currentTrackWidth, height: trackHeight)
+                    .shadow(color: progressTint.opacity(isDragging ? 0.65 : 0.40), radius: isDragging ? 5 : 2.5, x: 0, y: 0)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
-                // 3. Ultra Liquid Glass Pill / Capsule Slider Knob (like Settings with Specular Glass Rim & Halo)
+                // 3. Ultra Liquid Glass Slider Knob with Expanded Touch Target & High-Contrast Halo
                 ZStack {
                     // Ambient halo glow behind knob
                     Capsule()
-                        .fill(progressTint.opacity(isDragging ? 0.50 : 0.25))
-                        .frame(width: isDragging ? 26 : 14, height: isDragging ? 18 : 14)
-                        .blur(radius: isDragging ? 5 : 2.5)
+                        .fill(progressTint.opacity(isDragging ? 0.60 : 0.25))
+                        .frame(width: isDragging ? 32 : 14, height: isDragging ? 24 : 14)
+                        .blur(radius: isDragging ? 6 : 2.5)
                     
                     // Liquid Glass Translucent Base
                     Capsule()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.95),
-                                    Color.white.opacity(0.70)
+                                    Color.white,
+                                    Color(white: 0.88)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: isDragging ? 22 : 11, height: isDragging ? 15 : 11)
+                        .frame(width: isDragging ? 26 : 11, height: isDragging ? 18 : 11)
                         // Specular Light Refraction Border
                         .overlay(
                             Capsule()
@@ -8641,32 +8647,36 @@ struct LiquidScrubber: View {
                                     LinearGradient(
                                         colors: [
                                             Color.white,
-                                            Color.white.opacity(0.45),
-                                            Color.white.opacity(0.85)
+                                            Color.white.opacity(0.55),
+                                            Color.white.opacity(0.90)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: 1.0
+                                    lineWidth: isDragging ? 1.4 : 1.0
                                 )
                         )
-                        // Subtle Inner Liquid Pill Core
+                        // Inner Liquid Glass Glow Pill
                         .overlay(
                             Capsule()
-                                .fill(progressTint.opacity(isDragging ? 0.35 : 0.15))
-                                .frame(width: isDragging ? 8 : 4, height: isDragging ? 6 : 4)
+                                .fill(progressTint.opacity(isDragging ? 0.45 : 0.20))
+                                .frame(width: isDragging ? 10 : 4, height: isDragging ? 7 : 4)
                         )
-                        .shadow(color: Color.black.opacity(0.35), radius: isDragging ? 5 : 2.5, x: 0, y: 1.5)
+                        .shadow(color: Color.black.opacity(0.40), radius: isDragging ? 6 : 2.5, x: 0, y: 2)
                 }
-                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 11 : 5.5)), scrubberWidth - (isDragging ? 22 : 11)))
+                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 13 : 5.5)), scrubberWidth - (isDragging ? 26 : 11)))
                 .animation(.spring(response: 0.28, dampingFraction: 0.65), value: isDragging)
             }
-            .frame(width: scrubberWidth, height: scrubberHeight, alignment: .center)
+            .frame(width: scrubberWidth, height: containerHeight, alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        if !isDragging { isDragging = true }
+                        if !isDragging {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.72)) {
+                                isDragging = true
+                            }
+                        }
                         dragProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
                     }
                     .onEnded { value in
@@ -8677,14 +8687,19 @@ struct LiquidScrubber: View {
                         }
                         model.playbackPosition = newPos
                         dragProgress = finalProgress
-                        isDragging = false
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                            isDragging = false
+                        }
                     }
             )
             
+            // Right (Remaining) - Larger & Bolder
             Text("-" + formatTime(remaining))
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.60))
-                .frame(width: 38, alignment: .leading)
+                .font(.system(size: 12.0, weight: .bold, design: .monospaced))
+                .foregroundColor(isDragging ? .white : .white.opacity(0.85))
+                .frame(width: 44, alignment: .leading)
+                .scaleEffect(isDragging ? 1.06 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
         }
     }
     
