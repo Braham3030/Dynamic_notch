@@ -544,29 +544,43 @@ struct IslandView: View {
                 }
             } else {
                 if model.showControlCenter {
-                    VStack(spacing: 10) {
-                        HStack(spacing: 10) {
-                            // WiFi & Bluetooth stacked on top of each other
-                            VStack(spacing: 8) { 
-                                ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
-                                    .frame(width: 38, height: 28)
-                                ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
-                                    .frame(width: 38, height: 28)
-                            }
+                    VStack(spacing: 8) {
+                        // 1. Top Row: WiFi & Bluetooth Cards with Titles & Connected Networks
+                        HStack(spacing: 8) {
+                            ConnectivityCard(
+                                title: "Wi-Fi",
+                                subtitle: model.isWifiOn ? model.wifiSSID : "Off",
+                                icon: "wifi",
+                                isOn: model.isWifiOn,
+                                activeTint: .blue,
+                                variableValue: Double(model.wifiBars) / 3.0,
+                                action: model.toggleWiFi
+                            )
                             
-                            // Full-width aligned Brightness & Volume Sliders
-                            VStack(spacing: 8) { 
-                                CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
-                                    .frame(width: 252, height: 28)
-                                CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
-                                    .frame(width: 252, height: 28)
-                            }
+                            ConnectivityCard(
+                                title: "Bluetooth",
+                                subtitle: model.isBluetoothOn ? (model.airPodsConnected ? model.airPodsName : "On") : "Off",
+                                icon: "bluetooth.custom",
+                                isOn: model.isBluetoothOn,
+                                activeTint: .blue,
+                                action: model.toggleBluetooth
+                            )
                         }
-                        .frame(width: 300)
+                        .frame(width: 320)
                         
-                        // AirPods Listening Mode Slider placed neatly UNDERNEATH
+                        // 2. Middle Row: Extra-Long Full-Width Brightness & Volume Sliders
+                        VStack(spacing: 7) { 
+                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
+                                .frame(width: 320, height: 28)
+                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
+                                .frame(width: 320, height: 28)
+                        }
+                        .frame(width: 320)
+                        
+                        // 3. Bottom Row: AirPods Noise Control Slider
                         if model.airPodsConnected && model.showAirPodsLocalization {
                             AirPodsListeningModeSlider(model: model)
+                                .frame(width: 320)
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
@@ -990,10 +1004,12 @@ extension IslandModel {
             if state == .expandedAirDrop { return 290 } // Extra height for BIG file/photo preview and devices underneath
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
-            if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
-                return (listeningMode == 4) ? 265 : 215 // Extra room for Adaptive Noise Canceling / Transparency Slider!
+            if state == .expandedControls {
+                if airPodsConnected && showAirPodsLocalization {
+                    return 245
+                }
+                return 165
             }
-            return 130
         }
         return physicalNotchHeight
     }
@@ -1467,6 +1483,7 @@ class IslandModel: ObservableObject {
     @Published var isWifiOn: Bool = true
     @Published var isBluetoothOn: Bool = true
     @Published var wifiBars: Int = 3
+    @Published var wifiSSID: String = "Wi-Fi" 
     private var wifiTimer: Timer?
     
     @Published var currentTrack: String = ""
@@ -1935,6 +1952,12 @@ class IslandModel: ObservableObject {
         } else {
             wifiBars = 1
         }
+        
+        if let ssid = interface.ssid(), !ssid.isEmpty {
+            self.wifiSSID = ssid
+        } else {
+            self.wifiSSID = "Connected"
+        }
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
     
@@ -2329,6 +2352,64 @@ struct GlassSegmentControl: View {
     }
 }
 struct BluetoothShape: Shape { func path(in rect: CGRect) -> Path { var path = Path(); let midX = rect.midX; let w = rect.width * 0.25; let h = rect.height * 0.4; let startY = rect.midY - h; let endY = rect.midY + h; path.move(to: CGPoint(x: midX - w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX + w, y: endY - h*0.5)); path.addLine(to: CGPoint(x: midX, y: endY)); path.addLine(to: CGPoint(x: midX, y: startY)); path.addLine(to: CGPoint(x: midX + w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX - w, y: endY - h*0.5)); return path } }
+struct ConnectivityCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let isOn: Bool
+    let activeTint: Color
+    var variableValue: Double? = nil
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(isOn ? activeTint : Color.white.opacity(0.18))
+                        .frame(width: 26, height: 26)
+                    
+                    if let val = variableValue {
+                        Image(systemName: icon, variableValue: val)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(isOn ? .white : .white.opacity(0.6))
+                    } else if icon == "bluetooth.custom" {
+                        BluetoothShape()
+                            .fill(isOn ? Color.white : Color.white.opacity(0.6))
+                            .frame(width: 12, height: 16)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(isOn ? .white : .white.opacity(0.6))
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Text(subtitle)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.10))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct CustomSlider: View { 
     @Binding var value: Double
     var icon: String
@@ -3190,7 +3271,7 @@ struct AirPodsListeningModeSlider: View {
                 }
             }
         }
-        .frame(width: 300)
+        .frame(width: 320)
     }
 }
 
