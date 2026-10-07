@@ -3485,7 +3485,23 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     case slate = "Minimal Slate"
     case customPicture = "Custom Picture"
     
+    // Animated Live Wallpapers
+    case animatedAurora = "Breathing Aurora"
+    case animatedCosmic = "Floating Nebula"
+    case animatedSunset = "Shifting Sunset"
+    case animatedMatrix = "Liquid Pulse"
+    
     var id: String { rawValue }
+    
+    var isAnimated: Bool {
+        switch self {
+        case .animatedAurora, .animatedCosmic, .animatedSunset, .animatedMatrix:
+            return true
+        default:
+            return false
+        }
+    }
+    
     var icon: String {
         switch self {
         case .systemDefault: return "circle.lefthalf.filled"
@@ -3500,6 +3516,10 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
         case .dune: return "wind"
         case .slate: return "square.fill"
         case .customPicture: return "photo.fill"
+        case .animatedAurora: return "waveform.path.ecg"
+        case .animatedCosmic: return "circle.dotted.and.circle"
+        case .animatedSunset: return "sunset.fill"
+        case .animatedMatrix: return "water.waves"
         }
     }
     
@@ -3517,6 +3537,10 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
         case .dune: return "Golden hour desert warmth"
         case .slate: return "High contrast titanium slate"
         case .customPicture: return "Choose image from Photos / Finder"
+        case .animatedAurora: return "Gentle harmonic northern lights animation"
+        case .animatedCosmic: return "Soft floating deep-space cosmic gradient"
+        case .animatedSunset: return "Subtle shifting dusk and twilight colors"
+        case .animatedMatrix: return "Calm fluid liquid pulse oscillations"
         }
     }
     
@@ -3814,6 +3838,75 @@ struct SettingsWindowBackground: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+        case .animatedAurora:
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let shift1 = sin(time * 0.45) * 0.25
+                let shift2 = cos(time * 0.35) * 0.25
+                
+                RadialGradient(
+                    colors: [
+                        Color.cyan.opacity(0.70 * opacity),
+                        Color.purple.opacity(0.75 * opacity),
+                        Color.blue.opacity(0.85 * opacity),
+                        Color(red: 0.03, green: 0.03, blue: 0.08).opacity(0.98 * opacity)
+                    ],
+                    center: UnitPoint(x: 0.3 + shift1, y: 0.2 + shift2),
+                    startRadius: 40,
+                    endRadius: 750
+                )
+            }
+        case .animatedCosmic:
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let x1 = 0.5 + sin(time * 0.3) * 0.3
+                let y1 = 0.5 + cos(time * 0.25) * 0.3
+                
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.85, green: 0.25, blue: 0.65).opacity(0.65 * opacity),
+                        Color(red: 0.30, green: 0.15, blue: 0.70).opacity(0.80 * opacity),
+                        Color(red: 0.08, green: 0.04, blue: 0.20).opacity(0.92 * opacity),
+                        Color.black.opacity(0.98 * opacity)
+                    ],
+                    center: UnitPoint(x: x1, y: y1),
+                    startRadius: 30,
+                    endRadius: 800
+                )
+            }
+        case .animatedSunset:
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let pos = sin(time * 0.38) * 0.2
+                
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.98, green: 0.45, blue: 0.25).opacity(0.85 * opacity),
+                        Color(red: 0.85, green: 0.20, blue: 0.55).opacity(0.80 * opacity),
+                        Color(red: 0.35, green: 0.15, blue: 0.65).opacity(0.88 * opacity),
+                        Color(red: 0.08, green: 0.05, blue: 0.22).opacity(0.96 * opacity)
+                    ],
+                    startPoint: UnitPoint(x: 0.1 + pos, y: 0.0),
+                    endPoint: UnitPoint(x: 0.9 - pos, y: 1.0)
+                )
+            }
+        case .animatedMatrix:
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let pulse = (sin(time * 0.5) + 1.0) * 0.5
+                
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.0, green: 0.8, blue: 0.6).opacity((0.55 + pulse * 0.25) * opacity),
+                        Color(red: 0.05, green: 0.3, blue: 0.5).opacity(0.80 * opacity),
+                        Color(red: 0.02, green: 0.08, blue: 0.15).opacity(0.95 * opacity),
+                        Color.black.opacity(0.99 * opacity)
+                    ],
+                    center: .center,
+                    startRadius: 20 + CGFloat(pulse * 60),
+                    endRadius: 700
+                )
+            }
         }
     }
 }
@@ -7562,46 +7655,85 @@ struct BackgroundSettingsView: View {
     
     @ViewBuilder
     private var gallerySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Choose Window Wallpaper")
-                    .font(.headline)
-                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                
-                Spacer()
-                
-                Button {
-                    model.pickCustomWallpaper()
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add from Photos...")
-                    }
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(Color.blue)
-                    )
+        VStack(alignment: .leading, spacing: 18) {
+            // SEPARATE SECTION 1: Animated Live Wallpapers
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.cyan)
+                    Text("Animated Live Wallpapers")
+                        .font(.headline)
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    Text("Smooth Motion")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.cyan)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.cyan.opacity(0.18)))
                 }
-                .buttonStyle(.plain)
-            }
-            
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(SettingsBackgroundStyle.allCases) { style in
-                    WallpaperThumbnailCard(
-                        style: style,
-                        isSelected: model.settingsBackgroundStyle == style,
-                        isLightBg: isLightBg,
-                        customImage: model.customWallpaperImage
-                    ) {
-                        if style == .customPicture && model.customWallpaperImage == nil {
-                            model.pickCustomWallpaper()
-                        } else {
+                
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(SettingsBackgroundStyle.allCases.filter { $0.isAnimated }) { style in
+                        WallpaperThumbnailCard(
+                            style: style,
+                            isSelected: model.settingsBackgroundStyle == style,
+                            isLightBg: isLightBg,
+                            customImage: model.customWallpaperImage
+                        ) {
                             withAnimation(.easeInOut(duration: 0.45)) {
                                 model.settingsBackgroundStyle = style
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // SEPARATE SECTION 2: Standard & Nature Wallpapers
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .foregroundColor(.blue)
+                        Text("Standard & Solid Wallpapers")
+                            .font(.headline)
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    }
+                    
+                    Spacer()
+                    
+                    Button {
+                        model.pickCustomWallpaper()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Add from Photos...")
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    ForEach(SettingsBackgroundStyle.allCases.filter { !$0.isAnimated }) { style in
+                        WallpaperThumbnailCard(
+                            style: style,
+                            isSelected: model.settingsBackgroundStyle == style,
+                            isLightBg: isLightBg,
+                            customImage: model.customWallpaperImage
+                        ) {
+                            if style == .customPicture && model.customWallpaperImage == nil {
+                                model.pickCustomWallpaper()
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.45)) {
+                                    model.settingsBackgroundStyle = style
+                                }
                             }
                         }
                     }
