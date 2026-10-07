@@ -279,23 +279,30 @@ struct IslandView: View {
                     Spacer().frame(height: model.physicalNotchHeight)
                     
                     if model.isAirDropTargeted && model.state != .expandedAirDrop {
-                        // Generous Drag Dropzone (Expanded well below physical notch)
-                        VStack(spacing: 6) {
-                            Image(systemName: "airdrop")
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.cyan)
+                        // Large Spacious AirDrop Dropzone
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.cyan.opacity(0.18))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "airdrop")
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundColor(.cyan)
+                            }
+                            
                             Text("Drop Files to AirDrop")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
-                            Text("Release anywhere here to share")
-                                .font(.system(size: 11))
+                            
+                            Text("Release anywhere to select nearby recipients")
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.white.opacity(0.65))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.cyan.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.cyan.opacity(0.8), style: StrokeStyle(lineWidth: 1.8, dash: [6, 4]))
                                 .padding(6)
                         )
                     } else if model.isExpanded {
@@ -542,39 +549,9 @@ struct IslandView: View {
     
         @ViewBuilder var airDropExpandedView: some View {
         VStack(spacing: 10) {
-            // Top Section: File Card Preview (Multiple files supported)
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(LinearGradient(colors: [Color.blue.opacity(0.4), Color.cyan.opacity(0.25)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 44, height: 44)
-                    
-                    Image(systemName: model.droppedAirDropFiles.count > 1 ? "doc.on.doc.fill" : "doc.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    if model.droppedAirDropFiles.count == 1, let first = model.droppedAirDropFiles.first {
-                        Text(first.lastPathComponent)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        Text("Choose who to AirDrop with below")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.6))
-                    } else {
-                        Text("\(max(1, model.droppedAirDropFiles.count)) Files Selected")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
-                        Text("Choose who to AirDrop with below")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.6))
-                            .lineLimit(1)
-                    }
-                }
-                
-                Spacer()
+            // Top Section: Real File Preview Card + Close (X) button
+            HStack(alignment: .center) {
+                AirDropFilePreviewCard(files: model.droppedAirDropFiles)
                 
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -583,54 +560,58 @@ struct IslandView: View {
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 20))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 18)
+            .padding(.top, 4)
             
-            Divider().background(Color.white.opacity(0.12)).padding(.horizontal, 16)
+            Divider()
+                .background(Color.white.opacity(0.15))
+                .padding(.horizontal, 18)
             
-            // Bottom Section: People & Devices to AirDrop To UNDERNEATH the file
+            // Bottom Section: Device Names UNDERNEATH Icons
             VStack(alignment: .leading, spacing: 6) {
-                Text("Share With People & Devices")
+                Text("AirDrop to Devices Nearby")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                    .padding(.horizontal, 16)
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.horizontal, 18)
                 
                 if model.isAirDropSending {
                     HStack(spacing: 12) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.8)
+                            .scaleEffect(0.85)
                         Text("Sharing via AirDrop...")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white)
                         Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .frame(height: 48)
+                    .padding(.horizontal, 18)
+                    .frame(height: 54)
                 } else if model.airDropSentSuccess {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                            .font(.system(size: 16))
-                        Text("Sent Successfully!")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 18))
+                        Text("Sent Successfully via AirDrop!")
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.white)
                         Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .frame(height: 48)
+                    .padding(.horizontal, 18)
+                    .frame(height: 54)
                 } else {
                     HStack(spacing: 10) {
-                        AirDropDeviceButton(name: "iPhone", icon: "iphone", action: { model.sendAirDrop(to: "iPhone") })
-                        AirDropDeviceButton(name: "iPad", icon: "ipad", action: { model.sendAirDrop(to: "iPad") })
-                        AirDropDeviceButton(name: "MacBook", icon: "laptopcomputer", action: { model.sendAirDrop(to: "MacBook") })
-                        AirDropDeviceButton(name: "AirDrop...", icon: "airdrop", isAccent: true, action: { model.sendAirDrop() })
+                        AirDropDeviceButton(name: "iPhone", sublabel: "Nearby", icon: "iphone", action: { model.sendAirDrop(to: "iPhone") })
+                        AirDropDeviceButton(name: "iPad", sublabel: "Nearby", icon: "ipad", action: { model.sendAirDrop(to: "iPad") })
+                        AirDropDeviceButton(name: "MacBook", sublabel: "Nearby", icon: "laptopcomputer", action: { model.sendAirDrop(to: "MacBook") })
+                        AirDropDeviceButton(name: "AirDrop...", sublabel: "Share", icon: "airdrop", isAccent: true, action: { model.sendAirDrop() })
                     }
-                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 12)
                 }
             }
         }
@@ -851,9 +832,9 @@ extension IslandModel {
         if isScreenTransitioning {
             return baseNotchWidth
         }
-        if isAirDropTargeted { return 360 }
+        if isAirDropTargeted { return 440 }
         if isExpanded {
-            if state == .expandedAirDrop { return 390 }
+            if state == .expandedAirDrop { return 440 }
             if state == .expandedMusic { return 390 }
             if state == .expandedFood { return 360 }
             return 380
@@ -869,10 +850,10 @@ extension IslandModel {
     
     var height: CGFloat {
         if isAirDropTargeted && state != .expandedAirDrop {
-            return physicalNotchHeight + 82 // Generously expanded downwards so it is easy to drop without hitting top screen triggers
+            return physicalNotchHeight + 115 // Large and deep drop area so user never touches top screen triggers
         }
         if isExpanded {
-            if state == .expandedAirDrop { return 215 }
+            if state == .expandedAirDrop { return 225 }
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
@@ -2664,33 +2645,145 @@ struct LiquidScrubber: View {
     }
 }
 
+struct AirDropFilePreviewCard: View {
+    let files: [URL]
+    
+    var firstURL: URL? { files.first }
+    
+    var thumbnailImage: NSImage? {
+        guard let url = firstURL else { return nil }
+        let ext = url.pathExtension.lowercased()
+        if ["png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "icns"].contains(ext) {
+            if let img = NSImage(contentsOf: url) {
+                return img
+            }
+        }
+        return NSWorkspace.shared.icon(forFile: url.path)
+    }
+    
+    var fileSizeString: String {
+        guard let url = firstURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64 else {
+            return ""
+        }
+        let bcf = ByteCountFormatter()
+        bcf.allowedUnits = [.useAll]
+        bcf.countStyle = .file
+        return bcf.string(fromByteCount: size)
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Thumbnail / Icon Preview
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                
+                if let thumb = thumbnailImage {
+                    Image(nsImage: thumb)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Image(systemName: files.count > 1 ? "doc.on.doc.fill" : "doc.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.cyan)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
+            
+            // File Information
+            VStack(alignment: .leading, spacing: 3) {
+                if files.count == 1, let first = firstURL {
+                    Text(first.lastPathComponent)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 6) {
+                        if !fileSizeString.isEmpty {
+                            Text(fileSizeString)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        Text("• Ready to AirDrop")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.cyan.opacity(0.9))
+                    }
+                } else {
+                    Text("\(max(1, files.count)) Files Selected")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Text(files.map { $0.lastPathComponent }.prefix(2).joined(separator: ", ") + (files.count > 2 ? "..." : ""))
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            
+            Spacer()
+        }
+    }
+}
+
 struct AirDropDeviceButton: View {
     let name: String
+    let sublabel: String
     let icon: String
     var isAccent: Bool = false
     let action: () -> Void
     
+    @State private var isHovered: Bool = false
+    
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 ZStack {
                     Circle()
-                        .fill(isAccent ? Color.blue : Color.white.opacity(0.12))
-                        .frame(width: 38, height: 38)
+                        .fill(isAccent ? Color.blue : (isHovered ? Color.white.opacity(0.24) : Color.white.opacity(0.12)))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .stroke(isHovered ? Color.cyan.opacity(0.85) : Color.white.opacity(0.16), lineWidth: 1.2)
+                        )
+                    
                     Image(systemName: icon)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white)
                 }
-                Text(name)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(1)
+                
+                VStack(spacing: 1) {
+                    Text(name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    if !sublabel.isEmpty {
+                        Text(sublabel)
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: 72)
         }
         .buttonStyle(.plain)
+        .onHover { h in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = h
+            }
+        }
     }
 }
+
 
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
