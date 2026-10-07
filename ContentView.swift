@@ -390,8 +390,10 @@ struct AVPlayerLoopingMotionView: NSViewRepresentable {
         
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.contentsGravity = .resizeAspectFill
         playerLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         playerLayer.frame = view.bounds
+        context.coordinator.playerLayer = playerLayer
         view.layer?.addSublayer(playerLayer)
         player.isMuted = true
         player.play()
@@ -399,11 +401,15 @@ struct AVPlayerLoopingMotionView: NSViewRepresentable {
     }
     
     func updateNSView(_ nsView: NSView, context: Context) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        context.coordinator.playerLayer?.frame = nsView.bounds
         if let sublayers = nsView.layer?.sublayers {
             for l in sublayers {
                 l.frame = nsView.bounds
             }
         }
+        CATransaction.commit()
     }
     
     func makeCoordinator() -> Coordinator {
@@ -413,6 +419,7 @@ struct AVPlayerLoopingMotionView: NSViewRepresentable {
     class Coordinator {
         var player: AVQueuePlayer?
         var looper: AVPlayerLooper?
+        var playerLayer: AVPlayerLayer?
     }
 }
 
@@ -430,31 +437,33 @@ struct iOSLiveArtworkWallpaperView: View {
             let time = timeline.date.timeIntervalSinceReferenceDate
             let t = isPlaying ? time : 0.0
             
-            // Subtle, elegant micro-motion fitting the notch proportions cleanly
-            let driftX1 = sin(t * 0.40) * 8.0
-            let driftY1 = cos(t * 0.32) * 5.0
-            let driftX2 = cos(t * 0.38 + 1.2) * 12.0
-            let driftY2 = sin(t * 0.45 + 0.8) * 6.0
-            let scalePulse = 1.02 + sin(t * 0.50) * 0.02
+            // Subtle, elegant micro-motion calibrated around top-left origin
+            let driftX1 = sin(t * 0.40) * 6.0
+            let driftY1 = cos(t * 0.32) * 4.0
+            let driftX2 = cos(t * 0.38 + 1.2) * 8.0
+            let driftY2 = sin(t * 0.45 + 0.8) * 5.0
+            let scalePulse = 1.0 + sin(t * 0.50) * 0.015
             
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .topLeading) {
                 // Background deep ambient canvas
                 primaryColor
                     .opacity(0.35 * intensity)
+                    .frame(width: width, height: height)
                 
                 // Soft blurred video flow spanning across to the right
                 AVPlayerLoopingMotionView(videoURL: motionVideoURL)
                     .frame(width: width, height: height)
-                    .scaleEffect(scalePulse * 1.06)
-                    .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
-                    .blur(radius: 24)
+                    .scaleEffect(scalePulse * 1.04, anchor: .topLeading)
+                    .offset(x: 10 + driftX2 * 0.5, y: driftY2 * 0.5)
+                    .blur(radius: 22)
                     .opacity(0.60 * intensity)
                 
-                // Sharp HD Video on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
+                // Sharp HD Video on Left (Scales naturally as height grows when AirPlay menu opens)
+                let sharpVideoWidth = max(height, width * 0.48)
                 AVPlayerLoopingMotionView(videoURL: motionVideoURL)
-                    .frame(width: max(140, width * 0.48), height: height)
-                    .scaleEffect(scalePulse)
-                    .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
+                    .frame(width: sharpVideoWidth, height: height)
+                    .scaleEffect(scalePulse, anchor: .topLeading)
+                    .offset(x: driftX1 * 0.3, y: driftY1 * 0.3)
                     .opacity(0.95 * intensity)
                     .mask(
                         LinearGradient(
@@ -776,6 +785,7 @@ struct IslandView: View {
                                     intensity: model.artworkGlowIntensity,
                                     motionVideoURL: videoURL
                                 )
+                                .frame(width: model.width, height: model.height)
                                 .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                                 .scaleEffect(
                                     x: model.isMusicPlaying ? 1.0 : 0.12,
