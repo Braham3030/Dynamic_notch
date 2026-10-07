@@ -226,14 +226,68 @@ enum IslandState {
 }
 
 enum AnimationCurve: String, CaseIterable {
-    case bouncy = "Bouncy Spring"; case spring = "Apple Spring"; case smooth = "Ease In Out"; case easeIn = "Ease In"; case easeOut = "Ease Out"; case linear = "Linear"; case custom = "Custom Sequence"
+    case spring = "Apple Fluid Spring"
+    case bouncy = "Bouncy Spring (High Elasticity)"
+    case snappy = "Snappy Spring (Instant Response)"
+    case smooth = "Cubic Ease In Out"
+    case easeIn = "Ease In (Acceleration)"
+    case easeOut = "Ease Out (Deceleration)"
+    case exponential = "Exponential Ease (Deep Curve)"
+    case quintic = "Quintic Ease (Ultra Smooth)"
+    case anticipatory = "Anticipatory (Back Easing)"
+    case overshoot = "Overshoot Elastic"
+    case linear = "Linear (Constant Velocity)"
+    case custom = "Custom Physics Sandbox"
     
     var defaultC1: CGPoint {
-        switch self { case .linear: return CGPoint(x: 0, y: 0); case .easeIn: return CGPoint(x: 0.42, y: 0); case .easeOut: return CGPoint(x: 0, y: 0); case .smooth: return CGPoint(x: 0.42, y: 0); case .spring: return CGPoint(x: 0.35, y: -0.25); case .bouncy: return CGPoint(x: 0.3, y: -0.5); case .custom: return .zero }
+        switch self {
+        case .linear: return CGPoint(x: 0.0, y: 0.0)
+        case .easeIn: return CGPoint(x: 0.42, y: 0.0)
+        case .easeOut: return CGPoint(x: 0.0, y: 0.0)
+        case .smooth: return CGPoint(x: 0.42, y: 0.0)
+        case .spring: return CGPoint(x: 0.35, y: -0.20)
+        case .bouncy: return CGPoint(x: 0.28, y: -0.55)
+        case .snappy: return CGPoint(x: 0.15, y: -0.05)
+        case .exponential: return CGPoint(x: 0.70, y: 0.0)
+        case .quintic: return CGPoint(x: 0.86, y: 0.0)
+        case .anticipatory: return CGPoint(x: 0.36, y: -0.40)
+        case .overshoot: return CGPoint(x: 0.34, y: 1.45)
+        case .custom: return CGPoint(x: 0.42, y: 0.0)
+        }
     }
     
     var defaultC2: CGPoint {
-        switch self { case .linear: return CGPoint(x: 1.0, y: 1.0); case .easeIn: return CGPoint(x: 1.0, y: 1.0); case .easeOut: return CGPoint(x: 0.58, y: 1.0); case .smooth: return CGPoint(x: 0.58, y: 1.0); case .spring: return CGPoint(x: 0.65, y: 0.85); case .bouncy: return CGPoint(x: 0.6, y: 0.65); case .custom: return .zero }
+        switch self {
+        case .linear: return CGPoint(x: 1.0, y: 1.0)
+        case .easeIn: return CGPoint(x: 1.0, y: 1.0)
+        case .easeOut: return CGPoint(x: 0.58, y: 1.0)
+        case .smooth: return CGPoint(x: 0.58, y: 1.0)
+        case .spring: return CGPoint(x: 0.65, y: 0.90)
+        case .bouncy: return CGPoint(x: 0.55, y: 0.70)
+        case .snappy: return CGPoint(x: 0.45, y: 1.0)
+        case .exponential: return CGPoint(x: 0.15, y: 1.0)
+        case .quintic: return CGPoint(x: 0.07, y: 1.0)
+        case .anticipatory: return CGPoint(x: 0.66, y: 1.0)
+        case .overshoot: return CGPoint(x: 0.64, y: 1.0)
+        case .custom: return CGPoint(x: 0.58, y: 1.0)
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .spring: return "Default iOS Dynamic Island physics with balanced response and natural settling."
+        case .bouncy: return "Playful bouncy spring with exaggerated overshoot and spring oscillation."
+        case .snappy: return "Ultra-responsive rapid spring with zero bounce for hyper-fast multitasking."
+        case .smooth: return "Standard symmetric cubic ease-in-out for elegant morphing transitions."
+        case .easeIn: return "Slow initial acceleration that builds momentum toward full expansion."
+        case .easeOut: return "Immediate rapid burst with smooth gradual deceleration at destination."
+        case .exponential: return "Sharp exponential curve offering dramatic velocity contrast."
+        case .quintic: return "High-order 5th-degree polynomial smoothing for buttery-smooth morphing."
+        case .anticipatory: return "Subtly pulls back before bursting forward into the expanded layout."
+        case .overshoot: return "Expands past target size momentarily before locking into place."
+        case .linear: return "Constant uniform velocity from start to finish with no acceleration."
+        case .custom: return "Fully interactive custom cubic bezier sandbox. Drag control points to define custom physics."
+        }
     }
 }
 
@@ -3362,13 +3416,30 @@ class IslandModel: ObservableObject {
             return .linear(duration: 0.12)
         }
         switch animationCurve {
-        case .spring: return .spring(response: animationDuration, dampingFraction: 0.62, blendDuration: 0.1)
-        case .bouncy: return .spring(response: animationDuration, dampingFraction: 0.45, blendDuration: 0.1)
-        case .smooth: return .easeInOut(duration: animationDuration)
-        case .easeIn: return .easeIn(duration: animationDuration)
-        case .easeOut: return .easeOut(duration: animationDuration)
-        case .linear: return .linear(duration: animationDuration)
-        case .custom: return .timingCurve(customC1.x, customC1.y, customC2.x, customC2.y, duration: animationDuration)
+        case .spring:
+            return .spring(response: animationDuration, dampingFraction: 0.65, blendDuration: 0.08)
+        case .bouncy:
+            return .spring(response: animationDuration, dampingFraction: 0.42, blendDuration: 0.12)
+        case .snappy:
+            return .spring(response: max(0.20, animationDuration * 0.7), dampingFraction: 0.85, blendDuration: 0.05)
+        case .smooth:
+            return .easeInOut(duration: animationDuration)
+        case .easeIn:
+            return .easeIn(duration: animationDuration)
+        case .easeOut:
+            return .easeOut(duration: animationDuration)
+        case .exponential:
+            return .timingCurve(0.70, 0.0, 0.15, 1.0, duration: animationDuration)
+        case .quintic:
+            return .timingCurve(0.86, 0.0, 0.07, 1.0, duration: animationDuration)
+        case .anticipatory:
+            return .timingCurve(0.36, -0.40, 0.66, 1.0, duration: animationDuration)
+        case .overshoot:
+            return .timingCurve(0.34, 1.45, 0.64, 1.0, duration: animationDuration)
+        case .linear:
+            return .linear(duration: animationDuration)
+        case .custom:
+            return .timingCurve(customC1.x, customC1.y, customC2.x, customC2.y, duration: animationDuration)
         }
     }
     func toggleState(_ nextState: IslandState) { if state == nextState { state = .compact } else { state = nextState } }
@@ -4846,8 +4917,145 @@ struct BezierGraph: View {
     }
 }
 
-struct AnimationSettingsView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Morphing Physics"), footer: Text("Drag anywhere inside the Sandbox Graph to instantly trace out custom trajectories.")) { VStack(alignment: .leading, spacing: 30) { VStack(alignment: .leading, spacing: 18) { Picker("Curve Algorithm", selection: $model.animationCurve) { ForEach(AnimationCurve.allCases, id: \.self) { curve in Text(curve.rawValue).tag(curve) } }; VStack(alignment: .leading, spacing: 6) { HStack { Text("Duration Time"); Spacer(); Text(String(format: "%.1fs", model.animationDuration)).monospacedDigit().foregroundStyle(.secondary) }; Slider(value: $model.animationDuration, in: 0.1...1.5, step: 0.1) } }; VStack(alignment: .leading) { Text(model.animationCurve == .custom ? "Live Physics Sandbox" : "System Easing Math").font(.subheadline.weight(.medium)).foregroundStyle(model.animationCurve == .custom ? .orange : .secondary).padding(.bottom, 6); BezierGraph(model: model).frame(height: 250).padding(.horizontal, 26).padding(.vertical, 20).background(Color(NSColor.textBackgroundColor)).cornerRadius(12).shadow(color: model.animationCurve == .custom ? Color.orange.opacity(0.3) : .clear, radius: 10).animation(.spring(response: 0.35, dampingFraction: 0.7), value: model.animationCurve) }.padding(.top, 4) }.padding(.vertical, 12) } }.formStyle(.grouped)
-        .scrollContentBackground(.hidden) } }
+struct AnimationSettingsView: View {
+    @ObservedObject var model = IslandModel.shared
+    @Environment(\.colorScheme) var colorScheme
+    @State private var isTestingNotch: Bool = false
+    
+    private var isLightBg: Bool {
+        if model.settingsBackgroundStyle == .pureWhite { return true }
+        if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
+        return false
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Section 1: Algorithm Picker & Dynamics
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Label("Morphing Physics & Curve Engine", systemImage: "waveform.path.ecg")
+                            .font(.headline)
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                        Spacer()
+                        
+                        // Live Test Dynamic Notch Morph Button
+                        Button {
+                            withAnimation(model.currentAnimation) {
+                                if model.state == .compact {
+                                    model.state = .expandedMusic
+                                } else {
+                                    model.state = .compact
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "play.fill")
+                                Text("Test In Notch")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.blue))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    VStack(spacing: 12) {
+                        // Curve Algorithm Picker
+                        HStack {
+                            Text("Curve Algorithm")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            Spacer()
+                            Picker("", selection: $model.animationCurve) {
+                                ForEach(AnimationCurve.allCases, id: \.self) { curve in
+                                    Text(curve.rawValue).tag(curve)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 260)
+                        }
+                        
+                        // Algorithm description badge
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.blue)
+                            Text(model.animationCurve.description)
+                                .font(.system(size: 11))
+                                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.65))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(10)
+                        .background(isLightBg ? Color.blue.opacity(0.06) : Color.blue.opacity(0.12))
+                        .cornerRadius(8)
+                        
+                        Divider().opacity(0.2)
+                        
+                        // Duration Slider
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Animation Duration")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                Spacer()
+                                Text(String(format: "%.2fs", model.animationDuration))
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            HStack(spacing: 12) {
+                                Text("0.1s (Instant)")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                                Slider(value: $model.animationDuration, in: 0.1...1.5, step: 0.05)
+                                Text("1.5s (Cinematic)")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal, 28)
+                
+                // Section 2: Interactive Sandbox Graph
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(model.animationCurve == .custom ? "Live Custom Bezier Sandbox" : "Mathematical Curve Trajectory")
+                            .font(.headline)
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                        Spacer()
+                        if model.animationCurve == .custom {
+                            Text("Drag handles to sculpt trajectory")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    
+                    BezierGraph(model: model)
+                        .frame(height: 220)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .background(isLightBg ? Color.white : Color(NSColor.textBackgroundColor))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(model.animationCurve == .custom ? Color.orange.opacity(0.6) : (isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12)), lineWidth: 1.2)
+                        )
+                        .shadow(color: model.animationCurve == .custom ? Color.orange.opacity(0.2) : Color.black.opacity(0.15), radius: 8)
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 20)
+            }
+            .padding(.top, 6)
+        }
+    }
+}
 
 struct LiveNotchPreviewPill: View {
     let isMini: Bool
