@@ -531,9 +531,7 @@ struct IslandView: View {
                                 .padding(6)
                         )
                     } else if model.isExpanded {
-                        if model.state == .expandedAirDrop {
-                            airDropExpandedView
-                        } else if model.state == .expandedAirPods {
+                        if model.state == .expandedAirPods {
                             // Dedicated 3D AirPods Connection Stage without switcher dock
                             AirPods3DHeroView()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -549,6 +547,8 @@ struct IslandView: View {
                                         musicView
                                     } else if model.state == .expandedFood {
                                         foodView
+                                    } else if model.state == .expandedAirDrop {
+                                        airDropExpandedView
                                     } else {
                                         controlsView
                                     }
@@ -976,7 +976,7 @@ struct IslandView: View {
     }
     
         @ViewBuilder var airDropExpandedView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             if model.isAirDropSending, let person = model.airDropTargetPerson {
                 // Live Transfer Progress View with Animated Shrinking File into Person
                 VStack(spacing: 14) {
@@ -1001,7 +1001,7 @@ struct IslandView: View {
                         }
                         Spacer()
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 14)
                     .padding(.top, 10)
                     
                     // Liquid Glass Progress Bar
@@ -1020,7 +1020,7 @@ struct IslandView: View {
                         }
                         .frame(height: 10)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 14)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else if model.airDropSentSuccess, let person = model.airDropTargetPerson {
@@ -1046,14 +1046,58 @@ struct IslandView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
-                // Top Section: Real File Preview Card + Close (X) button
-                HStack(alignment: .center) {
-                    AirDropFilePreviewCard(files: model.droppedAirDropFiles)
+                // Notch Stored File Card (Drag OUT to any window, Finder, or app!)
+                HStack(spacing: 12) {
+                    if let firstFile = model.droppedAirDropFiles.first {
+                        // Draggable Item Provider
+                        HStack(spacing: 10) {
+                            if let thumb = model.droppedFileThumbnail {
+                                Image(nsImage: thumb)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 36, height: 36)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            } else {
+                                Image(systemName: "doc.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.cyan)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(firstFile.lastPathComponent)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "hand.draw.fill")
+                                        .font(.system(size: 9))
+                                    Text("Drag out to use anywhere")
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                                .foregroundColor(.cyan.opacity(0.9))
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .onDrag {
+                            return NSItemProvider(object: firstFile as NSURL)
+                        }
+                    }
                     
+                    Spacer()
+                    
+                    // Clear / Remove File from Notch
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             model.droppedAirDropFiles = []
@@ -1061,24 +1105,25 @@ struct IslandView: View {
                         }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.system(size: 18))
+                            .foregroundColor(.white.opacity(0.55))
                     }
                     .buttonStyle(.plain)
+                    .help("Remove file from notch shelf")
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 4)
+                .padding(.horizontal, 10)
                 
-                Divider()
-                    .background(Color.white.opacity(0.15))
-                    .padding(.horizontal, 18)
-                
-                // Bottom Section: Real People Nearby to AirDrop to!
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("People Nearby")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.5))
-                        .padding(.horizontal, 18)
+                // AirDrop Option (Higher position, click explicitly to choose recipient)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "airdrop")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.cyan)
+                        Text("AirDrop to Nearby Devices")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .padding(.horizontal, 10)
                     
                     HStack(spacing: 12) {
                         ForEach(model.discoverNearbyPeople()) { person in
@@ -1087,49 +1132,41 @@ struct IslandView: View {
                                     model.sendAirDrop(to: person)
                                 }
                             } label: {
-                                VStack(spacing: 5) {
+                                VStack(spacing: 4) {
                                     ZStack(alignment: .bottomTrailing) {
                                         Circle()
                                             .fill(person.color.opacity(0.85))
-                                            .frame(width: 44, height: 44)
+                                            .frame(width: 38, height: 38)
                                             .overlay(
                                                 Circle()
                                                     .stroke(Color.white.opacity(0.25), lineWidth: 1.5)
                                             )
                                         
                                         Text(person.initials)
-                                            .font(.system(size: 16, weight: .bold))
+                                            .font(.system(size: 14, weight: .bold))
                                             .foregroundColor(.white)
                                         
-                                        // Device Type Badge (iPhone, iPad, Mac, etc.)
                                         Image(systemName: person.deviceIcon)
-                                            .font(.system(size: 9, weight: .bold))
+                                            .font(.system(size: 8, weight: .bold))
                                             .foregroundColor(.white)
-                                            .padding(2.5)
+                                            .padding(2)
                                             .background(Circle().fill(Color.black.opacity(0.85)))
                                             .offset(x: 2, y: 2)
                                     }
                                     
-                                    VStack(spacing: 1) {
-                                        Text(person.name)
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.white)
-                                            .lineLimit(1)
-                                        
-                                        Text(person.device)
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.white.opacity(0.55))
-                                            .lineLimit(1)
-                                    }
+                                    Text(person.name)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
                                 }
-                                .frame(width: 76)
+                                .frame(width: 68)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.horizontal, 12)
                 }
+                .padding(.top, 2)
             }
         }
         .padding(.vertical, 8)
@@ -5077,6 +5114,9 @@ struct VerticalSwitcher: View {
         VStack(spacing: 5) {
             switcherButton(icon: "switch.2", target: .expandedControls)
             switcherButton(icon: "music.note", target: .expandedMusic)
+            if !model.droppedAirDropFiles.isEmpty {
+                switcherButton(icon: "doc.fill", target: .expandedAirDrop)
+            }
         }
         .padding(4)
         .background(
@@ -5121,7 +5161,6 @@ struct VerticalSwitcher: View {
         .buttonStyle(.plain)
     }
 }
-
 
 // - Hardware Management Extensions
 extension IslandModel {
