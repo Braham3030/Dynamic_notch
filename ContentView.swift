@@ -2228,8 +2228,10 @@ class IslandModel: ObservableObject {
 
     @Published var listeningMode: Int = 2 // 2: Noise Cancellation, 1: Off, 4: Adaptive, 3: Transparency
     @Published var adaptiveBalance: Double = 0.5 // 0.0: More Noise Cancellation <---> 1.0: More Transparency
+    private var lastModeSetTime: Date = .distantPast
     
     func setAirPodsMode(_ mode: Int) {
+        lastModeSetTime = Date()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
             self.listeningMode = mode
         }
@@ -2383,7 +2385,7 @@ class IslandModel: ObservableObject {
                     let wasConnected = self.airPodsConnected
                     self.airPodsName = airpods.name
                     self.airPodsBatteryLevel = airpods.battery
-                    if let mode = airpods.currentMode {
+                    if Date().timeIntervalSince(self.lastModeSetTime) > 3.0, let mode = airpods.currentMode {
                         self.listeningMode = mode
                     }
                     
@@ -4809,7 +4811,7 @@ struct AirPodsListeningModeSlider: View {
                             .offset(x: max(2, min(totalWidth - pillSize - 2, pillLeadingX)))
                             .animation(dragX == nil ? .spring(response: 0.32, dampingFraction: 0.75) : .none, value: pillLeadingX)
                         
-                        // Buttons & Icons
+                        // 3 Clear Segment Hitboxes for Instant Click / Tap
                         HStack(spacing: 0) {
                             ForEach(0..<3, id: \.self) { i in
                                 let modeVal = modes[i]
@@ -4821,23 +4823,23 @@ struct AirPodsListeningModeSlider: View {
                                         model.setAirPodsMode(modeVal)
                                     }
                                 } label: {
-                                    AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    ZStack {
+                                        Rectangle()
+                                            .fill(Color.clear)
+                                            .contentShape(Rectangle())
+                                        AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
                     }
                     .contentShape(Capsule(style: .continuous))
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 4)
                             .onChanged { gesture in
                                 dragX = max(pillSize / 2.0, min(totalWidth - (pillSize / 2.0), gesture.location.x))
-                                let closestIndex = min(2, max(0, Int(gesture.location.x / segmentWidth)))
-                                let newMode = modes[closestIndex]
-                                if model.listeningMode != newMode {
-                                    model.setAirPodsMode(newMode)
-                                }
                             }
                             .onEnded { gesture in
                                 let closestIndex = min(2, max(0, Int(gesture.location.x / segmentWidth)))
@@ -4851,16 +4853,25 @@ struct AirPodsListeningModeSlider: View {
                 }
                 .frame(height: 36)
                 
-                // Labels underneath the capsule pill
+                // Labels underneath the capsule pill - also directly clickable
                 HStack(spacing: 0) {
                     ForEach(0..<3, id: \.self) { i in
                         let modeVal = modes[i]
                         let isSelected = model.listeningMode == modeVal
-                        Text(titles[i])
-                            .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? .blue : .white.opacity(0.55))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                dragX = nil
+                                model.setAirPodsMode(modeVal)
+                            }
+                        } label: {
+                            Text(titles[i])
+                                .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? .blue : .white.opacity(0.55))
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -4868,8 +4879,6 @@ struct AirPodsListeningModeSlider: View {
         .frame(width: 340)
     }
 }
-
-
 
 struct SettingsWindowPreviewer: View {
     @ObservedObject var model: IslandModel
