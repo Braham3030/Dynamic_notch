@@ -389,16 +389,15 @@ struct IslandView: View {
                         }
                     }
                     
-                    // 2. Soft, Glassy Dynamic Notch Gradient with Music (Translucent & subtle, starts solid black in compact mode)
+                    // 2. Soft, Glassy Dynamic Notch Gradient with Music (No text blur overlap)
                     if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
                         LinearGradient(
                             colors: [
-                                model.artworkColor.opacity(0.40),
-                                model.artworkColor.opacity(0.22),
-                                model.artworkColor.opacity(0.08)
+                                model.artworkColor.opacity(0.12 * model.artworkGlowIntensity),
+                                Color.clear
                             ],
                             startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            endPoint: .center
                         )
                         .transition(.opacity)
                     }
@@ -1174,9 +1173,9 @@ struct IslandView: View {
 
     @ViewBuilder var musicView: some View {
         VStack(spacing: 8) {
-            // Top Row: Artwork (Left) | Title & Artist (Center-Left) | Waveform Speaker / Audio Output Icon (Right)
+            // Top Row: Artwork (Left) | Title & Artist (Center-Left) | Live Dynamic Waveform (Right)
             HStack(spacing: 12) {
-                // Large Rounded Artwork with 3D Flip
+                // Large Rounded Artwork shifted left with 3D Flip
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
                     ZStack {
@@ -1199,53 +1198,55 @@ struct IslandView: View {
                     .transition(.flip3D(isForward: model.isForward))
                 }
                 .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
-                .shadow(color: Color.black.opacity(0.35), radius: 4, y: 2)
+                .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
                 .zIndex(1)
                 
-                // Track Title & Artist with Swipe Gesture for Previous/Next
+                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & track text preview
                 ZStack(alignment: .leading) {
-                    // Previous Track Indicator
+                    // Previous Track Preview text
                     if manualDragOffset > 0 {
                         HStack(spacing: 6) {
                             Image(systemName: "backward.fill")
-                                .font(.system(size: 13, weight: .bold))
-                            Text("Previous Track")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Previous")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
-                        .foregroundColor(.white.opacity(0.85))
-                        .offset(x: manualDragOffset - 220)
+                        .foregroundColor(Color.cyan)
+                        .offset(x: manualDragOffset - 150)
+                        .opacity(min(1.0, Double(manualDragOffset) / 40.0))
                     }
                     
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12.5, weight: .medium))
                             .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
                     .offset(x: manualDragOffset)
                     
-                    // Next Track Indicator
+                    // Next Track Preview text
                     if manualDragOffset < 0 {
                         HStack(spacing: 6) {
-                            Text("Next Track")
-                                .font(.system(size: 14, weight: .semibold))
+                            Text("Next")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                             Image(systemName: "forward.fill")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 11, weight: .bold))
                         }
-                        .foregroundColor(.white.opacity(0.85))
-                        .offset(x: manualDragOffset + 220)
+                        .foregroundColor(Color.cyan)
+                        .offset(x: manualDragOffset + 150)
+                        .opacity(min(1.0, Double(-manualDragOffset) / 40.0))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .mask(
                     LinearGradient(gradient: Gradient(stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: .black, location: 0.03),
-                        .init(color: .black, location: 0.97),
+                        .init(color: .black, location: 0.02),
+                        .init(color: .black, location: 0.98),
                         .init(color: .clear, location: 1.0)
                     ]), startPoint: .leading, endPoint: .trailing)
                 )
@@ -1256,36 +1257,32 @@ struct IslandView: View {
                             manualDragOffset = value.translation.width
                         }
                         .onEnded { drag in
-                            if drag.translation.width < -40 {
+                            if drag.translation.width < -45 {
                                 model.isForward = true
                                 model.lastManualSkipTime = Date()
-                                withAnimation(.easeIn(duration: 0.2)) { manualDragOffset = -400 }
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { manualDragOffset = -260 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: true)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = 400
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { manualDragOffset = 0 }
-                                        }
+                                        manualDragOffset = 260
+                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) { manualDragOffset = 0 }
                                     }
                                 }
-                            } else if drag.translation.width > 40 {
+                            } else if drag.translation.width > 45 {
                                 model.isForward = false
                                 model.lastManualSkipTime = Date()
-                                withAnimation(.easeIn(duration: 0.2)) { manualDragOffset = 400 }
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { manualDragOffset = 260 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: false)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = -400
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { manualDragOffset = 0 }
-                                        }
+                                        manualDragOffset = -260
+                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) { manualDragOffset = 0 }
                                     }
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { manualDragOffset = 0 }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) { manualDragOffset = 0 }
                             }
                         }
                 )
@@ -1294,17 +1291,16 @@ struct IslandView: View {
                 .offset(y: showsExpandedMusicDetails ? 0 : -72)
                 .allowsHitTesting(showsExpandedMusicDetails)
                 
-                // Top-Right: Sound Waveform Broadcast / Audio Device Target Icon (Matches Screenshot)
+                // Top-Right: Authentic Live Dynamic Waveform (Reactive / Smooth Flow)
                 ZStack {
-                    Image(systemName: "waveform.badge.magnifyingglass")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
+                    MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 28, height: 20)
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
                 .zIndex(1)
             }
-            .padding(.horizontal, 4)
+            .padding(.leading, 0)
+            .padding(.trailing, 2)
             
             // Middle Row: Scrubber with Left (Elapsed) and Right (Remaining) Monospaced Timers
             LiquidScrubber()
@@ -1314,25 +1310,27 @@ struct IslandView: View {
             
             // Bottom Row: Star Favorite (Far Left) | Backward | Play/Pause | Forward | AirPlay/AirPods (Far Right)
             HStack(alignment: .center) {
-                // Star Favorite Button (Far Left)
+                // Star Favorite Button with Apple Music Live Sync & Bouncy Animation
                 Button(action: {
-                    // Star / Favorite track action
+                    model.toggleFavoriteSong()
                 }) {
                     ZStack {
                         Rectangle()
                             .fill(Color.clear)
                             .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundColor(.white.opacity(0.65))
+                        Image(systemName: model.isCurrentTrackFavorited ? "star.fill" : "star")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundColor(model.isCurrentTrackFavorited ? Color(red: 1.0, green: 0.22, blue: 0.37) : Color.white.opacity(0.65))
+                            .scaleEffect(model.isCurrentTrackFavorited ? 1.15 : 1.0)
+                            .symbolEffect(.bounce, value: model.isCurrentTrackFavorited)
                     }
                 }
                 .buttonStyle(.plain)
                 
                 Spacer()
                 
-                // Center Controls: Backward | Play/Pause | Forward
+                // Center Controls: Backward | Play/Pause | Forward (with Apple Spring Animations)
                 HStack(spacing: 32) {
                     Button(action: {
                         bouncePrev += 1
@@ -1349,7 +1347,7 @@ struct IslandView: View {
                                 .symbolEffect(.bounce, value: bouncePrev)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SkipButtonStyle(direction: -1))
                     
                     Button(action: {
                         model.togglePlayPause()
@@ -1365,7 +1363,7 @@ struct IslandView: View {
                                 .contentTransition(.symbolEffect(.replace))
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PlayPauseButtonStyle())
                     
                     Button(action: {
                         bounceNext += 1
@@ -1382,14 +1380,14 @@ struct IslandView: View {
                                 .symbolEffect(.bounce, value: bounceNext)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SkipButtonStyle(direction: 1))
                 }
                 
                 Spacer()
                 
                 // AirPlay / AirPods Route Output Button (Far Right)
                 Button(action: {
-                    // Open sound output picker or switch listening route
+                    model.openBluetoothSettings()
                 }) {
                     ZStack {
                         Rectangle()
@@ -1403,7 +1401,7 @@ struct IslandView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 6)
             .padding(.top, 2)
             .opacity(showsExpandedMusicDetails ? 1 : 0)
             .offset(y: showsExpandedMusicDetails ? 0 : -36)
@@ -2613,6 +2611,46 @@ class IslandModel: ObservableObject {
         }
     }
     
+    @Published var isCurrentTrackFavorited: Bool = false
+
+    func toggleFavoriteSong() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
+            self.isCurrentTrackFavorited.toggle()
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let scriptSource = """
+            if application "Music" is running then
+                tell application "Music"
+                    try
+                        set curTrk to current track
+                        set isFav to favorited of curTrk
+                        set favorited of curTrk to not isFav
+                        return (not isFav)
+                    on error
+                        try
+                            set isLoved to loved of curTrk
+                            set loved of curTrk to not isLoved
+                            return (not isLoved)
+                        end try
+                    end try
+                end tell
+            end if
+            return false
+            """
+            if let script = NSAppleScript(source: scriptSource) {
+                var err: NSDictionary?
+                let res = script.executeAndReturnError(&err)
+                let finalFav = res.booleanValue
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        self.isCurrentTrackFavorited = finalFav
+                    }
+                }
+            }
+        }
+    }
+
     // Centralized Music Actions
     func skipTrack(forward: Bool) {
         DispatchQueue.main.async {
@@ -2654,12 +2692,20 @@ class IslandModel: ObservableObject {
                     set tDur to duration of curTrk
                     set tPos to player position
                     set rArt to missing value
+                    set isFav to false
+                    try
+                        set isFav to favorited of curTrk
+                    on error
+                        try
+                            set isFav to loved of curTrk
+                        end try
+                    end try
                     try
                         if (count of artworks of curTrk) > 0 then
                             set rArt to raw data of artwork 1 of curTrk
                         end if
                     end try
-                    return {tID, tTrack, tArtist, tDur, tPos, rArt}
+                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav}
                 end if
             end tell
         end if
@@ -2723,6 +2769,7 @@ class IslandModel: ObservableObject {
             let tArtist = desc.atIndex(3)?.stringValue ?? "Unknown Artist"
             let tDuration = desc.atIndex(4)?.doubleValue ?? 100.0
             let tPosition = desc.atIndex(5)?.doubleValue ?? 0.0
+            let isFav = desc.numberOfItems >= 7 ? (desc.atIndex(7)?.booleanValue ?? false) : false
             
             let cacheKey = !tID.isEmpty ? tID : "\(tTrack)_\(tArtist)"
             
@@ -2752,7 +2799,8 @@ class IslandModel: ObservableObject {
                 
                 let isNewTrack = (self.currentTrackPersistentID != cacheKey || self.currentTrack != tTrack)
                 
-                self.trackDuration = tDuration > 0 ? tDuration : 1.0
+                self.trackDuration = tDuration
+                self.isCurrentTrackFavorited = isFav
                 self.playbackPosition = tPosition
                 self.lastPlaybackPollTime = Date()
                 self.isMusicPlaying = true
