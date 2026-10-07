@@ -113,6 +113,40 @@ import SwiftUI
 import AVFoundation
 import Accelerate
 
+
+enum WaveformStyle: String, CaseIterable, Identifiable {
+    case appleClassic = "Apple Classic"
+    case modernBars = "Modern Vertical Bars"
+    case fluidSiriWaves = "Fluid Siri Waveform"
+    case neonEqualizer = "Cyber Neon Equalizer"
+    case circularPulse = "Orbital Sound Pulse"
+    case minimalDots = "Minimal Sound Dots"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .appleClassic: return "waveform"
+        case .modernBars: return "chart.bar.fill"
+        case .fluidSiriWaves: return "waveform.path"
+        case .neonEqualizer: return "waveform.badge.magnifyingglass"
+        case .circularPulse: return "circle.dotted.and.circle"
+        case .minimalDots: return "ellipsis"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .appleClassic: return "Apple Dynamic Island 5-bar synchronized equalizer"
+        case .modernBars: return "High density 7-channel dynamic frequency bars"
+        case .fluidSiriWaves: return "Continuous sinusoidal harmonic Siri motion wave"
+        case .neonEqualizer: return "Multi-color neon glow rhythm spectrum"
+        case .circularPulse: return "Breathing radial sonic rings expansion"
+        case .minimalDots: return "Compact animated rhythmic audio dots"
+        }
+    }
+}
+
 class AudioAnalyzer: ObservableObject {
     static let shared = AudioAnalyzer()
     
@@ -2879,6 +2913,20 @@ class IslandModel: ObservableObject {
     @Published var artworkColor: Color = .orange
     @Published var isMusicPlaying: Bool = false
     @Published var enableArtworkGlow: Bool = true
+    @Published var enableFullWindowGlow: Bool = UserDefaults.standard.bool(forKey: "enableFullWindowGlow") {
+        didSet { UserDefaults.standard.set(enableFullWindowGlow, forKey: "enableFullWindowGlow") }
+    }
+    @Published var fullWindowGlowIntensity: Double = (UserDefaults.standard.object(forKey: "fullWindowGlowIntensity") as? Double) ?? 0.65 {
+        didSet { UserDefaults.standard.set(fullWindowGlowIntensity, forKey: "fullWindowGlowIntensity") }
+    }
+    @Published var selectedWaveformStyle: WaveformStyle = {
+        if let raw = UserDefaults.standard.string(forKey: "selectedWaveformStyle"), let s = WaveformStyle(rawValue: raw) {
+            return s
+        }
+        return .appleClassic
+    }() {
+        didSet { UserDefaults.standard.set(selectedWaveformStyle.rawValue, forKey: "selectedWaveformStyle") }
+    }
     
     // Track transition overrides
     @Published var isForward: Bool = true
@@ -4403,59 +4451,187 @@ struct MusicWaveform: View {
     @ObservedObject var analyzer = AudioAnalyzer.shared
     var isPlaying: Bool
     var color: Color = .white
+    var overrideStyle: WaveformStyle? = nil
+    
+    var style: WaveformStyle {
+        overrideStyle ?? model.selectedWaveformStyle
+    }
     
     // Dynamic frequencies & phase offsets
-    let frequencies: [Double] = [3.2, 5.8, 4.4, 6.6, 5.0]
-    let phases: [Double] = [0.0, 1.4, 2.8, 0.95, 2.1]
+    let frequencies: [Double] = [3.2, 5.8, 4.4, 6.6, 5.0, 4.1, 6.2]
+    let phases: [Double] = [0.0, 1.4, 2.8, 0.95, 2.1, 0.5, 1.8]
     let minHeight: CGFloat = 3.0
     let maxHeight: CGFloat = 17.0
     
     var body: some View {
         if isPlaying {
-            if model.waveformTrackSynchronized {
-                // Real Track Audio Reactive Waveform with Dramatic Bass Punch (Middle to Outer)
-                HStack(spacing: 2.2) {
-                    ForEach(0..<5, id: \.self) { i in
-                        let peak = analyzer.peaks.indices.contains(i) ? analyzer.peaks[i] : 0.2
-                        // Exaggerate bass and dynamic range
-                        let dramaticHeight = minHeight + CGFloat(pow(Double(peak), 1.15)) * (maxHeight - minHeight)
-                        Capsule()
-                            .fill(color)
-                            .frame(width: 3.2, height: max(minHeight, min(maxHeight, dramaticHeight)))
-                            .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.58), value: peak)
-                    }
-                }
-                .frame(height: maxHeight, alignment: .center)
-            } else {
-                // Dramatic, Butter-Smooth Dynamic Sine Waveform with Expansive Bass Motion
-                TimelineView(.animation) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    HStack(spacing: 2.2) {
-                        ForEach(0..<5, id: \.self) { i in
-                            // Bass bar 0 punches with deeper sinusoidal modulation
-                            let primaryWave = sin(time * frequencies[i] + phases[i])
-                            let subHarmonic = sin(time * (frequencies[i] * 0.5) + phases[i]) * 0.35
-                            let combinedWave = (primaryWave + subHarmonic + 1.35) / 2.7
-                            let h = minHeight + CGFloat(max(0.0, min(1.0, combinedWave))) * (maxHeight - minHeight)
-                            
-                            Capsule()
-                                .fill(color)
-                                .frame(width: 3.2, height: h)
-                        }
-                    }
-                    .frame(height: maxHeight, alignment: .center)
-                }
+            switch style {
+            case .appleClassic:
+                renderAppleClassic
+            case .modernBars:
+                renderModernBars
+            case .fluidSiriWaves:
+                renderFluidSiriWaves
+            case .neonEqualizer:
+                renderNeonEqualizer
+            case .circularPulse:
+                renderCircularPulse
+            case .minimalDots:
+                renderMinimalDots
             }
         } else {
             HStack(spacing: 2.2) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule()
-                        .fill(color.opacity(0.6))
-                        .frame(width: 3.2, height: minHeight)
+                        .fill(color.opacity(0.5))
+                        .frame(width: 3.0, height: minHeight)
                 }
             }
             .frame(height: maxHeight, alignment: .center)
         }
+    }
+    
+    @ViewBuilder
+    private var renderAppleClassic: some View {
+        if model.waveformTrackSynchronized {
+            HStack(spacing: 2.2) {
+                ForEach(0..<5, id: \.self) { i in
+                    let peak = analyzer.peaks.indices.contains(i) ? analyzer.peaks[i] : 0.2
+                    let dramaticHeight = minHeight + CGFloat(pow(Double(peak), 1.15)) * (maxHeight - minHeight)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: 3.2, height: max(minHeight, min(maxHeight, dramaticHeight)))
+                        .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.58), value: peak)
+                }
+            }
+            .frame(height: maxHeight, alignment: .center)
+        } else {
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                HStack(spacing: 2.2) {
+                    ForEach(0..<5, id: \.self) { i in
+                        let primaryWave = sin(time * frequencies[i] + phases[i])
+                        let subHarmonic = sin(time * (frequencies[i] * 0.5) + phases[i]) * 0.35
+                        let combinedWave = (primaryWave + subHarmonic + 1.35) / 2.7
+                        let h = minHeight + CGFloat(max(0.0, min(1.0, combinedWave))) * (maxHeight - minHeight)
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 3.2, height: h)
+                    }
+                }
+                .frame(height: maxHeight, alignment: .center)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var renderModernBars: some View {
+        if model.waveformTrackSynchronized {
+            HStack(spacing: 1.8) {
+                ForEach(0..<7, id: \.self) { i in
+                    let peakIndex = (i < 5) ? i : (i % 5)
+                    let peak = analyzer.peaks.indices.contains(peakIndex) ? analyzer.peaks[peakIndex] : 0.2
+                    let h = minHeight + CGFloat(pow(Double(peak), 1.05)) * (maxHeight - minHeight)
+                    Capsule()
+                        .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                        .frame(width: 2.4, height: max(minHeight, min(maxHeight, h)))
+                        .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.60), value: peak)
+                }
+            }
+            .frame(height: maxHeight, alignment: .center)
+        } else {
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                HStack(spacing: 1.8) {
+                    ForEach(0..<7, id: \.self) { i in
+                        let w = sin(time * frequencies[i] + phases[i]) * 0.5 + 0.5
+                        let h = minHeight + CGFloat(w) * (maxHeight - minHeight)
+                        Capsule()
+                            .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 2.4, height: h)
+                    }
+                }
+                .frame(height: maxHeight, alignment: .center)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var renderFluidSiriWaves: some View {
+        TimelineView(.animation) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let factor: CGFloat = model.waveformTrackSynchronized ? (analyzer.peaks.indices.contains(2) ? analyzer.peaks[2] : 0.6) : 0.75
+            Canvas { context, size in
+                var path = Path()
+                let midY = size.height / 2
+                let width = size.width
+                path.move(to: CGPoint(x: 0, y: midY))
+                for x in stride(from: 0, through: width, by: 1.5) {
+                    let relativeX = x / width
+                    let sine = sin(relativeX * 3.5 * Double.pi + time * 6.0)
+                    let envelope = sin(relativeX * Double.pi)
+                    let y = midY + CGFloat(sine * envelope) * (size.height * 0.42 * factor)
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+                context.stroke(path, with: .color(color), lineWidth: 2.2)
+            }
+            .frame(width: 32, height: maxHeight)
+        }
+    }
+    
+    @ViewBuilder
+    private var renderNeonEqualizer: some View {
+        HStack(spacing: 2.0) {
+            ForEach(0..<5, id: \.self) { i in
+                let peak = (model.waveformTrackSynchronized && analyzer.peaks.indices.contains(i)) ? analyzer.peaks[i] : 0.5
+                let h = minHeight + CGFloat(peak) * (maxHeight - minHeight)
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.cyan, Color.purple, color],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 3.0, height: max(minHeight, min(maxHeight, h)))
+                    .shadow(color: Color.cyan.opacity(0.75), radius: 2.5, x: 0, y: 0)
+                    .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.55), value: peak)
+            }
+        }
+        .frame(height: maxHeight, alignment: .center)
+    }
+    
+    @ViewBuilder
+    private var renderCircularPulse: some View {
+        TimelineView(.animation) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = model.waveformTrackSynchronized ? (analyzer.peaks.indices.contains(1) ? analyzer.peaks[1] : 0.5) : CGFloat(sin(time * 4.0) * 0.35 + 0.65)
+            ZStack {
+                Circle()
+                    .stroke(color.opacity(0.35), lineWidth: 1.2)
+                    .frame(width: 12 + pulse * 6, height: 12 + pulse * 6)
+                Circle()
+                    .fill(color)
+                    .frame(width: 6 + pulse * 4, height: 6 + pulse * 4)
+                    .shadow(color: color.opacity(0.6), radius: 3)
+            }
+            .frame(width: 24, height: maxHeight)
+        }
+    }
+    
+    @ViewBuilder
+    private var renderMinimalDots: some View {
+        HStack(spacing: 3.5) {
+            ForEach(0..<4, id: \.self) { i in
+                let peak = (model.waveformTrackSynchronized && analyzer.peaks.indices.contains(i)) ? analyzer.peaks[i] : 0.45
+                let s = 3.0 + CGFloat(peak) * 3.5
+                Circle()
+                    .fill(color)
+                    .frame(width: s, height: s)
+                    .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.60), value: peak)
+            }
+        }
+        .frame(height: maxHeight, alignment: .center)
     }
 }
 
@@ -9860,5 +10036,284 @@ struct AirPlayDevicePickerInMusicView: View {
                 )
         )
         .padding(.top, 4)
+    }
+}
+
+
+struct AudioVisualisationSettingsView: View {
+    @ObservedObject var model = IslandModel.shared
+    @Binding var selectedPane: SettingsPane
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isLightBg: Bool {
+        if model.settingsBackgroundStyle == .pureWhite { return true }
+        if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
+        return false
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Live Interactive Waveform & Glow Preview
+                previewCard
+                
+                // Real Track Audio Synchronisation Toggle
+                realAudioSection
+                
+                // Waveform Style Gallery
+                waveformGallerySection
+                
+                // Full Window / Screen Glow Section
+                fullScreenGlowSection
+            }
+            .padding(.top, 6)
+            .padding(.bottom, 24)
+        }
+        .toggleStyle(.switch)
+    }
+    
+    @ViewBuilder
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Live Visualisation Preview")
+                .font(.headline)
+                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+            
+            ZStack {
+                // Dark Glass Backdrop
+                LinearGradient(
+                    colors: [
+                        model.artworkColor.opacity(0.35),
+                        Color(red: 0.08, green: 0.08, blue: 0.12)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(height: 140)
+                
+                VStack(spacing: 12) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(model.artworkColor.opacity(0.4))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "music.note")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(model.currentTrack.isEmpty ? "Preview Track" : model.currentTrack)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                            Text(model.selectedWaveformStyle.rawValue)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.cyan)
+                        }
+                        
+                        Spacer()
+                        
+                        // Active Live Waveform Preview in Card
+                        MusicWaveform(isPlaying: true, color: model.artworkColor)
+                            .padding(.trailing, 8)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Liquid Scrubber Preview
+                    LiquidScrubber()
+                        .scaleEffect(0.92)
+                }
+            }
+            .frame(height: 140)
+            .cornerRadius(14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isLightBg ? Color.black.opacity(0.15) : Color.white.opacity(0.18), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+        }
+        .padding(.horizontal, 28)
+    }
+    
+    @ViewBuilder
+    private var realAudioSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Audio Synchronization")
+                .font(.headline)
+                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+            
+            VStack(spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Follow Real Track Audio")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                        Text("Analyzes real playback frequency harmonics and beat rhythms without microphone degradation or audio latency.")
+                            .font(.system(size: 11))
+                            .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.waveformTrackSynchronized)
+                        .labelsHidden()
+                        .onChange(of: model.waveformTrackSynchronized) { active in
+                            if active {
+                                AudioAnalyzer.shared.startMonitoring()
+                            } else {
+                                AudioAnalyzer.shared.stopMonitoring()
+                            }
+                        }
+                }
+            }
+            .padding(14)
+            .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+            .cornerRadius(10)
+        }
+        .padding(.horizontal, 28)
+    }
+    
+    @ViewBuilder
+    private var waveformGallerySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Waveform Styles")
+                    .font(.headline)
+                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                Spacer()
+                Text("6 Distinct Equalizers")
+                    .font(.caption)
+                    .foregroundColor(.cyan)
+            }
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(WaveformStyle.allCases) { style in
+                    WaveformCardThumbnail(
+                        style: style,
+                        isSelected: model.selectedWaveformStyle == style,
+                        isLightBg: isLightBg
+                    ) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            model.selectedWaveformStyle = style
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 28)
+    }
+    
+    @ViewBuilder
+    private var fullScreenGlowSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Full Screen Ambient Glow")
+                .font(.headline)
+                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+            
+            VStack(spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Full Window Screen Glow")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                        Text("Projects the playing song's dynamic artwork color onto the entire screen edges, creating an expansive cinematic halo.")
+                            .font(.system(size: 11))
+                            .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.enableFullWindowGlow)
+                        .labelsHidden()
+                }
+                
+                if model.enableFullWindowGlow {
+                    Divider().opacity(0.15)
+                    HStack {
+                        Text("Glow Intensity")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(isLightBg ? Color(red: 0.2, green: 0.2, blue: 0.25) : .white.opacity(0.8))
+                        Slider(value: $model.fullWindowGlowIntensity, in: 0.2...1.0)
+                        Text("\(Int(model.fullWindowGlowIntensity * 100))%")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                            .frame(width: 40, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(14)
+            .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+            .cornerRadius(10)
+        }
+        .padding(.horizontal, 28)
+    }
+}
+
+struct WaveformCardThumbnail: View {
+    let style: WaveformStyle
+    let isSelected: Bool
+    let isLightBg: Bool
+    let action: () -> Void
+    
+    private var cardBgColor: Color {
+        if isSelected { return Color.blue.opacity(0.16) }
+        return isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06)
+    }
+    
+    private var cardBorderColor: Color {
+        if isSelected { return Color.blue.opacity(0.55) }
+        return isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)
+    }
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                previewBox
+                labelBox
+            }
+            .padding(6)
+            .background(RoundedRectangle(cornerRadius: 10).fill(cardBgColor))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(cardBorderColor, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private var previewBox: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? Color.blue.opacity(0.25) : Color.black.opacity(0.40))
+                .frame(height: 60)
+            
+            MusicWaveform(isPlaying: true, color: isSelected ? .cyan : .white, overrideStyle: style)
+                .scaleEffect(1.15)
+            
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.blue, lineWidth: 2.2)
+                
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .background(Circle().fill(Color.white))
+                            .font(.system(size: 13))
+                            .padding(4)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var labelBox: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(style.rawValue)
+                .font(.system(size: 11.5, weight: isSelected ? .bold : .semibold))
+                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                .lineLimit(1)
+            Text(style.subtitle)
+                .font(.system(size: 9))
+                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                .lineLimit(1)
+        }
     }
 }
