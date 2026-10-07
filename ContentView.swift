@@ -725,20 +725,22 @@ struct IslandView: View {
                     }
                     
                     // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper
-                    // Explicitly only active when expanded — keeping compact small notch pitch black
+                    // Explicitly only active when expanded — retracts dynamically back into artwork card when paused!
                     if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
                         ZStack(alignment: .leading) {
                             // Full left-to-right ambient artwork gradient all over the notch
                             LinearGradient(
                                 colors: [
-                                    model.artworkColor.opacity(0.48 * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity(0.20 * model.artworkGlowIntensity),
-                                    Color.black.opacity(0.85)
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.48 : 0.08) * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.20 : 0.0) * model.artworkGlowIntensity),
+                                    Color.black.opacity(model.isMusicPlaying ? 0.85 : 0.98)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
-                            .frame(width: model.width, height: model.height)
+                            .frame(width: model.isMusicPlaying ? model.width : 70, height: model.height)
+                            .clipShape(RoundedRectangle(cornerRadius: model.isMusicPlaying ? 24 : 14, style: .continuous))
+                            .animation(.spring(response: 0.48, dampingFraction: 0.76), value: model.isMusicPlaying)
                             
                             // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
                             if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
@@ -760,6 +762,7 @@ struct IslandView: View {
                                 }
                             }
                         }
+                        .animation(.spring(response: 0.48, dampingFraction: 0.76), value: model.isMusicPlaying)
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
                     
@@ -3597,23 +3600,16 @@ class IslandModel: ObservableObject {
     }
 
     func togglePlayPause() {
-        let willPlay = !self.isMusicPlaying
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-            self.isMusicPlaying = willPlay
+        let targetPlaying = !self.isMusicPlaying
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            self.isMusicPlaying = targetPlaying
         }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let script = """
-            tell application "Music"
-                if player state is playing then
-                    pause
-                else
-                    play
-                end if
-            end tell
-            """
+            let cmd = targetPlaying ? "play" : "pause"
+            let script = "tell application \"Music\" to \(cmd)"
             _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            Thread.sleep(forTimeInterval: 0.12)
+            Thread.sleep(forTimeInterval: 0.15)
             self?.fetchCurrentMusicState()
         }
     }
@@ -3673,7 +3669,8 @@ class IslandModel: ObservableObject {
                             set rArt to raw data of artwork 1 of curTrk
                         end if
                     end try
-                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav, nxtName, prevName, tAlbum}
+                    set pState to (player state as string)
+                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav, nxtName, prevName, tAlbum, pState}
                 end if
             end tell
         end if
@@ -3741,6 +3738,7 @@ class IslandModel: ObservableObject {
             var nxtTitle = desc.numberOfItems >= 8 ? (desc.atIndex(8)?.stringValue ?? "") : ""
             var prvTitle = desc.numberOfItems >= 9 ? (desc.atIndex(9)?.stringValue ?? "") : ""
             let tAlbum = desc.numberOfItems >= 10 ? (desc.atIndex(10)?.stringValue ?? "") : ""
+            let pState = desc.numberOfItems >= 11 ? (desc.atIndex(11)?.stringValue ?? "playing") : "playing"
             
             let cacheKey = !tID.isEmpty ? tID : "\(tTrack)_\(tArtist)"
             
@@ -3777,7 +3775,10 @@ class IslandModel: ObservableObject {
                 self.currentAlbum = tAlbum
                 self.playbackPosition = tPosition
                 self.lastPlaybackPollTime = Date()
-                self.isMusicPlaying = true
+                let isActuallyPlaying = (pState.lowercased() == "playing" || pState.lowercased() == "kpsp")
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    self.isMusicPlaying = isActuallyPlaying
+                }
                 
                 self.resolveSurroundingTrackNames(track: tTrack, artist: tArtist, album: tAlbum)
                 
