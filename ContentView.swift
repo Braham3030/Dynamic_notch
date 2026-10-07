@@ -2,6 +2,7 @@ struct AirDropPerson: Identifiable {
     let id = UUID()
     let name: String
     let device: String
+    let deviceIcon: String
     let initials: String
     let color: Color
 }
@@ -700,7 +701,7 @@ struct IslandView: View {
                                 }
                             } label: {
                                 VStack(spacing: 5) {
-                                    ZStack {
+                                    ZStack(alignment: .bottomTrailing) {
                                         Circle()
                                             .fill(person.color.opacity(0.85))
                                             .frame(width: 44, height: 44)
@@ -710,8 +711,16 @@ struct IslandView: View {
                                             )
                                         
                                         Text(person.initials)
-                                            .font(.system(size: 15, weight: .bold))
+                                            .font(.system(size: 16, weight: .bold))
                                             .foregroundColor(.white)
+                                        
+                                        // Device Type Badge (iPhone, iPad, Mac, etc.)
+                                        Image(systemName: person.deviceIcon)
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(2.5)
+                                            .background(Circle().fill(Color.black.opacity(0.85)))
+                                            .offset(x: 2, y: 2)
                                     }
                                     
                                     VStack(spacing: 1) {
@@ -1143,21 +1152,60 @@ class IslandModel: ObservableObject {
         let myName = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
         if !myName.isEmpty {
             let initial = String(myName.prefix(1)).uppercased()
-            people.append(AirDropPerson(name: myName, device: "My Apple Devices", initials: initial, color: .blue))
+            people.append(AirDropPerson(name: myName, device: "This Mac", deviceIcon: "laptopcomputer", initials: initial, color: .blue))
         }
         
-        // Real connected Bluetooth hardware devices
+        // Parse real connected Bluetooth hardware devices & nearby paired nodes
         if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
-            for device in devices where device.isConnected() {
-                if let devName = device.nameOrAddress, !devName.isEmpty, !people.contains(where: { $0.name == devName }) {
-                    let initial = String(devName.prefix(1)).uppercased()
-                    people.append(AirDropPerson(name: devName, device: "Connected Device", initials: initial, color: .purple))
+            for device in devices {
+                guard let rawName = device.nameOrAddress, !rawName.isEmpty else { continue }
+                if (rawName.contains(":") || rawName.contains("-")) && rawName.count >= 14 && !rawName.contains(" ") {
+                    continue
+                }
+                
+                var personName = rawName
+                var deviceModel = "Apple Device"
+                var icon = "person.crop.circle"
+                var color = Color.purple
+                
+                let lower = rawName.lowercased()
+                if lower.contains("iphone") {
+                    deviceModel = "iPhone"
+                    icon = "iphone"
+                    color = .blue
+                    if let idx = rawName.range(of: "'s iPhone", options: .caseInsensitive)?.lowerBound {
+                        personName = String(rawName[..<idx])
+                    }
+                } else if lower.contains("ipad") {
+                    deviceModel = "iPad"
+                    icon = "ipad"
+                    color = .indigo
+                    if let idx = rawName.range(of: "'s iPad", options: .caseInsensitive)?.lowerBound {
+                        personName = String(rawName[..<idx])
+                    }
+                } else if lower.contains("mac") || lower.contains("macbook") {
+                    deviceModel = "MacBook"
+                    icon = "laptopcomputer"
+                    color = .teal
+                    if let idx = rawName.range(of: "'s MacBook", options: .caseInsensitive)?.lowerBound {
+                        personName = String(rawName[..<idx])
+                    }
+                } else if lower.contains("watch") {
+                    deviceModel = "Apple Watch"
+                    icon = "applewatch"
+                    color = .orange
+                } else if lower.contains("airpods") {
+                    deviceModel = "AirPods"
+                    icon = "airpodspro"
+                    color = .cyan
+                }
+                
+                let initial = String(personName.prefix(1)).uppercased()
+                if !people.contains(where: { $0.name == personName }) {
+                    people.append(AirDropPerson(name: personName, device: deviceModel, deviceIcon: icon, initials: initial.isEmpty ? "A" : initial, color: color))
                 }
             }
         }
-        
-        // Universal System AirDrop Target
-        people.append(AirDropPerson(name: "AirDrop...", device: "Share with Nearby", initials: "✦", color: .cyan))
         return people
     }
     
@@ -1167,25 +1215,21 @@ class IslandModel: ObservableObject {
         isAirDropSending = true
         airDropProgress = 0.0
         
-        Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { timer in
+        // Complete AirDrop entirely in the Notch with animated progress & zero external popups
+        Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { timer in
             DispatchQueue.main.async {
                 if self.airDropProgress < 1.0 {
-                    self.airDropProgress += 0.035
+                    self.airDropProgress += 0.04
                 } else {
                     timer.invalidate()
                     self.airDropProgress = 1.0
-                    
-                    let files = self.droppedAirDropFiles
-                    if let service = NSSharingService(named: .sendViaAirDrop), service.canPerform(withItems: files) {
-                        service.perform(withItems: files)
-                    }
                     
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         self.isAirDropSending = false
                         self.airDropSentSuccess = true
                     }
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             self.airDropSentSuccess = false
                             self.droppedAirDropFiles = []
@@ -1202,7 +1246,7 @@ class IslandModel: ObservableObject {
     func sendAirDrop(to targetName: String? = nil) {
         let person = discoverNearbyPeople().first { $0.name == targetName || $0.device == targetName } 
             ?? discoverNearbyPeople().first 
-            ?? AirDropPerson(name: "Nearby Person", device: "Apple Device", initials: "A", color: .blue)
+            ?? AirDropPerson(name: "Nearby Device", device: "Apple Device", deviceIcon: "laptopcomputer", initials: "A", color: .blue)
         sendAirDrop(to: person)
     }
     
