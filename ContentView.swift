@@ -8813,6 +8813,12 @@ struct LiquidScrubber: View {
     
     let scrubberWidth: CGFloat = 220
 
+    // Calculates perceptual luminance of a color using standard Rec. 709 coefficients
+    private func luminance(of color: Color) -> CGFloat {
+        let nsColor = NSColor(color).usingColorSpace(.sRGB) ?? NSColor.white
+        return (0.2126 * nsColor.redComponent) + (0.7152 * nsColor.greenComponent) + (0.0722 * nsColor.blueComponent)
+    }
+
     var body: some View {
         let currentProgress = isDragging ? dragProgress : (model.playbackPosition / model.trackDuration)
         let safeProgress = currentProgress.isNaN ? 0.0 : max(0.0, min(1.0, currentProgress))
@@ -8821,6 +8827,19 @@ struct LiquidScrubber: View {
         let currentTrackWidth = max(0, CGFloat(safeProgress) * scrubberWidth)
         let progressTint = model.artworkColor
         let trackHeight: CGFloat = isDragging ? 8.0 : 4.5
+        
+        // Dynamic Contrast Inversion:
+        // If the progress fill color is almost identical to the background groove (very dark/black or very light/white),
+        // adaptively invert the groove & knob rim in the opposite spectrum for crisp visual separation!
+        let progressLum = luminance(of: progressTint)
+        let isDarkArtwork = progressLum < 0.22
+        let isBrightArtwork = progressLum > 0.85
+        
+        let grooveColor = isDarkArtwork ? Color.white.opacity(isDragging ? 0.35 : 0.24) : (isBrightArtwork ? Color.black.opacity(isDragging ? 0.45 : 0.30) : Color.white.opacity(isDragging ? 0.20 : 0.12))
+        let grooveBorderColor = isDarkArtwork ? Color.white.opacity(0.35) : (isBrightArtwork ? Color.black.opacity(0.40) : Color.white.opacity(0.12))
+        
+        let knobBaseColors: [Color] = isDarkArtwork ? [Color.white, Color(white: 0.90)] : (isBrightArtwork ? [Color(white: 0.20), Color(white: 0.10)] : [Color.white, Color(white: 0.88)])
+        let knobSpecularBorder: [Color] = isDarkArtwork ? [Color.cyan, Color.white, Color.white.opacity(0.9)] : (isBrightArtwork ? [Color.black, Color.gray, Color.black] : [Color.white, Color.white.opacity(0.55), Color.white.opacity(0.90)])
         
         HStack(spacing: 8) {
             // Left (Elapsed) - Fixed bounding box so it NEVER shifts adjacent elements
@@ -8832,13 +8851,13 @@ struct LiquidScrubber: View {
             .frame(width: 36, height: 20, alignment: .trailing)
             
             ZStack(alignment: .leading) {
-                // 1. Translucent Liquid Glass Background Groove Track
+                // 1. Translucent Liquid Glass Background Groove Track (Adaptive high-contrast fill)
                 Capsule()
-                    .fill(Color.white.opacity(isDragging ? 0.20 : 0.12))
+                    .fill(grooveColor)
                     .frame(width: scrubberWidth, height: trackHeight)
                     .overlay(
                         Capsule()
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                            .stroke(grooveBorderColor, lineWidth: 0.8)
                     )
                     .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
@@ -8846,32 +8865,29 @@ struct LiquidScrubber: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [progressTint.opacity(0.85), progressTint],
+                            colors: isDarkArtwork ? [progressTint.opacity(0.95), Color.cyan.opacity(0.85)] : (isBrightArtwork ? [progressTint, Color.orange.opacity(0.90)] : [progressTint.opacity(0.85), progressTint]),
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
                     .frame(width: currentTrackWidth, height: trackHeight)
-                    .shadow(color: progressTint.opacity(isDragging ? 0.65 : 0.40), radius: isDragging ? 4 : 2, x: 0, y: 0)
+                    .shadow(color: isDarkArtwork ? Color.cyan.opacity(0.60) : progressTint.opacity(isDragging ? 0.65 : 0.40), radius: isDragging ? 4 : 2, x: 0, y: 0)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
                     .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
-                // 3. Ultra Liquid Glass Slider Knob with Expanded Touch Target & Specular Halo
+                // 3. Ultra Liquid Glass Slider Knob with Expanded Touch Target & Adaptive Specular Halo
                 ZStack {
                     // Ambient halo glow behind knob
                     Capsule()
-                        .fill(progressTint.opacity(isDragging ? 0.55 : 0.25))
+                        .fill(isDarkArtwork ? Color.cyan.opacity(0.60) : progressTint.opacity(isDragging ? 0.55 : 0.25))
                         .frame(width: isDragging ? 28 : 14, height: isDragging ? 20 : 14)
                         .blur(radius: isDragging ? 5 : 2.5)
                     
-                    // Liquid Glass Translucent Base
+                    // Liquid Glass Translucent Base (Inverted to opposite tone if almost identical)
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    Color.white,
-                                    Color(white: 0.88)
-                                ],
+                                colors: knobBaseColors,
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -8882,11 +8898,7 @@ struct LiquidScrubber: View {
                             Capsule()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [
-                                            Color.white,
-                                            Color.white.opacity(0.55),
-                                            Color.white.opacity(0.90)
-                                        ],
+                                        colors: knobSpecularBorder,
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
@@ -8896,7 +8908,7 @@ struct LiquidScrubber: View {
                         // Inner Liquid Glass Glow Pill
                         .overlay(
                             Capsule()
-                                .fill(progressTint.opacity(isDragging ? 0.45 : 0.20))
+                                .fill(isDarkArtwork ? Color.cyan.opacity(0.50) : progressTint.opacity(isDragging ? 0.45 : 0.20))
                                 .frame(width: isDragging ? 9 : 4, height: isDragging ? 6 : 4)
                         )
                         .shadow(color: Color.black.opacity(0.38), radius: isDragging ? 5 : 2.5, x: 0, y: 1.5)
