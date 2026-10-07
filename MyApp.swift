@@ -23,6 +23,57 @@ class IslandOverlayWindow: NSPanel {
     override var acceptsFirstResponder: Bool { false }
 }
 
+class IslandDropTargetHostingView<Content: View>: NSHostingView<Content> {
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let pboard = sender.draggingPasteboard
+        let types = pboard.types ?? []
+        let hasFiles = types.contains(.fileURL) || types.contains(.URL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        if hasFiles {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    IslandModel.shared.isAirDropTargeted = true
+                }
+            }
+            return .copy
+        }
+        return []
+    }
+    
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let pboard = sender.draggingPasteboard
+        let types = pboard.types ?? []
+        let hasFiles = types.contains(.fileURL) || types.contains(.URL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        return hasFiles ? .copy : []
+    }
+    
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                IslandModel.shared.isAirDropTargeted = false
+            }
+        }
+    }
+    
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pboard = sender.draggingPasteboard
+        if let directURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !directURLs.isEmpty {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    IslandModel.shared.isAirDropTargeted = false
+                    for u in directURLs {
+                        if !IslandModel.shared.droppedAirDropFiles.contains(u) {
+                            IslandModel.shared.droppedAirDropFiles.append(u)
+                        }
+                    }
+                    IslandModel.shared.state = .expandedAirDrop
+                }
+            }
+            return true
+        }
+        return false
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [(window: NSWindow, screen: NSScreen)] = []
     var updaterController: SPUStandardUpdaterController!
@@ -69,69 +120,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    private var lastObservedDragChangeCount: Int = 0
-
     private func setupMouseTracking() {
         // Track mouse globally across all apps for smooth notch hover interactions
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            self?.handleMouseLocation(NSEvent.mouseLocation, eventType: event.type)
+            self?.handleMouseLocation(NSEvent.mouseLocation)
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            self?.handleMouseLocation(NSEvent.mouseLocation, eventType: event.type)
+            self?.handleMouseLocation(NSEvent.mouseLocation)
             return event
         }
     }
     
-    private func checkActiveFileDrag() {
-        let pboard = NSPasteboard(name: .drag)
-        let count = pboard.changeCount
-        
-        // Strict file check: must contain real readable file URLs on the pasteboard
-        guard let classes = [NSURL.self] as? [AnyClass],
-              let fileURLs = pboard.readObjects(forClasses: classes, options: nil) as? [URL],
-              !fileURLs.isEmpty else {
-            if IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        IslandModel.shared.isAirDropTargeted = false
-                    }
-                }
-            }
-            return
-        }
-        
-        let mouseButtons = NSEvent.pressedMouseButtons
-        let isLeftDragging = (mouseButtons & 1) != 0
-        
-        let model = IslandModel.shared
-        if isLeftDragging {
-            if !model.isAirDropTargeted && model.state != .expandedAirDrop {
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-                        model.isAirDropTargeted = true
-                    }
-                }
-            }
-        } else {
-            if model.isAirDropTargeted && model.state != .expandedAirDrop {
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        model.isAirDropTargeted = false
-                    }
-                }
-            }
-        }
-    }
-    
-    private func handleMouseLocation(_ location: NSPoint, eventType: NSEvent.EventType? = nil) {
+    private func handleMouseLocation(_ location: NSPoint) {
         let model = IslandModel.shared
         let width = model.width
         let height = model.height
-        
-        if eventType == .leftMouseDragged {
-            checkActiveFileDrag()
-        }
         
         for item in islandWindows {
             let screen = item.screen
@@ -160,7 +164,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Outside notch: Set ignoresMouseEvents = true so WindowServer passes 100% of clicks straight to Apple Music, Settings, Finder, etc.!
                 if !win.ignoresMouseEvents {
                     win.ignoresMouseEvents = true
-        win.registerForDraggedTypes([.fileURL, .URL])
                 }
             }
         }
@@ -200,10 +203,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingView = NSHostingView(rootView: islandView)
+        let hostingView = IslandDropTargetHostingView(rootView: islandView)
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         hostingView.autoresizingMask = [.width, .height]
+        hostingView.registerForDraggedTypes([.fileURL, .URL])
         
         let width: CGFloat = 680
         let height: CGFloat = 500
@@ -226,6 +230,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.isRestorable = false 
         // Default to ignoring mouse events so underlying apps (Apple Music, Settings, Finder) are NEVER blocked!
         win.ignoresMouseEvents = true
+        win.registerForDraggedTypes([.fileURL, .URL])
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
         win.orderFrontRegardless()
