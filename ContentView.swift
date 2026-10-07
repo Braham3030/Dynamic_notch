@@ -3392,10 +3392,16 @@ class IslandModel: ObservableObject {
         fastSeekTimer = nil
         if isFastSeeking {
             isFastSeeking = false
-            // Confirm playback is active at the new position
+            self.isMusicPlaying = true
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                _ = NSAppleScript(source: "tell application \"Music\" to play")?.executeAndReturnError(nil)
-                Thread.sleep(forTimeInterval: 0.15)
+                _ = NSAppleScript(source: """
+                tell application "Music"
+                    if player state is paused or player state is stopped then
+                        play
+                    end if
+                end tell
+                """)?.executeAndReturnError(nil)
+                Thread.sleep(forTimeInterval: 0.10)
                 self?.fetchCurrentMusicState()
             }
         }
@@ -9752,11 +9758,13 @@ struct AirPlayDevicePickerInMusicView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
-            .padding(.top, 2)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
             
             // Large Device Selection Cards
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
+                    Spacer().frame(height: 2)
                     if model.airPlayDevices.isEmpty {
                         HStack(spacing: 8) {
                             ProgressView()
