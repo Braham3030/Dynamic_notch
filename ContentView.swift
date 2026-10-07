@@ -9318,16 +9318,20 @@ struct AirPlayItemVolumeSlider: View {
     @Binding var volume: Double
     var onVolumeChanged: (Double) -> Void
     
+    @State private var localVolume: Double = 0.8
+    @State private var isDragging: Bool = false
+    @State private var lastAppleScriptCallTime: Date = .distantPast
+    
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: volume < 0.05 ? "speaker.slash.fill" : (volume < 0.35 ? "speaker.wave.1.fill" : (volume < 0.7 ? "speaker.wave.2.fill" : "speaker.wave.3.fill")))
+            Image(systemName: localVolume < 0.05 ? "speaker.slash.fill" : (localVolume < 0.35 ? "speaker.wave.1.fill" : (localVolume < 0.7 ? "speaker.wave.2.fill" : "speaker.wave.3.fill")))
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(.cyan)
                 .frame(width: 16)
             
             GeometryReader { geo in
-                let trackWidth = max(10, geo.size.width)
-                let fillWidth = max(0, min(trackWidth, trackWidth * CGFloat(volume)))
+                let trackWidth = max(20, geo.size.width)
+                let fillWidth = max(0, min(trackWidth, trackWidth * CGFloat(localVolume)))
                 
                 ZStack(alignment: .leading) {
                     Capsule()
@@ -9355,18 +9359,42 @@ struct AirPlayItemVolumeSlider: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { g in
+                            isDragging = true
                             let fraction = max(0.0, min(1.0, Double(g.location.x / trackWidth)))
+                            localVolume = fraction
+                            
+                            // Throttle AppleScript execution to 70ms intervals during smooth continuous drag
+                            let now = Date()
+                            if now.timeIntervalSince(lastAppleScriptCallTime) > 0.07 {
+                                lastAppleScriptCallTime = now
+                                onVolumeChanged(fraction)
+                            }
+                        }
+                        .onEnded { g in
+                            let fraction = max(0.0, min(1.0, Double(g.location.x / trackWidth)))
+                            localVolume = fraction
                             volume = fraction
                             onVolumeChanged(fraction)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                isDragging = false
+                            }
                         }
                 )
             }
             .frame(height: 18)
             
-            Text("\(Int(round(volume * 100)))%")
+            Text("\(Int(round(localVolume * 100)))%")
                 .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                 .foregroundColor(.cyan)
                 .frame(width: 34, alignment: .trailing)
+        }
+        .onAppear {
+            localVolume = volume
+        }
+        .onChange(of: volume) { newV in
+            if !isDragging {
+                localVolume = newV
+            }
         }
     }
 }
