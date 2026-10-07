@@ -434,10 +434,13 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
                 )
-                // Dynamic Track-Pulsating Ambient Colored Glow behind notch
+                // Dynamic Track-Pulsating Ambient Edge Glow around notch perimeter only (Not beneath the notch)
                 .background(
                     Group {
                         if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                            let cornerR = model.isExpanded ? 24.0 : model.compactCornerRadius
+                            let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
+                            
                             if model.pulsateArtworkGlow {
                                 TimelineView(.animation) { timeline in
                                     let time = timeline.date.timeIntervalSinceReferenceDate
@@ -446,19 +449,20 @@ struct IslandView: View {
                                     let beat = sin(time * (bpm / 60.0) * Double.pi * 2.0)
                                     let pulseFactor = (beat + 1.0) / 2.0 // 0.0 to 1.0
                                     
-                                    let dynamicRadius = (model.isExpanded ? 20.0 : 10.0) + CGFloat(pulseFactor * 14.0 * model.artworkGlowIntensity)
-                                    let dynamicOpacity = (0.30 + pulseFactor * 0.50) * model.artworkGlowIntensity
+                                    let dynamicBlur = (model.isExpanded ? 14.0 : 8.0) + CGFloat(pulseFactor * 12.0 * model.artworkGlowIntensity)
+                                    let strokeWidth = (model.isExpanded ? 4.0 : 3.0) + CGFloat(pulseFactor * 3.0)
+                                    let dynamicOpacity = (0.45 + pulseFactor * 0.55) * model.artworkGlowIntensity
                                     
-                                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
-                                        .fill(model.artworkColor)
-                                        .blur(radius: dynamicRadius)
+                                    shape
+                                        .stroke(model.artworkColor, lineWidth: strokeWidth)
+                                        .blur(radius: dynamicBlur)
                                         .opacity(dynamicOpacity)
                                 }
                             } else {
-                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
-                                    .fill(model.artworkColor)
-                                    .blur(radius: model.isExpanded ? 22 : 12)
-                                    .opacity(0.55 * model.artworkGlowIntensity)
+                                shape
+                                    .stroke(model.artworkColor, lineWidth: model.isExpanded ? 4 : 3)
+                                    .blur(radius: model.isExpanded ? 14 : 9)
+                                    .opacity(0.70 * model.artworkGlowIntensity)
                             }
                         }
                     }
@@ -529,6 +533,10 @@ struct IslandView: View {
                     } else if model.isExpanded {
                         if model.state == .expandedAirDrop {
                             airDropExpandedView
+                        } else if model.state == .expandedAirPods {
+                            // Dedicated 3D AirPods Connection Stage without switcher dock
+                            AirPods3DHeroView()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else if model.state == .expandedPhone || model.state == .expandedNotifications {
                             // Dedicated full-width layout without menu switcher to avoid crowding/clipping
                             controlsView
@@ -1347,7 +1355,7 @@ extension IslandModel {
             case .expandedFood: return 360
             case .expandedPhone: return 420
             case .expandedNotifications: return 420
-            case .expandedAirPods: return 390
+            case .expandedAirPods: return 420
             case .expandedControls: return 420
             case .compact: return baseNotchWidth
             }
@@ -1375,7 +1383,7 @@ extension IslandModel {
             case .expandedFood: return 85
             case .expandedPhone: return 92
             case .expandedNotifications: return 88
-            case .expandedAirPods: return 88
+            case .expandedAirPods: return 110
             case .expandedControls: return airPodsConnected ? 270 : 205
             case .compact: return physicalNotchHeight
             }
@@ -2787,17 +2795,21 @@ class IslandModel: ObservableObject {
 
     func triggerAirPodsBanner() {
         airPodsDismissWorkItem?.cancel()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-            self.airPodsShowingCompact = true
+        // Expand the dynamic notch with full 3D case and AirPods stage animation!
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
+            self.state = .expandedAirPods
         }
+        
         let work = DispatchWorkItem { [weak self] in
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
-                self?.airPodsShowingCompact = false
+            guard let self = self else { return }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
+                self.state = .compact
+                self.airPodsShowingCompact = false
             }
         }
         airPodsDismissWorkItem = work
-        // Briefly display the battery & AirPods status, then shrink away cleanly so music live activity can take over!
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8, execute: work)
+        // Present the full 3D animation, case lid opening & battery percentages, then close the notch seamlessly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.2, execute: work)
     }
 
     func startAudioDeviceMonitoring() {
@@ -4704,6 +4716,235 @@ struct VisualEffect: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+
+// MARK: - Authentic iOS 3D AirPods Connection Hero View
+struct AirPods3DHeroView: View {
+    @ObservedObject var model = IslandModel.shared
+    @State private var lidOpenAngle: Double = 0.0
+    @State private var leftPodOffset: CGFloat = 0.0
+    @State private var rightPodOffset: CGFloat = 0.0
+    @State private var podRotation: Double = 0.0
+    @State private var showBattery: Bool = false
+    @State private var glowOpacity: Double = 0.0
+
+    var body: some View {
+        HStack(spacing: 24) {
+            // Left: 3D Case and AirPods Stage
+            ZStack {
+                // Ambient Glow behind Case
+                Circle()
+                    .fill(Color.white.opacity(glowOpacity * 0.35))
+                    .frame(width: 80, height: 80)
+                    .blur(radius: 16)
+                
+                // Left AirPod floating out
+                AirPodBud3DView(isLeft: true)
+                    .offset(x: -18, y: leftPodOffset)
+                    .rotationEffect(.degrees(-podRotation), anchor: .bottom)
+                    .scaleEffect(showBattery ? 1.0 : 0.85)
+                
+                // Right AirPod floating out
+                AirPodBud3DView(isLeft: false)
+                    .offset(x: 18, y: rightPodOffset)
+                    .rotationEffect(.degrees(podRotation), anchor: .bottom)
+                    .scaleEffect(showBattery ? 1.0 : 0.85)
+
+                // AirPods Pro Case Body & Magnetic Lid
+                ZStack {
+                    // Case Lower Shell (3D Specular Ceramic Gloss)
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 10,
+                        bottomLeadingRadius: 22,
+                        bottomTrailingRadius: 22,
+                        topTrailingRadius: 10,
+                        style: .continuous
+                    )
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.88), Color(white: 0.76)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 54, height: 38)
+                    .overlay(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 10,
+                            bottomLeadingRadius: 22,
+                            bottomTrailingRadius: 22,
+                            topTrailingRadius: 10,
+                            style: .continuous
+                        )
+                        .stroke(LinearGradient(colors: [Color.white, Color.white.opacity(0.3)], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.4), radius: 6, y: 3)
+                    
+                    // Case LED Status Light (Green / Pulsing)
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 4, height: 4)
+                        .shadow(color: Color.green.opacity(0.8), radius: 3)
+                        .offset(y: 4)
+                        .opacity(showBattery ? 1.0 : 0.0)
+                    
+                    // Case Lid (Opens with 3D Flip)
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 20,
+                        bottomLeadingRadius: 4,
+                        bottomTrailingRadius: 4,
+                        topTrailingRadius: 20,
+                        style: .continuous
+                    )
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 54, height: 20)
+                    .overlay(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 20,
+                            bottomLeadingRadius: 4,
+                            bottomTrailingRadius: 4,
+                            topTrailingRadius: 20,
+                            style: .continuous
+                        )
+                        .stroke(Color.white.opacity(0.8), lineWidth: 1)
+                    )
+                    .offset(y: -19)
+                    .rotation3DEffect(
+                        .degrees(lidOpenAngle),
+                        axis: (x: 1.0, y: 0.0, z: 0.0),
+                        anchor: .top,
+                        perspective: 0.6
+                    )
+                }
+                .offset(y: 12)
+            }
+            .frame(width: 90, height: 90)
+            
+            // Right: Device Info & Battery Rings
+            VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.airPodsName.isEmpty ? "AirPods Connected" : model.airPodsName)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Text("Connected to Mac")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.65))
+                }
+                
+                if showBattery {
+                    HStack(spacing: 16) {
+                        // Left/Right Buds Battery
+                        HStack(spacing: 5) {
+                            Image(systemName: "airpodspro")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.cyan)
+                            Text("\(Int(model.airPodsBatteryLevel * 100))%")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                        
+                        // Case Battery
+                        HStack(spacing: 5) {
+                            Image(systemName: "airpodspro.chargingcase.wireless.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.green)
+                            let caseBatt = max(15, Int(model.airPodsBatteryLevel * 100) - 5)
+                            Text("\(caseBatt)%")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .onAppear {
+            // Sequence iPhone 3D Stage Animation
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.72)) {
+                glowOpacity = 1.0
+                lidOpenAngle = -110.0 // Lid swings wide open
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.spring(response: 0.60, dampingFraction: 0.68)) {
+                    leftPodOffset = -22
+                    rightPodOffset = -22
+                    podRotation = 14
+                }
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+                    showBattery = true
+                }
+            }
+        }
+    }
+}
+
+// 3D AirPod Bud Specular Shape
+struct AirPodBud3DView: View {
+    let isLeft: Bool
+    
+    var body: some View {
+        ZStack {
+            // Stem
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, Color(white: 0.82)],
+                        startPoint: isLeft ? .leading : .trailing,
+                        endPoint: isLeft ? .trailing : .leading
+                    )
+                )
+                .frame(width: 4.5, height: 20)
+                .offset(x: isLeft ? -4 : 4, y: 8)
+            
+            // Ear Head
+            UnevenRoundedRectangle(
+                topLeadingRadius: isLeft ? 10 : 8,
+                bottomLeadingRadius: isLeft ? 6 : 8,
+                bottomTrailingRadius: isLeft ? 8 : 6,
+                topTrailingRadius: isLeft ? 8 : 10,
+                style: .continuous
+            )
+            .fill(
+                LinearGradient(
+                    colors: [Color.white, Color(white: 0.90), Color(white: 0.78)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 14, height: 14)
+            .overlay(
+                Circle()
+                    .fill(Color.black.opacity(0.65))
+                    .frame(width: 3.5, height: 3.5)
+                    .offset(x: isLeft ? 2 : -2)
+            )
+            .shadow(color: Color.black.opacity(0.35), radius: 3, y: 2)
+        }
+        .frame(width: 22, height: 32)
+    }
 }
 
 struct VerticalSwitcher: View {
