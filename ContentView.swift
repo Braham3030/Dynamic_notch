@@ -9536,7 +9536,7 @@ struct AirPlayDevicePickerInMusicView: View {
                                                 .foregroundColor(.white.opacity(0.55))
                                         }
                                         
-                                        Spacer()
+                                        Spacer(minLength: 8)
                                         
                                         if dev.isSelected {
                                             Image(systemName: "checkmark.circle.fill")
@@ -9546,7 +9546,8 @@ struct AirPlayDevicePickerInMusicView: View {
                                         }
                                     }
                                     .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
+                                    .padding(.vertical, 8)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 
