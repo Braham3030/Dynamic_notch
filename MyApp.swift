@@ -31,7 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize Sparkle OTA updater
-        updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        updaterController = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
         
         IslandModel.shared.$displayMode
@@ -67,13 +67,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func setupMouseTracking() {
         // Track mouse globally across all apps (Apple Music, Finder, Settings, etc.)
-        mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] _ in
+        mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+            // When user drags a file anywhere, detect and expand notch drop-zone generously
+            if event.type == .leftMouseDragged {
+                let pboard = NSPasteboard(name: .drag)
+                let hasFiles = (pboard.types?.contains(.fileURL) == true) || (pboard.types?.contains(NSPasteboard.PasteboardType("public.file-url")) == true)
+                if hasFiles {
+                    DispatchQueue.main.async {
+                        if !IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                IslandModel.shared.isAirDropTargeted = true
+                            }
+                        }
+                    }
+                }
+            }
             self?.handleMouseLocation(NSEvent.mouseLocation)
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
             return event
+        }
+        
+        // When drag is released, if not dropped into expandedAirDrop, collapse back
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { _ in
+            DispatchQueue.main.async {
+                if IslandModel.shared.isAirDropTargeted && IslandModel.shared.droppedAirDropFiles.isEmpty {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        IslandModel.shared.isAirDropTargeted = false
+                    }
+                }
+            }
         }
     }
     

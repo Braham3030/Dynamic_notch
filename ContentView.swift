@@ -279,20 +279,24 @@ struct IslandView: View {
                     Spacer().frame(height: model.physicalNotchHeight)
                     
                     if model.isAirDropTargeted && model.state != .expandedAirDrop {
-                        // Drag Hovering Indicator
-                        HStack(spacing: 10) {
+                        // Generous Drag Dropzone (Expanded well below physical notch)
+                        VStack(spacing: 6) {
                             Image(systemName: "airdrop")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.cyan)
                             Text("Drop Files to AirDrop")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white)
+                            Text("Release anywhere here to share")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.65))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.cyan.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                                .padding(4)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.cyan.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                .padding(6)
                         )
                     } else if model.isExpanded {
                         if model.state == .expandedAirDrop {
@@ -481,15 +485,19 @@ struct IslandView: View {
             } else {
                 if model.showControlCenter {
                     VStack(spacing: 10) {
-                        HStack(spacing: 12) {
-                            HStack(spacing: 8) { 
+                        HStack(spacing: 14) {
+                            // WiFi & Bluetooth stacked on top of each other
+                            VStack(spacing: 8) { 
                                 ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
                                 ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
                             }
-                            VStack(spacing: 6) { 
+                            
+                            // Inline with Brightness & Volume Sliders
+                            VStack(spacing: 8) { 
                                 CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
                                 CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
-                            }.frame(width: 135)
+                            }
+                            .frame(width: 145)
                         }
                         
                         // AirPods Listening Mode Slider placed neatly UNDERNEATH
@@ -832,7 +840,7 @@ extension IslandModel {
         if isScreenTransitioning {
             return baseNotchWidth
         }
-        if isAirDropTargeted { return 330 }
+        if isAirDropTargeted { return 420 }
         if isExpanded {
             if state == .expandedAirDrop { return 410 }
             if state == .expandedMusic { return 420 }
@@ -850,7 +858,7 @@ extension IslandModel {
     
     var height: CGFloat {
         if isAirDropTargeted && state != .expandedAirDrop {
-            return physicalNotchHeight + 46
+            return physicalNotchHeight + 82 // Generously expanded downwards so it is easy to drop without hitting top screen triggers
         }
         if isExpanded {
             if state == .expandedAirDrop { return 215 }
@@ -2212,22 +2220,24 @@ struct ControlButton: View {
             ZStack {
                 if iconOn == "bluetooth.custom" {
                     BluetoothShape()
-                        .stroke(isOn ? Color.white : Color.gray, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                        .frame(width: 11, height: 15)
+                        .stroke(isOn ? Color.white : Color.gray, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                        .frame(width: 13, height: 17)
                 } else if let value = variableValue, isOn {
                     Image(systemName: iconOn, variableValue: value)
                         .foregroundStyle(.white)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                 } else {
                     Image(systemName: isOn ? iconOn : iconOff)
                         .foregroundStyle(isOn ? .white : .gray)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                 }
             }
-            .frame(width: 38, height: 38)
-            .background(isOn ? activeTint : Color.white.opacity(0.15))
-            .clipShape(Circle())
-            .scaleEffect(isOn ? 1.0 : 0.85)
+            .frame(width: 44, height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isOn ? activeTint : Color.white.opacity(0.14))
+            )
+            .scaleEffect(isOn ? 1.0 : 0.92)
         }
         .buttonStyle(.plain)
     }
@@ -2509,7 +2519,7 @@ struct LiquidScrubber: View {
     @State private var isDragging: Bool = false
     @State private var dragProgress: Double = 0.0
     
-    let scrubberWidth: CGFloat = 200
+    let scrubberWidth: CGFloat = 285
     let scrubberHeight: CGFloat = 24
 
     var body: some View {
