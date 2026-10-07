@@ -2702,149 +2702,12 @@ struct SettingsWindowBackground: View {
             VisualEffect()
                 .opacity(opacity)
             
-            // Rich artistic wallpaper layer with configurable blur
-            Group {
-                switch style {
-                case .systemDefault:
-                    if colorScheme == .dark {
-                        RadialGradient(
-                            colors: [
-                                Color(red: 0.14, green: 0.14, blue: 0.18).opacity(0.92 * opacity),
-                                Color(red: 0.06, green: 0.06, blue: 0.09).opacity(0.96 * opacity),
-                                Color(red: 0.02, green: 0.02, blue: 0.03).opacity(0.99 * opacity)
-                            ],
-                            center: .topLeading,
-                            startRadius: 50,
-                            endRadius: 700
-                        )
-                    } else {
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.98, green: 0.98, blue: 1.0).opacity(0.95 * opacity),
-                                Color(red: 0.92, green: 0.93, blue: 0.96).opacity(0.92 * opacity),
-                                Color(red: 0.88, green: 0.90, blue: 0.94).opacity(0.90 * opacity)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
-                    
-                case .pureWhite:
-                    LinearGradient(
-                        colors: [
-                            Color(white: 0.98).opacity(0.96 * opacity),
-                            Color(white: 0.92).opacity(0.94 * opacity),
-                            Color(white: 0.88).opacity(0.92 * opacity)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    
-                case .pureBlack:
-                    Color(white: 0.02).opacity(0.98 * opacity)
-                    
-                case .customPicture:
-                    if let img = customImage {
-                        Image(nsImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .opacity(opacity)
-                    } else {
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.7 * opacity), Color.purple.opacity(0.8 * opacity)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
-                case .liquidGlass:
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.18 * glass),
-                            Color(red: 0.12, green: 0.22, blue: 0.38).opacity(0.40 * opacity),
-                            Color.black.opacity(0.50 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .sonoma:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.48, blue: 0.26).opacity(0.80 * opacity),
-                            Color(red: 0.88, green: 0.22, blue: 0.48).opacity(0.75 * opacity),
-                            Color(red: 0.38, green: 0.12, blue: 0.58).opacity(0.85 * opacity),
-                            Color(red: 0.12, green: 0.06, blue: 0.28).opacity(0.92 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .sequoia:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.06, green: 0.48, blue: 0.38).opacity(0.82 * opacity),
-                            Color(red: 0.09, green: 0.32, blue: 0.28).opacity(0.78 * opacity),
-                            Color(red: 0.04, green: 0.20, blue: 0.22).opacity(0.86 * opacity),
-                            Color(red: 0.02, green: 0.09, blue: 0.14).opacity(0.94 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .aurora:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.55, green: 0.18, blue: 0.90).opacity(0.82 * opacity),
-                            Color(red: 0.18, green: 0.48, blue: 0.98).opacity(0.78 * opacity),
-                            Color(red: 0.06, green: 0.80, blue: 0.70).opacity(0.72 * opacity),
-                            Color(red: 0.06, green: 0.06, blue: 0.28).opacity(0.92 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .neon:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.12, blue: 0.65).opacity(0.82 * opacity),
-                            Color(red: 0.48, green: 0.06, blue: 0.88).opacity(0.82 * opacity),
-                            Color(red: 0.06, green: 0.58, blue: 0.98).opacity(0.78 * opacity),
-                            Color(red: 0.05, green: 0.03, blue: 0.12).opacity(0.96 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .obsidian:
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.18, green: 0.18, blue: 0.24).opacity(0.92 * opacity),
-                            Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.96 * opacity),
-                            Color(red: 0.02, green: 0.02, blue: 0.04).opacity(0.99 * opacity)
-                        ],
-                        center: .topLeading,
-                        startRadius: 50,
-                        endRadius: 700
-                    )
-                case .dune:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.68, blue: 0.38).opacity(0.82 * opacity),
-                            Color(red: 0.88, green: 0.48, blue: 0.28).opacity(0.78 * opacity),
-                            Color(red: 0.58, green: 0.28, blue: 0.38).opacity(0.82 * opacity),
-                            Color(red: 0.18, green: 0.09, blue: 0.18).opacity(0.94 * opacity)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                case .slate:
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.28, green: 0.31, blue: 0.38).opacity(0.88 * opacity),
-                            Color(red: 0.18, green: 0.20, blue: 0.25).opacity(0.92 * opacity),
-                            Color(red: 0.09, green: 0.10, blue: 0.14).opacity(0.97 * opacity)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
+            // All gradient layers stacked with smooth Apple-style animated opacity crossfades
+            ForEach(SettingsBackgroundStyle.allCases) { item in
+                wallpaperLayer(for: item)
+                    .opacity(style == item ? 1.0 : 0.0)
+                    .blur(radius: blurRadius)
             }
-            .blur(radius: blurRadius)
             
             // Specular Liquid Glass Overlay & Edge Highlights
             if glass > 0 {
@@ -2860,9 +2723,152 @@ struct SettingsWindowBackground: View {
                 .blendMode(.plusLighter)
             }
         }
+        .animation(.easeInOut(duration: 0.45), value: style)
+    }
+    
+    @ViewBuilder
+    private func wallpaperLayer(for itemStyle: SettingsBackgroundStyle) -> some View {
+        switch itemStyle {
+        case .systemDefault:
+            if colorScheme == .dark {
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.14, green: 0.14, blue: 0.18).opacity(0.92 * opacity),
+                        Color(red: 0.06, green: 0.06, blue: 0.09).opacity(0.96 * opacity),
+                        Color(red: 0.02, green: 0.02, blue: 0.03).opacity(0.99 * opacity)
+                    ],
+                    center: .topLeading,
+                    startRadius: 50,
+                    endRadius: 700
+                )
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.98, green: 0.98, blue: 1.0).opacity(0.95 * opacity),
+                        Color(red: 0.92, green: 0.93, blue: 0.96).opacity(0.92 * opacity),
+                        Color(red: 0.88, green: 0.90, blue: 0.94).opacity(0.90 * opacity)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            
+        case .pureWhite:
+            LinearGradient(
+                colors: [
+                    Color(white: 0.98).opacity(0.98 * opacity),
+                    Color(white: 0.94).opacity(0.96 * opacity),
+                    Color(white: 0.90).opacity(0.94 * opacity)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            
+        case .pureBlack:
+            Color(white: 0.02).opacity(0.98 * opacity)
+            
+        case .customPicture:
+            if let img = customImage {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .opacity(opacity)
+            } else {
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.7 * opacity), Color.purple.opacity(0.8 * opacity)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        case .liquidGlass:
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.18 * glass),
+                    Color(red: 0.12, green: 0.22, blue: 0.38).opacity(0.40 * opacity),
+                    Color.black.opacity(0.50 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .sonoma:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.48, blue: 0.26).opacity(0.80 * opacity),
+                    Color(red: 0.88, green: 0.22, blue: 0.48).opacity(0.75 * opacity),
+                    Color(red: 0.38, green: 0.12, blue: 0.58).opacity(0.85 * opacity),
+                    Color(red: 0.12, green: 0.06, blue: 0.28).opacity(0.92 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .sequoia:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.06, green: 0.48, blue: 0.38).opacity(0.82 * opacity),
+                    Color(red: 0.09, green: 0.32, blue: 0.28).opacity(0.78 * opacity),
+                    Color(red: 0.04, green: 0.20, blue: 0.22).opacity(0.86 * opacity),
+                    Color(red: 0.02, green: 0.09, blue: 0.14).opacity(0.94 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .aurora:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.55, green: 0.18, blue: 0.90).opacity(0.82 * opacity),
+                    Color(red: 0.18, green: 0.48, blue: 0.98).opacity(0.78 * opacity),
+                    Color(red: 0.06, green: 0.80, blue: 0.70).opacity(0.72 * opacity),
+                    Color(red: 0.06, green: 0.06, blue: 0.28).opacity(0.92 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .neon:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.12, blue: 0.65).opacity(0.82 * opacity),
+                    Color(red: 0.48, green: 0.06, blue: 0.88).opacity(0.82 * opacity),
+                    Color(red: 0.06, green: 0.58, blue: 0.98).opacity(0.78 * opacity),
+                    Color(red: 0.05, green: 0.03, blue: 0.12).opacity(0.96 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .obsidian:
+            RadialGradient(
+                colors: [
+                    Color(red: 0.18, green: 0.18, blue: 0.24).opacity(0.92 * opacity),
+                    Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.96 * opacity),
+                    Color(red: 0.02, green: 0.02, blue: 0.04).opacity(0.99 * opacity)
+                ],
+                center: .topLeading,
+                startRadius: 50,
+                endRadius: 700
+            )
+        case .dune:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.98, green: 0.68, blue: 0.38).opacity(0.82 * opacity),
+                    Color(red: 0.88, green: 0.48, blue: 0.28).opacity(0.78 * opacity),
+                    Color(red: 0.58, green: 0.28, blue: 0.38).opacity(0.82 * opacity),
+                    Color(red: 0.18, green: 0.09, blue: 0.18).opacity(0.94 * opacity)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .slate:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.28, green: 0.31, blue: 0.38).opacity(0.88 * opacity),
+                    Color(red: 0.18, green: 0.20, blue: 0.25).opacity(0.92 * opacity),
+                    Color(red: 0.09, green: 0.10, blue: 0.14).opacity(0.97 * opacity)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
     }
 }
-
 
 struct NotchCardView: View {
     let theme: NotchTheme
@@ -3379,6 +3385,8 @@ struct ContentView: View {
             }
         }
         .frame(width: 840, height: 680)
+        .environment(\.colorScheme, isLightBg ? .light : .dark)
+        .preferredColorScheme(isLightBg ? .light : .dark)
     }
 }
 
@@ -4201,7 +4209,7 @@ struct LiveActivitiesView: View {
                 
                 HStack {
                     Image(systemName: "airpodspro")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.cyan)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("AirPods Integration")
@@ -5004,225 +5012,268 @@ struct SettingsWindowPreviewer: View {
     }
 }
 
+struct WallpaperThumbnailCard: View {
+    let style: SettingsBackgroundStyle
+    let isSelected: Bool
+    let isLightBg: Bool
+    let customImage: NSImage?
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 5) {
+                thumbnailPreview
+                titleLabels
+            }
+            .padding(5)
+            .background(cardBackground)
+            .overlay(cardBorder)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private var thumbnailPreview: some View {
+        ZStack {
+            SettingsWindowBackground(
+                style: style,
+                opacity: 1.0,
+                glass: 0.8,
+                blurRadius: 0,
+                customImage: customImage
+            )
+            .frame(height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            
+            Image(systemName: style.icon)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.6), radius: 3)
+            
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.blue, lineWidth: 3)
+                
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .background(Circle().fill(Color.white))
+                            .font(.system(size: 13))
+                            .padding(4)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var titleLabels: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(style.rawValue)
+                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                .foregroundColor(isLightBg ? Color(red: 0.12, green: 0.12, blue: 0.18) : .white)
+                .lineLimit(1)
+            Text(style.subtitle)
+                .font(.system(size: 9))
+                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                .lineLimit(1)
+        }
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(isSelected ? Color.blue.opacity(0.20) : (isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06)))
+    }
+    
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .stroke(isSelected ? Color.blue.opacity(0.6) : (isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12)), lineWidth: 1)
+    }
+}
+
 struct BackgroundSettingsView: View {
     @ObservedObject var model = IslandModel.shared
     @Binding var selectedPane: SettingsPane
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isLightBg: Bool {
+        if model.settingsBackgroundStyle == .pureWhite { return true }
+        if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
+        return false
+    }
     
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
-                // Top macOS-style Wallpaper & Window Previewer
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Live Window Preview")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Text("Real-time 1:1 replica of dyNotch")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    
-                    SettingsWindowPreviewer(model: model, activePane: selectedPane)
-                        .frame(height: 195)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                        )
-                        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
-                }
-                .padding(.horizontal, 28)
-                
-                // Wallpaper Gallery Selector
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Choose Window Wallpaper")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        // Pick from Pictures Button
-                        Button {
-                            model.pickCustomWallpaper()
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "plus.circle.fill")
-                                Text("Add from Photos...")
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule()
-                                    .fill(Color.blue)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(SettingsBackgroundStyle.allCases) { style in
-                            let isSelected = model.settingsBackgroundStyle == style
-                            Button {
-                                if style == .customPicture && model.customWallpaperImage == nil {
-                                    model.pickCustomWallpaper()
-                                } else {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                        model.settingsBackgroundStyle = style
-                                    }
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    ZStack {
-                                        SettingsWindowBackground(
-                                            style: style,
-                                            opacity: 1.0,
-                                            glass: 0.8,
-                                            blurRadius: 0,
-                                            customImage: model.customWallpaperImage
-                                        )
-                                        .frame(height: 56)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                        
-                                        Image(systemName: style.icon)
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .shadow(color: .black.opacity(0.6), radius: 3)
-                                        
-                                        if isSelected {
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .stroke(Color.blue, lineWidth: 3)
-                                            
-                                            VStack {
-                                                HStack {
-                                                    Spacer()
-                                                    Image(systemName: "checkmark.circle.fill")
-                                                        .foregroundColor(.blue)
-                                                        .background(Circle().fill(Color.white))
-                                                        .font(.system(size: 13))
-                                                        .padding(4)
-                                                }
-                                                Spacer()
-                                            }
-                                        }
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(style.rawValue)
-                                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                                            .foregroundColor(.white)
-                                            .lineLimit(1)
-                                        Text(style.subtitle)
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.white.opacity(0.6))
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .padding(5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(isSelected ? Color.blue.opacity(0.20) : Color.white.opacity(0.06))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(isSelected ? Color.blue.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .padding(.horizontal, 28)
-                
-                // Form Sliders: Smooth without percentage numbers!
-                VStack(spacing: 10) {
-                    // Wallpaper Blur Slider
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Label("Wallpaper Blur Effect", systemImage: "aqi.medium")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                            Spacer()
-                            Text(model.settingsWallpaperBlur == 0 ? "Clear" : (model.settingsWallpaperBlur > 25 ? "Full Blur" : "Soft Blur"))
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.blue)
-                        }
-                        HStack {
-                            Image(systemName: "photo")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                            Slider(value: $model.settingsWallpaperBlur, in: 0.0...40.0)
-                            Image(systemName: "bubbles.and.sparkles.fill")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.white.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-                    .cornerRadius(10)
-                    
-                    // Liquid Glass Specular Intensity
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Label("Liquid Glass Specular Reflection", systemImage: "sparkles")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                            Spacer()
-                            Text(model.settingsGlassIntensity == 0 ? "Off" : (model.settingsGlassIntensity > 0.75 ? "Full" : "Active"))
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.blue)
-                        }
-                        HStack {
-                            Image(systemName: "drop")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                            Slider(value: $model.settingsGlassIntensity, in: 0.0...1.0)
-                            Image(systemName: "drop.fill")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.white.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-                    .cornerRadius(10)
-                    
-                    // Window Transparency Slider
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Label("Window Opacity", systemImage: "square.2.layers.3d.top.filled")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                            Spacer()
-                            Text(model.settingsWindowOpacity >= 0.95 ? "Full Solid" : (model.settingsWindowOpacity <= 0.45 ? "Translucent" : "Balanced"))
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.blue)
-                        }
-                        HStack {
-                            Image(systemName: "circle.dotted")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                            Slider(value: $model.settingsWindowOpacity, in: 0.25...1.0)
-                            Image(systemName: "circle.fill")
-                                .foregroundColor(.white.opacity(0.5))
-                                .font(.system(size: 11))
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.white.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.12), lineWidth: 1))
-                    .cornerRadius(10)
-                }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 24)
+                previewSection
+                gallerySection
+                controlsSection
             }
             .padding(.top, 6)
         }
     }
+    
+    @ViewBuilder
+    private var previewSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Live Window Preview")
+                    .font(.headline)
+                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                Spacer()
+                Text("Real-time 1:1 replica of dyNotch")
+                    .font(.caption)
+                    .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+            }
+            
+            SettingsWindowPreviewer(model: model, activePane: selectedPane)
+                .frame(height: 195)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isLightBg ? Color.black.opacity(0.15) : Color.white.opacity(0.18), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+        }
+        .padding(.horizontal, 28)
+    }
+    
+    @ViewBuilder
+    private var gallerySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Choose Window Wallpaper")
+                    .font(.headline)
+                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                
+                Spacer()
+                
+                Button {
+                    model.pickCustomWallpaper()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add from Photos...")
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color.blue)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(SettingsBackgroundStyle.allCases) { style in
+                    WallpaperThumbnailCard(
+                        style: style,
+                        isSelected: model.settingsBackgroundStyle == style,
+                        isLightBg: isLightBg,
+                        customImage: model.customWallpaperImage
+                    ) {
+                        if style == .customPicture && model.customWallpaperImage == nil {
+                            model.pickCustomWallpaper()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.45)) {
+                                model.settingsBackgroundStyle = style
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 28)
+    }
+    
+    @ViewBuilder
+    private var controlsSection: some View {
+        VStack(spacing: 10) {
+            // Wallpaper Blur Slider
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Wallpaper Blur Effect", systemImage: "aqi.medium")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    Spacer()
+                    Text(model.settingsWallpaperBlur == 0 ? "Clear" : (model.settingsWallpaperBlur > 25 ? "Full Blur" : "Soft Blur"))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.blue)
+                }
+                HStack {
+                    Image(systemName: "photo")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                    Slider(value: $model.settingsWallpaperBlur, in: 0.0...40.0)
+                    Image(systemName: "bubbles.and.sparkles.fill")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                }
+            }
+            .padding(12)
+            .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12), lineWidth: 1))
+            .cornerRadius(10)
+            
+            // Liquid Glass Specular Intensity
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Liquid Glass Specular Reflection", systemImage: "sparkles")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    Spacer()
+                    Text(model.settingsGlassIntensity == 0 ? "Off" : (model.settingsGlassIntensity > 0.75 ? "Full" : "Active"))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.blue)
+                }
+                HStack {
+                    Image(systemName: "drop")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                    Slider(value: $model.settingsGlassIntensity, in: 0.0...1.0)
+                    Image(systemName: "drop.fill")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                }
+            }
+            .padding(12)
+            .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12), lineWidth: 1))
+            .cornerRadius(10)
+            
+            // Window Transparency Slider
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label("Window Opacity", systemImage: "square.2.layers.3d.top.filled")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    Spacer()
+                    Text(model.settingsWindowOpacity >= 0.95 ? "Full Solid" : (model.settingsWindowOpacity <= 0.45 ? "Translucent" : "Balanced"))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.blue)
+                }
+                HStack {
+                    Image(systemName: "circle.dotted")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                    Slider(value: $model.settingsWindowOpacity, in: 0.25...1.0)
+                    Image(systemName: "circle.fill")
+                        .foregroundColor(isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.5))
+                        .font(.system(size: 11))
+                }
+            }
+            .padding(12)
+            .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12), lineWidth: 1))
+            .cornerRadius(10)
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 24)
+    }
 }
-
-
