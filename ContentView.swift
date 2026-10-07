@@ -573,7 +573,7 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
                 )
-                // Dynamic Track-Pulsating Ambient Edge Glow around notch perimeter only (Not beneath the notch)
+                // Dynamic Track-Pulsating Ambient Edge Glow around artwork and waveform staying strictly at the side edges of the notch
                 .background(
                     Group {
                         if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
@@ -588,9 +588,10 @@ struct IslandView: View {
                                     let beat = sin(time * (bpm / 60.0) * Double.pi * 2.0)
                                     let pulseFactor = (beat + 1.0) / 2.0 // 0.0 to 1.0
                                     
-                                    let dynamicBlur = (model.isExpanded ? 14.0 : 8.0) + CGFloat(pulseFactor * 12.0 * model.artworkGlowIntensity)
-                                    let strokeWidth = (model.isExpanded ? 4.0 : 3.0) + CGFloat(pulseFactor * 3.0)
-                                    let dynamicOpacity = (0.45 + pulseFactor * 0.55) * model.artworkGlowIntensity
+                                    // Tighter, crisp ambient glow behind the artwork (left) and waveform (right) at the notch edge
+                                    let dynamicBlur = (model.isExpanded ? 8.0 : 5.0) + CGFloat(pulseFactor * 6.0 * model.artworkGlowIntensity)
+                                    let strokeWidth = (model.isExpanded ? 2.5 : 2.0) + CGFloat(pulseFactor * 1.5)
+                                    let dynamicOpacity = (0.35 + pulseFactor * 0.45) * model.artworkGlowIntensity
                                     
                                     shape
                                         .stroke(model.artworkColor, lineWidth: strokeWidth)
@@ -599,9 +600,9 @@ struct IslandView: View {
                                 }
                             } else {
                                 shape
-                                    .stroke(model.artworkColor, lineWidth: model.isExpanded ? 4 : 3)
-                                    .blur(radius: model.isExpanded ? 14 : 9)
-                                    .opacity(0.70 * model.artworkGlowIntensity)
+                                    .stroke(model.artworkColor, lineWidth: model.isExpanded ? 2.5 : 2.0)
+                                    .blur(radius: model.isExpanded ? 8 : 5)
+                                    .opacity(0.55 * model.artworkGlowIntensity)
                             }
                         }
                     }
@@ -1384,23 +1385,32 @@ struct IslandView: View {
                 .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
                 .zIndex(1)
                 
-                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews
+                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews (matching exact 15pt bold font & layout)
                 ZStack(alignment: .leading) {
-                    // Real-Time Previous Track Title Preview text
+                    // Real-Time Previous Track Title Preview (1:1 identical typography and font size)
                     if manualDragOffset > 0 {
-                        let prevDisplay = !model.prevTrackName.isEmpty ? model.prevTrackName : (!model.currentArtist.isEmpty ? "\(model.currentArtist) - Prev" : "Previous")
-                        HStack(spacing: 6) {
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: 10, weight: .bold))
-                            Text(prevDisplay)
-                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        let prevDisplay = !model.prevTrackName.isEmpty ? model.prevTrackName : model.currentTrack
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.cyan)
+                                Text(prevDisplay)
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                            }
+                            Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundColor(.white.opacity(0.65))
                                 .lineLimit(1)
                         }
-                        .foregroundColor(Color.cyan)
-                        .offset(x: manualDragOffset - 180)
-                        .opacity(min(1.0, Double(manualDragOffset) / 35.0))
+                        .padding(.leading, 4)
+                        .offset(x: manualDragOffset - 220)
+                        .opacity(min(1.0, Double(manualDragOffset) / 30.0))
                     }
                     
+                    // Active Playing Track
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -1413,20 +1423,29 @@ struct IslandView: View {
                     }
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
+                    .opacity(max(0.2, 1.0 - Double(abs(manualDragOffset)) / 140.0))
                     
-                    // Real-Time Next Track Title Preview text
+                    // Real-Time Next Track Title Preview (1:1 identical typography and font size)
                     if manualDragOffset < 0 {
-                        let nextDisplay = !model.nextTrackName.isEmpty ? model.nextTrackName : (!model.currentArtist.isEmpty ? "\(model.currentArtist) - Next" : "Next")
-                        HStack(spacing: 6) {
-                            Text(nextDisplay)
-                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        let nextDisplay = !model.nextTrackName.isEmpty ? model.nextTrackName : model.currentTrack
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 5) {
+                                Text(nextDisplay)
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.cyan)
+                            }
+                            Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundColor(.white.opacity(0.65))
                                 .lineLimit(1)
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 10, weight: .bold))
                         }
-                        .foregroundColor(Color.cyan)
-                        .offset(x: manualDragOffset + 180)
-                        .opacity(min(1.0, Double(-manualDragOffset) / 35.0))
+                        .padding(.leading, 4)
+                        .offset(x: manualDragOffset + 220)
+                        .opacity(min(1.0, Double(-manualDragOffset) / 30.0))
                     }
                 }
                 .padding(.leading, 2)
@@ -2515,33 +2534,36 @@ class IslandModel: ObservableObject {
     private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
         guard !track.isEmpty else { return }
         
-        // If Apple Music already provided local playlist titles, keep them
-        if !self.nextTrackName.isEmpty && !self.prevTrackName.isEmpty { return }
-        
-        let cacheKey = "\(artist)_\(album)"
-        if let cachedList = self.albumTracksCache[cacheKey], let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+        let cacheKey = "\(artist)_\(album.isEmpty ? track : album)"
+        if let cachedList = self.albumTracksCache[cacheKey],
+           let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
             DispatchQueue.main.async {
-                if self.prevTrackName.isEmpty, idx > 0 {
-                    self.prevTrackName = cachedList[idx - 1]
-                }
-                if self.nextTrackName.isEmpty, idx < cachedList.count - 1 {
-                    self.nextTrackName = cachedList[idx + 1]
-                }
+                self.prevTrackName = idx > 0 ? cachedList[idx - 1] : ""
+                self.nextTrackName = idx < cachedList.count - 1 ? cachedList[idx + 1] : ""
             }
             return
         }
         
         guard !artist.isEmpty else { return }
         let queryTerm = "\(artist) \(album.isEmpty ? track : album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        guard let url = URL(string: "https://itunes.apple.com/search?term=\(queryTerm)&entity=song&limit=30") else { return }
+        guard let url = URL(string: "https://itunes.apple.com/search?term=\(queryTerm)&entity=song&limit=50") else { return }
         
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let self = self, let data = data else { return }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let results = json["results"] as? [[String: Any]] {
-                // Sort by discNumber then trackNumber
+                
+                // Filter songs matching this artist / collection
+                let albumResults = results.filter {
+                    if !album.isEmpty, let cName = $0["collectionName"] as? String {
+                        return cName.localizedCaseInsensitiveContains(album) || album.localizedCaseInsensitiveContains(cName)
+                    }
+                    return true
+                }
+                let songSource = albumResults.isEmpty ? results : albumResults
+                
                 var sortedSongs: [(name: String, trackNum: Int)] = []
-                for item in results {
+                for item in songSource {
                     if let name = item["trackName"] as? String, let num = item["trackNumber"] as? Int {
                         if !sortedSongs.contains(where: { $0.name.lowercased() == name.lowercased() }) {
                             sortedSongs.append((name: name, trackNum: num))
@@ -2554,12 +2576,8 @@ class IslandModel: ObservableObject {
                     self.albumTracksCache[cacheKey] = names
                     if let idx = names.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
                         DispatchQueue.main.async {
-                            if idx > 0 {
-                                self.prevTrackName = names[idx - 1]
-                            }
-                            if idx < names.count - 1 {
-                                self.nextTrackName = names[idx + 1]
-                            }
+                            self.prevTrackName = idx > 0 ? names[idx - 1] : ""
+                            self.nextTrackName = idx < names.count - 1 ? names[idx + 1] : ""
                         }
                     }
                 }
