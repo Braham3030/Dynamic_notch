@@ -354,62 +354,62 @@ struct iOSLiveArtworkWallpaperView: View {
             let t = isPlaying ? time : 0.0
             
             // Multi-frequency organic fluid wave displacement for active live motion
-            let driftX1 = sin(t * 0.55) * 20.0
-            let driftY1 = cos(t * 0.42) * 14.0
-            let driftX2 = cos(t * 0.48 + 1.2) * 26.0
-            let driftY2 = sin(t * 0.62 + 0.8) * 16.0
-            let scalePulse = 1.02 + sin(t * 0.70) * 0.05
-            let rotationAngle = sin(t * 0.30) * 3.0
+            let driftX1 = sin(t * 0.55) * 22.0
+            let driftY1 = cos(t * 0.42) * 15.0
+            let driftX2 = cos(t * 0.48 + 1.2) * 28.0
+            let driftY2 = sin(t * 0.62 + 0.8) * 18.0
+            let scalePulse = 1.03 + sin(t * 0.65) * 0.05
+            let rotationAngle = sin(t * 0.30) * 3.5
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
-                    .opacity(0.32 * intensity)
+                    .opacity(0.38 * intensity)
                 
-                // Base Live Artwork Wallpaper Layer (Fluid zoom, slow breathing motion, and subtle rotation)
+                // Base Live Artwork Wallpaper Layer (Dominating the whole left side with fluid zoom, breathing motion, and soft edge blur)
                 if let art = artwork {
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(120, width * 0.75), height: max(60, height * 1.35))
+                        .frame(width: max(140, width * 0.80), height: max(70, height * 1.40))
                         .scaleEffect(scalePulse)
                         .rotationEffect(.degrees(rotationAngle))
-                        .offset(x: driftX1 * 0.6 - 12, y: driftY1 * 0.6)
-                        .blur(radius: 18)
-                        .opacity(0.55 * intensity)
+                        .offset(x: driftX1 * 0.6 - 15, y: driftY1 * 0.6)
+                        .blur(radius: 14)
+                        .opacity(0.68 * intensity)
                 }
                 
                 // Fluid Orb 1: Primary chromatic dynamic flare
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 160, height: 160)
-                    .blur(radius: 36)
-                    .offset(x: -20 + driftX1, y: -12 + driftY1)
-                    .opacity(0.48 * intensity)
+                    .frame(width: 170, height: 170)
+                    .blur(radius: 34)
+                    .offset(x: -25 + driftX1, y: -15 + driftY1)
+                    .opacity(0.52 * intensity)
                 
                 // Fluid Orb 2: Ambient electric accent flare
                 Circle()
-                    .fill(Color(hue: 0.52, saturation: 0.78, brightness: 0.98))
-                    .frame(width: 130, height: 130)
-                    .blur(radius: 32)
-                    .offset(x: 65 + driftX2, y: 15 + driftY2)
-                    .opacity(0.28 * intensity)
+                    .fill(Color(hue: 0.52, saturation: 0.80, brightness: 0.98))
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 30)
+                    .offset(x: 70 + driftX2, y: 15 + driftY2)
+                    .opacity(0.32 * intensity)
                 
-                // Fluid Orb 3: Liquid light wave wash
+                // Fluid Orb 3: Liquid light wave wash across the bottom-left
                 Ellipse()
-                    .fill(primaryColor.opacity(0.65))
-                    .frame(width: 210, height: 75)
-                    .blur(radius: 28)
-                    .offset(x: driftX2 * 0.7, y: height * 0.30)
-                    .opacity(0.40 * intensity)
+                    .fill(primaryColor.opacity(0.70))
+                    .frame(width: 230, height: 80)
+                    .blur(radius: 26)
+                    .offset(x: driftX2 * 0.7, y: height * 0.28)
+                    .opacity(0.45 * intensity)
             }
-            .frame(width: max(100, width * 0.72), height: height)
+            .frame(width: max(120, width * 0.75), height: height)
             .mask(
                 LinearGradient(
                     colors: [
                         Color.black.opacity(1.0),
-                        Color.black.opacity(0.88),
-                        Color.black.opacity(0.45),
+                        Color.black.opacity(0.92),
+                        Color.black.opacity(0.40),
                         Color.clear
                     ],
                     startPoint: .leading,
@@ -1509,33 +1509,47 @@ struct IslandView: View {
 
     @ViewBuilder var musicView: some View {
         VStack(spacing: 8) {
-            // Top Row: Artwork (Left) | Title & Artist (Center-Left) | Live Dynamic Waveform (Right)
-            HStack(spacing: 14) {
-                // Large Rounded Artwork shifted left with 3D Flip
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
+            // Top Row: Live Artwork Wallpaper Takeover (Left) | Title & Artist | Live Dynamic Waveform (Right)
+            HStack(spacing: 12) {
+                if !model.enableArtworkGlow {
+                    // Standard Fallback Card when Live Wallpaper is toggled off
                     ZStack {
-                        if let img = model.currentArtwork { 
-                            Image(nsImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 52, height: 52)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        } else {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 52, height: 52)
-                            Image(systemName: "music.note")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundColor(.white)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
+                        ZStack {
+                            if let img = model.currentArtwork { 
+                                Image(nsImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 52, height: 52)
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
                         }
+                        .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                        .transition(.flip3D(isForward: model.isForward))
                     }
-                    .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                    .transition(.flip3D(isForward: model.isForward))
+                    .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
+                    .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
+                    .zIndex(1)
+                } else {
+                    // Clean Musical Brand Accent while Live Animated Wallpaper commands the entire left side
+                    ZStack {
+                        Circle()
+                            .fill(model.artworkColor.opacity(0.28))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "music.quarternote.3")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .shadow(color: model.artworkColor.opacity(0.6), radius: 6)
+                    .padding(.leading, 4)
                 }
-                .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
-                .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
-                .zIndex(1)
                 
                 // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews (matching exact 15pt bold font & layout)
                 ZStack(alignment: .leading) {
