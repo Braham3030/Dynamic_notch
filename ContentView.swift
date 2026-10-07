@@ -389,18 +389,7 @@ struct IslandView: View {
                         }
                     }
                     
-                    // 2. Soft, Glassy Dynamic Notch Gradient with Music (No text blur overlap)
-                    if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
-                        LinearGradient(
-                            colors: [
-                                model.artworkColor.opacity(0.12 * model.artworkGlowIntensity),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .center
-                        )
-                        .transition(.opacity)
-                    }
+                    // 2. Music theme maintains 100% crisp solid glass / black background with zero blur overlap on text
                     
                     // 3. AirDrop File/Photo Overflow Ambient Gradient across the whole Notch!
                     if (model.isExpanded && model.state == .expandedAirDrop) || model.isAirDropTargeted {
@@ -505,28 +494,31 @@ struct IslandView: View {
                     Spacer().frame(height: model.physicalNotchHeight)
                     
                     if model.isAirDropTargeted && model.state != .expandedAirDrop {
-                        // Large Spacious AirDrop Dropzone
-                        VStack(spacing: 8) {
+                        // Notch File Shelf Drop Target (Animated compact scale)
+                        VStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .fill(Color.cyan.opacity(0.18))
-                                    .frame(width: 44, height: 44)
-                                AirDropSymbolView(size: 26, color: .cyan)
+                                    .fill(Color.cyan.opacity(0.20))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "tray.and.arrow.down.fill")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.cyan)
+                                    .scaleEffect(0.92)
                             }
                             
-                            Text("Drop Files to AirDrop")
-                                .font(.system(size: 14, weight: .bold))
+                            Text("Save File in Notch")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                             
-                            Text("Release anywhere to select nearby recipients")
-                                .font(.system(size: 11, weight: .medium))
+                            Text("Hold file in shelf • Drag out anytime or AirDrop")
+                                .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.white.opacity(0.65))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.cyan.opacity(0.8), style: StrokeStyle(lineWidth: 1.8, dash: [6, 4]))
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.cyan.opacity(0.75), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                                 .padding(6)
                         )
                     } else if model.isExpanded {
@@ -571,10 +563,10 @@ struct IslandView: View {
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
                 .onDrop(of: [.fileURL, .item], isTargeted: $model.isAirDropTargeted) { providers in
-                    // 1. Try reading URLs immediately from drag pasteboard
+                    // Instant zero-lag pasteboard URL resolution
                     let pboard = NSPasteboard(name: .drag)
                     if let directURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !directURLs.isEmpty {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
                             model.isAirDropTargeted = false
                             model.droppedAirDropFiles = directURLs
                             model.state = .expandedAirDrop
@@ -582,7 +574,6 @@ struct IslandView: View {
                         return true
                     }
                     
-                    // 2. Asynchronous provider fallback
                     var loadedURLs: [URL] = []
                     let group = DispatchGroup()
                     
@@ -602,7 +593,7 @@ struct IslandView: View {
                     
                     group.notify(queue: .main) {
                         let finalURLs = loadedURLs.isEmpty ? [URL(fileURLWithPath: "/Users/Shared/SharedFile")] : loadedURLs
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
                             model.isAirDropTargeted = false
                             model.droppedAirDropFiles = finalURLs
                             model.state = .expandedAirDrop
@@ -1201,19 +1192,20 @@ struct IslandView: View {
                 .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
                 .zIndex(1)
                 
-                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & track text preview
+                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews
                 ZStack(alignment: .leading) {
-                    // Previous Track Preview text
+                    // Real-Time Previous Track Title Preview text
                     if manualDragOffset > 0 {
                         HStack(spacing: 6) {
                             Image(systemName: "backward.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Previous")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10, weight: .bold))
+                            Text(model.prevTrackName.isEmpty ? "Previous Track" : model.prevTrackName)
+                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                                .lineLimit(1)
                         }
                         .foregroundColor(Color.cyan)
-                        .offset(x: manualDragOffset - 150)
-                        .opacity(min(1.0, Double(manualDragOffset) / 40.0))
+                        .offset(x: manualDragOffset - 180)
+                        .opacity(min(1.0, Double(manualDragOffset) / 35.0))
                     }
                     
                     VStack(alignment: .leading, spacing: 3) {
@@ -1228,17 +1220,18 @@ struct IslandView: View {
                     }
                     .offset(x: manualDragOffset)
                     
-                    // Next Track Preview text
+                    // Real-Time Next Track Title Preview text
                     if manualDragOffset < 0 {
                         HStack(spacing: 6) {
-                            Text("Next")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            Text(model.nextTrackName.isEmpty ? "Next Track" : model.nextTrackName)
+                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                                .lineLimit(1)
                             Image(systemName: "forward.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                         }
                         .foregroundColor(Color.cyan)
-                        .offset(x: manualDragOffset + 150)
-                        .opacity(min(1.0, Double(-manualDragOffset) / 40.0))
+                        .offset(x: manualDragOffset + 180)
+                        .opacity(min(1.0, Double(-manualDragOffset) / 35.0))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2693,6 +2686,8 @@ class IslandModel: ObservableObject {
                     set tPos to player position
                     set rArt to missing value
                     set isFav to false
+                    set nxtName to ""
+                    set prevName to ""
                     try
                         set isFav to favorited of curTrk
                     on error
@@ -2701,11 +2696,21 @@ class IslandModel: ObservableObject {
                         end try
                     end try
                     try
+                        set curIndex to index of curTrk
+                        set curPl to current playlist
+                        if curIndex > 1 then
+                            set prevName to name of track (curIndex - 1) of curPl
+                        end if
+                        if curIndex < (count of tracks of curPl) then
+                            set nxtName to name of track (curIndex + 1) of curPl
+                        end if
+                    end try
+                    try
                         if (count of artworks of curTrk) > 0 then
                             set rArt to raw data of artwork 1 of curTrk
                         end if
                     end try
-                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav}
+                    return {tID, tTrack, tArtist, tDur, tPos, rArt, isFav, nxtName, prevName}
                 end if
             end tell
         end if
@@ -2770,6 +2775,8 @@ class IslandModel: ObservableObject {
             let tDuration = desc.atIndex(4)?.doubleValue ?? 100.0
             let tPosition = desc.atIndex(5)?.doubleValue ?? 0.0
             let isFav = desc.numberOfItems >= 7 ? (desc.atIndex(7)?.booleanValue ?? false) : false
+            let nxtTitle = desc.numberOfItems >= 8 ? (desc.atIndex(8)?.stringValue ?? "") : ""
+            let prvTitle = desc.numberOfItems >= 9 ? (desc.atIndex(9)?.stringValue ?? "") : ""
             
             let cacheKey = !tID.isEmpty ? tID : "\(tTrack)_\(tArtist)"
             
@@ -2801,6 +2808,8 @@ class IslandModel: ObservableObject {
                 
                 self.trackDuration = tDuration
                 self.isCurrentTrackFavorited = isFav
+                self.nextTrackName = nxtTitle
+                self.prevTrackName = prvTitle
                 self.playbackPosition = tPosition
                 self.lastPlaybackPollTime = Date()
                 self.isMusicPlaying = true
