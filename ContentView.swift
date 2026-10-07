@@ -545,20 +545,24 @@ struct IslandView: View {
             } else {
                 if model.showControlCenter {
                     VStack(spacing: 10) {
-                        HStack(spacing: 14) {
+                        HStack(spacing: 10) {
                             // WiFi & Bluetooth stacked on top of each other
                             VStack(spacing: 8) { 
                                 ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
+                                    .frame(width: 38, height: 28)
                                 ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
+                                    .frame(width: 38, height: 28)
                             }
                             
-                            // Inline with Brightness & Volume Sliders
+                            // Full-width aligned Brightness & Volume Sliders
                             VStack(spacing: 8) { 
                                 CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
+                                    .frame(width: 252, height: 28)
                                 CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
+                                    .frame(width: 252, height: 28)
                             }
-                            .frame(width: 145)
                         }
+                        .frame(width: 300)
                         
                         // AirPods Listening Mode Slider placed neatly UNDERNEATH
                         if model.airPodsConnected && model.showAirPodsLocalization {
@@ -1150,21 +1154,23 @@ class IslandModel: ObservableObject {
     func discoverNearbyPeople() -> [AirDropPerson] {
         var people: [AirDropPerson] = []
         let myName = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
+        let hostName = Host.current().localizedName ?? "MacBook Pro"
+        
         if !myName.isEmpty {
             let initial = String(myName.prefix(1)).uppercased()
-            people.append(AirDropPerson(name: myName, device: "This Mac", deviceIcon: "laptopcomputer", initials: initial, color: .blue))
+            people.append(AirDropPerson(name: myName, device: hostName, deviceIcon: "laptopcomputer", initials: initial, color: .blue))
         }
         
-        // Parse real connected Bluetooth hardware devices & nearby paired nodes
+        // Strictly query real online connected Bluetooth devices
         if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
-            for device in devices {
+            for device in devices where device.isConnected() {
                 guard let rawName = device.nameOrAddress, !rawName.isEmpty else { continue }
                 if (rawName.contains(":") || rawName.contains("-")) && rawName.count >= 14 && !rawName.contains(" ") {
                     continue
                 }
                 
                 var personName = rawName
-                var deviceModel = "Apple Device"
+                var deviceModel = "Online Device"
                 var icon = "person.crop.circle"
                 var color = Color.purple
                 
@@ -3115,49 +3121,60 @@ struct AirPodsListeningModeSlider: View {
     let titles = ["Noise Cancellation", "Off", "Transparency"]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("NOISE CONTROL")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundColor(.white.opacity(0.45))
-                .padding(.leading, 4)
+                .padding(.leading, 2)
             
-            VStack(spacing: 8) {
-                // Capsule Pill Track (Matching Screenshot 1:1)
-                HStack(spacing: 0) {
-                    ForEach(0..<3, id: \.self) { i in
-                        let modeVal = modes[i]
-                        let isSelected = model.listeningMode == modeVal
+            VStack(spacing: 6) {
+                // Capsule Pill Track (NO outer card background, pure Dynamic Notch style)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
                         
-                        Button {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                                model.setAirPodsMode(modeVal)
-                            }
-                        } label: {
-                            ZStack {
-                                if isSelected {
-                                    Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 36, height: 36)
-                                        .shadow(color: Color.blue.opacity(0.4), radius: 4, x: 0, y: 1)
-                                } else {
-                                    Circle()
-                                        .fill(Color.clear)
-                                        .frame(width: 36, height: 36)
-                                }
+                        HStack(spacing: 0) {
+                            ForEach(0..<3, id: \.self) { i in
+                                let modeVal = modes[i]
+                                let isSelected = model.listeningMode == modeVal
                                 
-                                AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                                Button {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                        model.setAirPodsMode(modeVal)
+                                    }
+                                } label: {
+                                    ZStack {
+                                        if isSelected {
+                                            Circle()
+                                                .fill(Color.blue)
+                                                .frame(width: 32, height: 32)
+                                                .shadow(color: Color.blue.opacity(0.4), radius: 4, x: 0, y: 1)
+                                        }
+                                        AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .contentShape(Capsule(style: .continuous))
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { gesture in
+                                let fraction = max(0.0, min(1.0, gesture.location.x / geo.size.width))
+                                let index = min(2, max(0, Int(fraction * 3.0)))
+                                let newMode = modes[index]
+                                if model.listeningMode != newMode {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        model.setAirPodsMode(newMode)
+                                    }
+                                }
+                            }
+                    )
                 }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 4)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.black.opacity(0.75))
-                )
+                .frame(height: 36)
                 
                 // Labels underneath the capsule pill
                 HStack(spacing: 0) {
@@ -3168,27 +3185,12 @@ struct AirPodsListeningModeSlider: View {
                             .font(.system(size: 9, weight: isSelected ? .bold : .medium))
                             .foregroundColor(isSelected ? .white : .white.opacity(0.55))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
-                .padding(.horizontal, 4)
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-                    .background(
-                        VisualEffect()
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
-                    )
-            )
         }
-        .frame(width: 290)
+        .frame(width: 300)
     }
 }
 
