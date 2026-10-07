@@ -3361,18 +3361,25 @@ class IslandModel: ObservableObject {
     func startFastSeeking(forward: Bool) {
         stopFastSeeking()
         isFastSeeking = true
-        // 1. Tell Apple Music to engage high-speed scanning
-        DispatchQueue.global(qos: .userInitiated).async {
-            let cmd = forward ? "tell application \"Music\" to fast forward" : "tell application \"Music\" to rewind"
-            _ = NSAppleScript(source: cmd)?.executeAndReturnError(nil)
-        }
         
-        // 2. Continuous UI playbackPosition stepper for live scrubber feedback
-        fastSeekTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let delta: Double = forward ? 3.0 : -3.0
-            let targetPos = max(0.0, min(self.trackDuration, self.playbackPosition + delta))
-            self.playbackPosition = targetPos
+        // Execute immediate 4s seek step
+        applyFastSeekStep(forward: forward)
+        
+        // Continuously step forward/backward every 200ms
+        fastSeekTimer = Timer.scheduledTimer(withTimeInterval: 0.20, repeats: true) { [weak self] _ in
+            self?.applyFastSeekStep(forward: forward)
+        }
+    }
+
+    private func applyFastSeekStep(forward: Bool) {
+        let delta: Double = forward ? 4.0 : -4.0
+        let targetPos = max(0.0, min(self.trackDuration, self.playbackPosition + delta))
+        self.playbackPosition = targetPos
+        self.lastPlaybackPollTime = Date()
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let script = "tell application \"Music\" to set player position to \(targetPos)"
+            _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
         }
     }
 
@@ -3381,9 +3388,10 @@ class IslandModel: ObservableObject {
         fastSeekTimer = nil
         if isFastSeeking {
             isFastSeeking = false
+            // Confirm playback is active at the new position
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                _ = NSAppleScript(source: "tell application \"Music\" to resume")?.executeAndReturnError(nil)
-                Thread.sleep(forTimeInterval: 0.1)
+                _ = NSAppleScript(source: "tell application \"Music\" to play")?.executeAndReturnError(nil)
+                Thread.sleep(forTimeInterval: 0.15)
                 self?.fetchCurrentMusicState()
             }
         }
@@ -4635,6 +4643,38 @@ struct SkipButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.3, dampingFraction: 0.5), value: configuration.isPressed)
     }
 }
+class NativePressHandlingNSView: NSView {
+    var onDown: (() -> Void)?
+    var onUp: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        onDown?()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        onUp?()
+    }
+}
+
+struct NativePressOverlay: NSViewRepresentable {
+    let onDown: () -> Void
+    let onUp: () -> Void
+
+    func makeNSView(context: Context) -> NativePressHandlingNSView {
+        let view = NativePressHandlingNSView()
+        view.onDown = onDown
+        view.onUp = onUp
+        return view
+    }
+
+    func updateNSView(_ nsView: NativePressHandlingNSView, context: Context) {
+        nsView.onDown = onDown
+        nsView.onUp = onUp
+    }
+}
+
 struct RepeatablePlaybackButton: View {
     let icon: String
     let direction: CGFloat
@@ -4646,14 +4686,13 @@ struct RepeatablePlaybackButton: View {
     @State private var isSeeking: Bool = false
     @State private var bounceTrigger: Int = 0
     @State private var pressStartTime: Date? = nil
-    @State private var holdCheckTimer: Timer? = nil
+    @State private var holdTimer: Timer? = nil
     
     var body: some View {
         ZStack {
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 44, height: 40)
-                .contentShape(Rectangle())
             
             Image(systemName: isSeeking ? (direction > 0 ? "forward.fill" : "backward.fill") : icon)
                 .font(.system(size: 22, weight: .semibold))
@@ -4661,30 +4700,26 @@ struct RepeatablePlaybackButton: View {
                 .scaleEffect(isPressed ? 0.80 : 1.0)
                 .offset(x: isPressed ? direction * 3 : 0)
                 .symbolEffect(.bounce, value: bounceTrigger)
-                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
-        }
-        .contentShape(Rectangle())
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressed {
-                        isPressed = true
-                        isSeeking = false
-                        pressStartTime = Date()
-                        holdCheckTimer?.invalidate()
-                        holdCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.30, repeats: false) { _ in
-                            isSeeking = true
-                            onLongPressStart()
-                        }
+                .animation(.spring(response: 0.22, dampingFraction: 0.65), value: isPressed)
+            
+            NativePressOverlay(
+                onDown: {
+                    isPressed = true
+                    isSeeking = false
+                    pressStartTime = Date()
+                    holdTimer?.invalidate()
+                    holdTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { _ in
+                        isSeeking = true
+                        onLongPressStart()
                     }
-                }
-                .onEnded { _ in
+                },
+                onUp: {
                     let elapsed = Date().timeIntervalSince(pressStartTime ?? Date())
-                    holdCheckTimer?.invalidate()
-                    holdCheckTimer = nil
+                    holdTimer?.invalidate()
+                    holdTimer = nil
                     isPressed = false
                     
-                    if isSeeking || elapsed >= 0.30 {
+                    if isSeeking || elapsed >= 0.35 {
                         isSeeking = false
                         onLongPressEnd()
                     } else {
@@ -4692,7 +4727,10 @@ struct RepeatablePlaybackButton: View {
                         onTap()
                     }
                 }
-        )
+            )
+            .frame(width: 44, height: 40)
+        }
+        .frame(width: 44, height: 40)
     }
 }
 
