@@ -2886,70 +2886,132 @@ struct AirDropDeviceButton: View {
 }
 
 
+struct AirPodsHeadIcon: View {
+    let mode: Int
+    let isSelected: Bool
+    
+    var body: some View {
+        ZStack {
+            if mode == 2 {
+                // Noise Cancellation: Solid dome arc over head
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.5), lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                }
+            } else if mode == 1 {
+                // Off: Thin single ring over head
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.3), lineWidth: 1.5)
+                        .frame(width: 18, height: 18)
+                    
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.45))
+                }
+            } else {
+                // Transparency: Radiating dotted rays around head
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Color.white : Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.8, dash: [2, 3]))
+                        .frame(width: 20, height: 20)
+                    
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.55))
+                }
+            }
+        }
+    }
+}
+
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
     
-    // Mode 2: Noise Cancellation, Mode 3: Off, Mode 4: Transparency
-    let modes = [2, 3, 4]
-    let icons = ["earbuds", "speaker.slash.fill", "waveform"]
+    // Modes matching screenshot 1:1: 2: Noise Cancellation, 1: Off, 3: Transparency
+    let modes = [2, 1, 3]
     let titles = ["Noise Cancellation", "Off", "Transparency"]
     
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<3, id: \.self) { i in
-                let modeVal = modes[i]
-                let isSelected = model.listeningMode == modeVal
-                
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                        model.setAirPodsMode(modeVal)
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: icons[i])
-                            .font(.system(size: 10, weight: isSelected ? .bold : .medium))
-                        Text(titles[i])
-                            .font(.system(size: 10, weight: isSelected ? .bold : .medium))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(isSelected ? Color.black : Color.white.opacity(0.85))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 30)
-                    .background(
-                        ZStack {
-                            if isSelected {
-                                Capsule(style: .continuous)
-                                    .fill(Color.white)
-                                    .shadow(color: .black.opacity(0.22), radius: 3, x: 0, y: 1)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("NOISE CONTROL")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.45))
+                .padding(.leading, 4)
+            
+            VStack(spacing: 8) {
+                // Capsule Pill Track (Matching Screenshot 1:1)
+                HStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { i in
+                        let modeVal = modes[i]
+                        let isSelected = model.listeningMode == modeVal
+                        
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                model.setAirPodsMode(modeVal)
                             }
+                        } label: {
+                            ZStack {
+                                if isSelected {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 36, height: 36)
+                                        .shadow(color: Color.blue.opacity(0.4), radius: 4, x: 0, y: 1)
+                                } else {
+                                    Circle()
+                                        .fill(Color.clear)
+                                        .frame(width: 36, height: 36)
+                                }
+                                
+                                AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                    )
-                    .contentShape(Capsule(style: .continuous))
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .frame(width: 300, height: 36)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.10))
+                .padding(.vertical, 4)
+                .padding(.horizontal, 4)
                 .background(
-                    VisualEffect()
-                        .clipShape(Capsule(style: .continuous))
-                )
-                .overlay(
                     Capsule(style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.75
-                        )
+                        .fill(Color.black.opacity(0.75))
                 )
-        )
+                
+                // Labels underneath the capsule pill
+                HStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { i in
+                        let modeVal = modes[i]
+                        let isSelected = model.listeningMode == modeVal
+                        Text(titles[i])
+                            .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                            .foregroundColor(isSelected ? .white : .white.opacity(0.55))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .background(
+                        VisualEffect()
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                    )
+            )
+        }
+        .frame(width: 290)
     }
 }
 
