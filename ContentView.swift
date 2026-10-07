@@ -3,6 +3,7 @@ struct AirDropPerson: Identifiable {
     let name: String
     let device: String
     let deviceIcon: String
+    let profileImage: NSImage?
     let initials: String
     let color: Color
 }
@@ -1044,6 +1045,156 @@ struct SwitcherMenu: View {
     }
 }
 
+
+class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    static let shared = AirDropDiscoveryService()
+    
+    @Published var discoveredPeople: [AirDropPerson] = []
+    @Published var isSearching: Bool = false
+    
+    private var browsers: [NetServiceBrowser] = []
+    private var scanTimer: Timer?
+    
+    override init() {
+        super.init()
+        startDiscovery()
+    }
+    
+    func startDiscovery() {
+        isSearching = true
+        refreshLocalAndBluetooth()
+        
+        browsers.forEach { $0.stop() }
+        browsers.removeAll()
+        
+        let types = ["_companion-link._tcp.", "_airdrop._tcp.", "_apple-mobdev2._tcp.", "_smb._tcp."]
+        for t in types {
+            let browser = NetServiceBrowser()
+            browser.delegate = self
+            browser.searchForServices(ofType: t, inDomain: "local.")
+            browsers.append(browser)
+        }
+        
+        scanTimer?.invalidate()
+        scanTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self?.refreshLocalAndBluetooth()
+        }
+    }
+    
+    func refreshLocalAndBluetooth() {
+        var list: [AirDropPerson] = []
+        
+        // 1. Local user with authentic account profile picture
+        let myName = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
+        let hostName = Host.current().localizedName ?? "MacBook Pro"
+        let userPic = NSImage(named: NSImage.userAccountsName)
+        
+        list.append(
+            AirDropPerson(
+                name: myName,
+                device: hostName,
+                deviceIcon: "laptopcomputer",
+                profileImage: userPic,
+                initials: String(myName.prefix(1)).uppercased(),
+                color: .blue
+            )
+        )
+        
+        // 2. Real Bluetooth Devices
+        if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+            for device in devices {
+                guard let rawName = device.nameOrAddress, !rawName.isEmpty else { continue }
+                if (rawName.contains(":") || rawName.contains("-")) && rawName.count >= 14 && !rawName.contains(" ") {
+                    continue
+                }
+                let parsed = parseDevice(rawName: rawName)
+                if !list.contains(where: { $0.name == parsed.name }) {
+                    list.append(parsed)
+                }
+            }
+        }
+        
+        // Preserve any previously discovered network Bonjour nodes
+        for current in self.discoveredPeople {
+            if !list.contains(where: { $0.name == current.name }) {
+                list.append(current)
+            }
+        }
+        
+        DispatchQueue.main.async {
+            self.discoveredPeople = list
+        }
+    }
+    
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        let name = service.name
+        guard !name.isEmpty else { return }
+        
+        let hostName = Host.current().localizedName ?? ""
+        if name.lowercased() == hostName.lowercased() { return }
+        
+        let parsed = parseDevice(rawName: name)
+        DispatchQueue.main.async {
+            if !self.discoveredPeople.contains(where: { $0.name == parsed.name }) {
+                self.discoveredPeople.append(parsed)
+            }
+        }
+    }
+    
+    private func parseDevice(rawName: String) -> AirDropPerson {
+        var personName = rawName
+        var deviceModel = "Apple Device"
+        var icon = "person.crop.circle"
+        var color = Color.purple
+        
+        let lower = rawName.lowercased()
+        if lower.contains("iphone") {
+            deviceModel = "iPhone"
+            icon = "iphone"
+            color = .blue
+            if let idx = rawName.range(of: "'s iPhone", options: .caseInsensitive)?.lowerBound {
+                personName = String(rawName[..<idx])
+            }
+        } else if lower.contains("ipad") {
+            deviceModel = "iPad"
+            icon = "ipad"
+            color = .indigo
+            if let idx = rawName.range(of: "'s iPad", options: .caseInsensitive)?.lowerBound {
+                personName = String(rawName[..<idx])
+            }
+        } else if lower.contains("mac") || lower.contains("macbook") {
+            deviceModel = "MacBook"
+            icon = "laptopcomputer"
+            color = .teal
+            if let idx = rawName.range(of: "'s MacBook", options: .caseInsensitive)?.lowerBound {
+                personName = String(rawName[..<idx])
+            }
+        } else if lower.contains("slaapkamer") || lower.contains("living") || lower.contains("tv") || lower.contains("home") {
+            deviceModel = "Nearby Device"
+            icon = "appletv"
+            color = .orange
+        } else if lower.contains("watch") {
+            deviceModel = "Apple Watch"
+            icon = "applewatch"
+            color = .orange
+        } else if lower.contains("airpods") {
+            deviceModel = "AirPods"
+            icon = "airpodspro"
+            color = .cyan
+        }
+        
+        let initial = String(personName.prefix(1)).uppercased()
+        return AirDropPerson(
+            name: personName,
+            device: deviceModel,
+            deviceIcon: icon,
+            profileImage: nil,
+            initials: initial.isEmpty ? "A" : initial,
+            color: color
+        )
+    }
+}
+
 class IslandModel: ObservableObject {
     var pendingArtworkRetry: Bool = false
     var artworkRetryCount: Int = 0
@@ -1168,67 +1319,7 @@ class IslandModel: ObservableObject {
     @Published var airDropTargetPerson: AirDropPerson? = nil
     
     func discoverNearbyPeople() -> [AirDropPerson] {
-        var people: [AirDropPerson] = []
-        let myName = NSFullUserName().isEmpty ? NSUserName() : NSFullUserName()
-        let hostName = Host.current().localizedName ?? "MacBook Pro"
-        
-        if !myName.isEmpty {
-            let initial = String(myName.prefix(1)).uppercased()
-            people.append(AirDropPerson(name: myName, device: hostName, deviceIcon: "laptopcomputer", initials: initial, color: .blue))
-        }
-        
-        // Strictly query real online connected Bluetooth devices
-        if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
-            for device in devices where device.isConnected() {
-                guard let rawName = device.nameOrAddress, !rawName.isEmpty else { continue }
-                if (rawName.contains(":") || rawName.contains("-")) && rawName.count >= 14 && !rawName.contains(" ") {
-                    continue
-                }
-                
-                var personName = rawName
-                var deviceModel = "Online Device"
-                var icon = "person.crop.circle"
-                var color = Color.purple
-                
-                let lower = rawName.lowercased()
-                if lower.contains("iphone") {
-                    deviceModel = "iPhone"
-                    icon = "iphone"
-                    color = .blue
-                    if let idx = rawName.range(of: "'s iPhone", options: .caseInsensitive)?.lowerBound {
-                        personName = String(rawName[..<idx])
-                    }
-                } else if lower.contains("ipad") {
-                    deviceModel = "iPad"
-                    icon = "ipad"
-                    color = .indigo
-                    if let idx = rawName.range(of: "'s iPad", options: .caseInsensitive)?.lowerBound {
-                        personName = String(rawName[..<idx])
-                    }
-                } else if lower.contains("mac") || lower.contains("macbook") {
-                    deviceModel = "MacBook"
-                    icon = "laptopcomputer"
-                    color = .teal
-                    if let idx = rawName.range(of: "'s MacBook", options: .caseInsensitive)?.lowerBound {
-                        personName = String(rawName[..<idx])
-                    }
-                } else if lower.contains("watch") {
-                    deviceModel = "Apple Watch"
-                    icon = "applewatch"
-                    color = .orange
-                } else if lower.contains("airpods") {
-                    deviceModel = "AirPods"
-                    icon = "airpodspro"
-                    color = .cyan
-                }
-                
-                let initial = String(personName.prefix(1)).uppercased()
-                if !people.contains(where: { $0.name == personName }) {
-                    people.append(AirDropPerson(name: personName, device: deviceModel, deviceIcon: icon, initials: initial.isEmpty ? "A" : initial, color: color))
-                }
-            }
-        }
-        return people
+        return AirDropDiscoveryService.shared.discoveredPeople
     }
     
     func sendAirDrop(to person: AirDropPerson) {
@@ -1268,7 +1359,7 @@ class IslandModel: ObservableObject {
     func sendAirDrop(to targetName: String? = nil) {
         let person = discoverNearbyPeople().first { $0.name == targetName || $0.device == targetName } 
             ?? discoverNearbyPeople().first 
-            ?? AirDropPerson(name: "Nearby Device", device: "Apple Device", deviceIcon: "laptopcomputer", initials: "A", color: .blue)
+            ?? AirDropPerson(name: "Nearby Device", device: "Apple Device", deviceIcon: "laptopcomputer", profileImage: nil, initials: "A", color: .blue)
         sendAirDrop(to: person)
     }
     
