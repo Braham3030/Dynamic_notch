@@ -354,62 +354,62 @@ struct iOSLiveArtworkWallpaperView: View {
             let t = isPlaying ? time : 0.0
             
             // Multi-frequency organic fluid wave displacement for active live motion
-            let driftX1 = sin(t * 0.55) * 22.0
-            let driftY1 = cos(t * 0.42) * 15.0
-            let driftX2 = cos(t * 0.48 + 1.2) * 28.0
-            let driftY2 = sin(t * 0.62 + 0.8) * 18.0
-            let scalePulse = 1.03 + sin(t * 0.65) * 0.05
-            let rotationAngle = sin(t * 0.30) * 3.5
+            let driftX1 = sin(t * 0.58) * 26.0
+            let driftY1 = cos(t * 0.44) * 18.0
+            let driftX2 = cos(t * 0.50 + 1.2) * 32.0
+            let driftY2 = sin(t * 0.65 + 0.8) * 20.0
+            let scalePulse = 1.05 + sin(t * 0.68) * 0.06
+            let rotationAngle = sin(t * 0.32) * 4.0
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
-                    .opacity(0.38 * intensity)
+                    .opacity(0.42 * intensity)
                 
-                // Base Live Artwork Wallpaper Layer (Dominating the whole left side with fluid zoom, breathing motion, and soft edge blur)
+                // Base Live Artwork Wallpaper Layer (Dominating entire left side with fluid zoom, breathing motion, and edge blending)
                 if let art = artwork {
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(140, width * 0.80), height: max(70, height * 1.40))
+                        .frame(width: max(160, width * 0.82), height: max(80, height * 1.45))
                         .scaleEffect(scalePulse)
                         .rotationEffect(.degrees(rotationAngle))
-                        .offset(x: driftX1 * 0.6 - 15, y: driftY1 * 0.6)
-                        .blur(radius: 14)
-                        .opacity(0.68 * intensity)
+                        .offset(x: driftX1 * 0.65 - 18, y: driftY1 * 0.65)
+                        .blur(radius: 12)
+                        .opacity(0.75 * intensity)
                 }
                 
                 // Fluid Orb 1: Primary chromatic dynamic flare
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 170, height: 170)
-                    .blur(radius: 34)
-                    .offset(x: -25 + driftX1, y: -15 + driftY1)
-                    .opacity(0.52 * intensity)
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 36)
+                    .offset(x: -30 + driftX1, y: -18 + driftY1)
+                    .opacity(0.55 * intensity)
                 
                 // Fluid Orb 2: Ambient electric accent flare
                 Circle()
                     .fill(Color(hue: 0.52, saturation: 0.80, brightness: 0.98))
-                    .frame(width: 140, height: 140)
-                    .blur(radius: 30)
-                    .offset(x: 70 + driftX2, y: 15 + driftY2)
-                    .opacity(0.32 * intensity)
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 32)
+                    .offset(x: 75 + driftX2, y: 16 + driftY2)
+                    .opacity(0.35 * intensity)
                 
                 // Fluid Orb 3: Liquid light wave wash across the bottom-left
                 Ellipse()
-                    .fill(primaryColor.opacity(0.70))
-                    .frame(width: 230, height: 80)
-                    .blur(radius: 26)
-                    .offset(x: driftX2 * 0.7, y: height * 0.28)
-                    .opacity(0.45 * intensity)
+                    .fill(primaryColor.opacity(0.75))
+                    .frame(width: 250, height: 90)
+                    .blur(radius: 28)
+                    .offset(x: driftX2 * 0.75, y: height * 0.28)
+                    .opacity(0.48 * intensity)
             }
-            .frame(width: max(120, width * 0.75), height: height)
+            .frame(width: max(140, width * 0.78), height: height)
             .mask(
                 LinearGradient(
                     colors: [
                         Color.black.opacity(1.0),
-                        Color.black.opacity(0.92),
-                        Color.black.opacity(0.40),
+                        Color.black.opacity(0.95),
+                        Color.black.opacity(0.45),
                         Color.clear
                     ],
                     startPoint: .leading,
@@ -5098,10 +5098,10 @@ struct NotchStylingView: View {
                     VStack(spacing: 10) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Music Artwork Ambient Glow")
+                                Text("Live Animated Artwork Wallpaper & Glow")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                                Text("Projects a vibrant colored aura under the notch matching active album artwork.")
+                                Text("Fills the entire left side with moving fluid live artwork and an ambient left-to-right gradient across the notch.")
                                     .font(.system(size: 11))
                                     .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
                             }
