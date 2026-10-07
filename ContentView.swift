@@ -376,50 +376,56 @@ enum AutoCloseBehavior: String, CaseIterable, Identifiable {
 
 
 // MARK: - AVPlayer Looping Live Motion Video Player for Apple Music Motion Art
+class MotionPlayerView: NSView {
+    private var player: AVQueuePlayer?
+    private var looper: AVPlayerLooper?
+    private var playerLayer: AVPlayerLayer?
+    private var currentURL: URL?
+    
+    func configure(with url: URL) {
+        wantsLayer = true
+        layer?.masksToBounds = true
+        
+        if currentURL != url {
+            currentURL = url
+            player?.pause()
+            playerLayer?.removeFromSuperlayer()
+            
+            let p = AVQueuePlayer()
+            let item = AVPlayerItem(url: url)
+            looper = AVPlayerLooper(player: p, templateItem: item)
+            player = p
+            
+            let layer = AVPlayerLayer(player: p)
+            layer.videoGravity = .resizeAspectFill
+            layer.frame = bounds
+            self.playerLayer = layer
+            self.layer?.addSublayer(layer)
+            p.isMuted = true
+            p.play()
+        }
+    }
+    
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer?.frame = bounds
+        CATransaction.commit()
+    }
+}
+
 struct AVPlayerLoopingMotionView: NSViewRepresentable {
     let videoURL: URL
     
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        let player = AVQueuePlayer()
-        let playerItem = AVPlayerItem(url: videoURL)
-        let playerLooper = AVPlayerLooper(player: player, templateItem: playerItem)
-        context.coordinator.looper = playerLooper
-        context.coordinator.player = player
-        
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspectFill
-        playerLayer.contentsGravity = .resizeAspectFill
-        playerLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
-        playerLayer.frame = view.bounds
-        context.coordinator.playerLayer = playerLayer
-        view.layer?.addSublayer(playerLayer)
-        player.isMuted = true
-        player.play()
-        return view
+    func makeNSView(context: Context) -> MotionPlayerView {
+        let v = MotionPlayerView()
+        v.configure(with: videoURL)
+        return v
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        context.coordinator.playerLayer?.frame = nsView.bounds
-        if let sublayers = nsView.layer?.sublayers {
-            for l in sublayers {
-                l.frame = nsView.bounds
-            }
-        }
-        CATransaction.commit()
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    class Coordinator {
-        var player: AVQueuePlayer?
-        var looper: AVPlayerLooper?
-        var playerLayer: AVPlayerLayer?
+    func updateNSView(_ nsView: MotionPlayerView, context: Context) {
+        nsView.configure(with: videoURL)
     }
 }
 
@@ -1650,58 +1656,58 @@ struct IslandView: View {
         VStack(spacing: 8) {
             // Top Row: Interactive Live Artwork Card | Drag Title | Dynamic Waveform
             HStack(spacing: 14) {
-                // Artwork Card: Clean in-place fade & scale directly into background live wallpaper
-                if !(model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded) {
-                    Button {
-                        if model.hasLiveMotionWallpaper {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
-                                model.isLiveWallpaperExpanded = true
-                            }
+                // Artwork Card: Always in place, interactive to expand into full-bleed live wallpaper
+                Button {
+                    if model.hasLiveMotionWallpaper {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
+                            model.isLiveWallpaperExpanded.toggle()
                         }
-                    } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.clear)
-                                .frame(width: 52, height: 52)
-                            
-                            ZStack {
-                                if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
-                                    // Live Video animating smoothly right inside the card!
-                                    AVPlayerLoopingMotionView(videoURL: videoURL)
-                                        .frame(width: 52, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
-                                        )
-                                } else if let img = model.currentArtwork { 
-                                    Image(nsImage: img)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 52, height: 52)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                                        )
-                                } else {
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 52, height: 52)
-                                    Image(systemName: "music.note")
-                                        .font(.system(size: 24, weight: .semibold))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                            .transition(.flip3D(isForward: model.isForward))
-                        }
-                        .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.55) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                     }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                    .zIndex(1)
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.clear)
+                            .frame(width: 52, height: 52)
+                        
+                        ZStack {
+                            if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
+                                // Live Video animating smoothly right inside the card!
+                                AVPlayerLoopingMotionView(videoURL: videoURL)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                                    )
+                            } else if let img = model.currentArtwork { 
+                                Image(nsImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                    )
+                            } else {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 52, height: 52)
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                        .transition(.flip3D(isForward: model.isForward))
+                    }
+                    .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.55) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                 }
+                .buttonStyle(.plain)
+                .opacity((model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded && model.isMusicPlaying) ? 0.0 : 1.0)
+                .animation(.spring(response: 0.40, dampingFraction: 0.80), value: model.isLiveWallpaperExpanded)
+                .animation(.spring(response: 0.40, dampingFraction: 0.80), value: model.isMusicPlaying)
+                .zIndex(1)
                 
                 // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & continuous sliding track titles
                 ZStack(alignment: .leading) {
@@ -3657,8 +3663,12 @@ class IslandModel: ObservableObject {
     func togglePlayPause() {
         let targetPlaying = !self.isMusicPlaying
         self.lastPlayPauseToggleTime = Date()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
             self.isMusicPlaying = targetPlaying
+            if !targetPlaying {
+                // Instantly collapse full wallpaper into cardview and keep it as cardview when paused
+                self.isLiveWallpaperExpanded = false
+            }
         }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -3756,6 +3766,7 @@ class IslandModel: ObservableObject {
                 } else if state.lowercased() == "paused" || state.lowercased() == "stopped" {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                         self.isMusicPlaying = false
+                        self.isLiveWallpaperExpanded = false
                     }
                 }
             } else {
