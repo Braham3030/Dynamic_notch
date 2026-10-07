@@ -274,29 +274,34 @@ struct IslandView: View {
                     }
                 }
                 
-                // Content Layer (Pushed underneath the physical notch area)
+                // Content Layer & Vertically Centered Switcher inside the Notch
                 VStack(spacing: 0) {
                     Spacer().frame(height: model.physicalNotchHeight)
                     
                     if model.isExpanded {
-                        if model.state == .expandedMusic {
-                            musicView
-                        } else if model.state == .expandedFood {
-                            foodView
-                        } else {
-                            controlsView
+                        HStack(alignment: .center, spacing: 6) {
+                            // Left: Main Content View
+                            Group {
+                                if model.state == .expandedMusic {
+                                    musicView
+                                } else if model.state == .expandedFood {
+                                    foodView
+                                } else {
+                                    controlsView
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            
+                            // Right: Liquid Glass Vertical Switcher (Vertically Centered, Never Cut Off)
+                            VerticalSwitcher(model: model, activeState: model.state)
+                                .padding(.trailing, 10)
                         }
+                        .frame(maxHeight: .infinity, alignment: .center)
                     }
                 }
                 .frame(width: model.width, height: model.height, alignment: .top)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
-                
-                // Side Switcher Popout & Mini Inside Dock
-                if model.isExpanded {
-                    VerticalSwitcher(model: model, activeState: model.state)
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
             }
             .frame(width: model.width, height: model.height, alignment: .top)
             .animation(model.currentAnimation, value: model.width)
@@ -427,17 +432,22 @@ struct IslandView: View {
                 }
             } else {
                 if model.showControlCenter {
-                    HStack(spacing: 16) {
-                        HStack(spacing: 10) { 
-                            ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
-                            ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
+                    VStack(spacing: 10) {
+                        HStack(spacing: 12) {
+                            HStack(spacing: 8) { 
+                                ControlButton(isOn: $model.isWifiOn, iconOn: "wifi", iconOff: "wifi.slash", activeTint: .blue, variableValue: Double(model.wifiBars) / 3.0, action: model.toggleWiFi)
+                                ControlButton(isOn: $model.isBluetoothOn, iconOn: "bluetooth.custom", iconOff: "bluetooth.custom", activeTint: .blue, action: model.toggleBluetooth) 
+                            }
+                            VStack(spacing: 6) { 
+                                CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
+                                CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
+                            }.frame(width: 135)
                         }
-                        VStack(spacing: 8) { 
-                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in model.applySystemBrightness(forcedValue: val) }
-                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in model.applySystemVolume(forcedValue: val) } 
-                        }.frame(width: 140)
+                        
+                        // AirPods Listening Mode Slider placed neatly UNDERNEATH
                         if model.airPodsConnected && model.showAirPodsLocalization {
                             AirPodsListeningModeSlider(model: model)
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
                 } else {
@@ -679,9 +689,8 @@ extension IslandModel {
         }
         if isExpanded {
             if state == .expandedMusic { return 420 }
-            if state == .expandedControls && airPodsConnected { return 450 }
             if state == .expandedFood { return 360 }
-            return 380
+            return 390
         }
         if airPodsShowingCompact {
             return baseNotchWidth + 90
@@ -696,7 +705,10 @@ extension IslandModel {
         if isExpanded {
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
-            return 120
+            if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
+                return 180 // Generous height for WiFi/BT + Brightness/Volume + AirPods mode slider underneath
+            }
+            return 130
         }
         return physicalNotchHeight
     }
@@ -1862,52 +1874,146 @@ struct VisualEffect: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
+struct SwitcherItemModel: Identifiable, Equatable {
+    let id: IslandState
+    let icon: String
+}
+
 struct VerticalSwitcher: View {
     @ObservedObject var model: IslandModel
     var activeState: IslandState
     
-    var body: some View {
-        VStack(spacing: 5) {
-            if model.showControlCenter { switcherButton(icon: "switch.2", target: .expandedControls) }
-            if model.showMusic { switcherButton(icon: "music.note", target: .expandedMusic) }
-            if model.showAirPodsLocalization && model.airPodsConnected { switcherButton(icon: "airpodspro", target: .expandedAirPods) }
-            if model.showPhone { switcherButton(icon: "phone", target: .expandedPhone) }
-            if model.showNotifications { switcherButton(icon: "bell", target: .expandedNotifications) }
-            if model.showAirDrop { switcherButton(icon: "airdrop", target: .expandedAirDrop) }
-        }
-        .padding(4)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.12))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                )
-        )
-        .offset(
-            x: (model.width / 2) - 20,
-            y: model.physicalNotchHeight + ((model.height - model.physicalNotchHeight) / 2) - 26
-        )
+    @State private var hoveredIndex: Int? = nil
+    @State private var dragYOffset: CGFloat = 0
+    @State private var scrollIndex: Int = 0
+    
+    private var allItems: [SwitcherItemModel] {
+        var items: [SwitcherItemModel] = []
+        if model.showControlCenter { items.append(.init(id: .expandedControls, icon: "switch.2")) }
+        if model.showMusic { items.append(.init(id: .expandedMusic, icon: "music.note")) }
+        if model.showAirPodsLocalization && model.airPodsConnected { items.append(.init(id: .expandedAirPods, icon: "airpodspro")) }
+        if model.showPhone { items.append(.init(id: .expandedPhone, icon: "phone.fill")) }
+        if model.showNotifications { items.append(.init(id: .expandedNotifications, icon: "bell.fill")) }
+        if model.showAirDrop { items.append(.init(id: .expandedAirDrop, icon: "airdrop")) }
+        return items
     }
     
-    @ViewBuilder func switcherButton(icon: String, target: IslandState) -> some View {
-        let isActive = (activeState == target)
-        Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                model.state = target
+    var body: some View {
+        let items = allItems
+        let totalCount = items.count
+        let maxVisible = min(3, totalCount)
+        
+        // Liquid Glass Container
+        VStack(spacing: 4) {
+            ForEach(0..<totalCount, id: \.self) { idx in
+                let item = items[idx]
+                let isFourthOrLater = idx >= 3
+                let isHovered = (hoveredIndex == idx)
+                let isBottomHovered = (hoveredIndex != nil && hoveredIndex! >= 3)
+                
+                // Dynamic sizing: if hovering 4th+ item, item 0 becomes small dot; 4th item grows full size
+                let scale: CGFloat = {
+                    if isHovered { return 1.0 }
+                    if isFourthOrLater {
+                        return isBottomHovered ? 0.92 : 0.48
+                    }
+                    if isBottomHovered && idx == 0 {
+                        return 0.48
+                    }
+                    return 1.0
+                }()
+                
+                let opacity: Double = {
+                    if isHovered { return 1.0 }
+                    if isFourthOrLater {
+                        return isBottomHovered ? 0.95 : 0.40
+                    }
+                    if isBottomHovered && idx == 0 {
+                        return 0.40
+                    }
+                    return 0.85
+                }()
+                
+                let btnSize: CGFloat = isHovered ? 24 : (scale < 0.6 ? 12 : 22)
+                let iconSize: CGFloat = isHovered ? 11 : (scale < 0.6 ? 7 : 10)
+                let isActive = (activeState == item.id)
+                
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                        model.state = item.id
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(isActive ? Color.white : (isHovered ? Color.white.opacity(0.18) : Color.white.opacity(0.06)))
+                        
+                        if scale > 0.55 {
+                            Image(systemName: item.icon)
+                                .font(.system(size: iconSize, weight: .bold))
+                                .foregroundStyle(isActive ? Color.black : Color.white)
+                        } else {
+                            Circle()
+                                .fill(Color.white.opacity(0.6))
+                                .frame(width: 4, height: 4)
+                        }
+                    }
+                    .frame(width: btnSize, height: btnSize)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .scaleEffect(scale)
+                .opacity(opacity)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: scale)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: opacity)
+                .onHover { h in
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                        if h { hoveredIndex = idx } else if hoveredIndex == idx { hoveredIndex = nil }
+                    }
+                }
             }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isActive ? Color.white : Color.clear)
-                Image(systemName: icon)
-                    .foregroundStyle(isActive ? Color.black : Color.white.opacity(0.8))
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .frame(width: 20, height: 20)
-            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .padding(5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.40))
+                .background(
+                    VisualEffect()
+                        .clipShape(Capsule(style: .continuous))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                )
+                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+        )
+        .offset(y: dragYOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { val in
+                    dragYOffset = val.translation.height * 0.4
+                    if val.translation.height > 15 && totalCount > 3 {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            hoveredIndex = 3
+                        }
+                    } else if val.translation.height < -15 {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            hoveredIndex = 0
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                        dragYOffset = 0
+                    }
+                }
+        )
     }
 }
 
