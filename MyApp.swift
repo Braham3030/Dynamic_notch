@@ -120,16 +120,102 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    private var dragCheckTimer: Timer?
+
     private func setupMouseTracking() {
         // Track mouse globally across all apps for smooth notch hover interactions
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.checkImageDragState()
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.checkImageDragState()
             return event
         }
+        
+        // Fast periodic checker to detect drag release or drag start across the entire OS
+        dragCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
+            self?.checkImageDragState()
+        }
+    }
+    
+    private func checkImageDragState() {
+        let mouseButtons = NSEvent.pressedMouseButtons
+        let isLeftDown = (mouseButtons & 1) != 0
+        let model = IslandModel.shared
+        
+        // If left mouse button is NOT pressed, user is not dragging anything -> never open
+        guard isLeftDown else {
+            if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        model.isAirDropTargeted = false
+                    }
+                }
+            }
+            return
+        }
+        
+        let pboard = NSPasteboard(name: .drag)
+        let count = pboard.changeCount
+        
+        // If pasteboard has never had a drag, or count is 0
+        guard count > 0 else { return }
+        
+        // Check if drag pasteboard contains an image (URL with image extension or raw image data)
+        let isPicture = isDragPasteboardAnImage(pboard)
+        
+        if isPicture {
+            if !model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                        model.isAirDropTargeted = true
+                    }
+                }
+            }
+        } else {
+            if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        model.isAirDropTargeted = false
+                    }
+                }
+            }
+        }
+    }
+    
+    private func isDragPasteboardAnImage(_ pboard: NSPasteboard) -> Bool {
+        let types = pboard.types ?? []
+        
+        // 1. Check for raw image pasteboard types
+        let imageTypeIdentifiers = [
+            NSPasteboard.PasteboardType.tiff,
+            NSPasteboard.PasteboardType.png,
+            NSPasteboard.PasteboardType("public.image"),
+            NSPasteboard.PasteboardType("public.png"),
+            NSPasteboard.PasteboardType("public.jpeg"),
+            NSPasteboard.PasteboardType("com.compuserve.gif"),
+            NSPasteboard.PasteboardType("public.heic"),
+            NSPasteboard.PasteboardType("public.tiff")
+        ]
+        
+        for t in imageTypeIdentifiers {
+            if types.contains(t) { return true }
+        }
+        
+        // 2. Check for URLs with picture extensions (.png, .jpg, .jpeg, .heic, .webp, .gif, .tiff, .svg, .bmp, .icns)
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            let imageExts: Set<String> = ["png", "jpg", "jpeg", "heic", "webp", "gif", "tiff", "tif", "svg", "bmp", "icns", "raw", "cr2", "nef", "arw", "dng"]
+            for url in urls {
+                if imageExts.contains(url.pathExtension.lowercased()) {
+                    return true
+                }
+            }
+        }
+        
+        return false
     }
     
     private func handleMouseLocation(_ location: NSPoint) {
