@@ -871,8 +871,8 @@ struct IslandView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else {
                             VStack(spacing: 0) {
-                                // 1. Standard Upper Section (Strictly fixed geometry whether AirPlay is open or not)
-                                ZStack(alignment: .center) {
+                                // 1. Standard Upper Section (Tightly aligned to the top of the physical notch)
+                                ZStack(alignment: .top) {
                                     Group {
                                         if model.state == .expandedMusic {
                                             musicView
@@ -884,18 +884,20 @@ struct IslandView: View {
                                             controlsView
                                         }
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .frame(maxWidth: .infinity, alignment: .top)
+                                    .padding(.top, 8)
                                     .padding(.leading, 18)
                                     .padding(.trailing, 48)
                                     
-                                    // Right Side: Compact Liquid Glass Vertical Switcher centered strictly at standard position
+                                    // Right Side: Compact Liquid Glass Vertical Switcher positioned neatly at the top right
                                     HStack(spacing: 0) {
                                         Spacer(minLength: 0)
                                         VerticalSwitcher(model: model, activeState: model.state)
+                                            .padding(.top, 10)
                                             .padding(.trailing, 10)
                                     }
                                 }
-                                .frame(width: model.width, height: (model.state == .expandedMusic ? 215 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 295 : 230)))))
+                                .frame(width: model.width, height: (model.state == .expandedMusic ? 195 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 275 : 210)))))
                                 
                                 // 2. AirPlay Device Drawer Below (Full Notch Width without moving anything above)
                                 if model.state == .expandedMusic && model.isShowingAirPlayInMusic {
@@ -1286,9 +1288,9 @@ struct IslandView: View {
                 }
             }
         }
-        .padding(.horizontal, 16).padding(.bottom, 8)
+        .padding(.horizontal, 16).padding(.bottom, 4)
         .opacity(showsExpandedControls ? 1 : 0)
-        .offset(y: showsExpandedControls ? 0 : -14)
+        .offset(y: showsExpandedControls ? 0 : -6)
         .allowsHitTesting(showsExpandedControls)
     }
     
