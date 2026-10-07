@@ -830,7 +830,7 @@ struct IslandView: View {
                 
                 // Content Layer & Vertically Centered Switcher inside the Notch
                 VStack(spacing: 0) {
-                    Spacer().frame(height: model.physicalNotchHeight)
+                    Spacer().frame(height: max(6, model.physicalNotchHeight - 18))
                     
                     if model.isAirDropTargeted && model.state != .expandedAirDrop {
                         // Notch File Shelf Drop Target (Animated compact scale)
@@ -871,7 +871,7 @@ struct IslandView: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else {
                             VStack(spacing: 0) {
-                                // 1. Standard Upper Section (Tightly aligned to the top of the physical notch)
+                                // 1. Standard Upper Section (Tightly aligned right up at the top edge)
                                 ZStack(alignment: .top) {
                                     Group {
                                         if model.state == .expandedMusic {
@@ -885,7 +885,7 @@ struct IslandView: View {
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .top)
-                                    .padding(.top, 8)
+                                    .padding(.top, 0)
                                     .padding(.leading, 18)
                                     .padding(.trailing, 48)
                                     
@@ -893,11 +893,11 @@ struct IslandView: View {
                                     HStack(spacing: 0) {
                                         Spacer(minLength: 0)
                                         VerticalSwitcher(model: model, activeState: model.state)
-                                            .padding(.top, 10)
+                                            .padding(.top, 2)
                                             .padding(.trailing, 10)
                                     }
                                 }
-                                .frame(width: model.width, height: (model.state == .expandedMusic ? 195 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 275 : 210)))))
+                                .frame(width: model.width, height: (model.state == .expandedMusic ? 180 : (model.state == .expandedFood ? 80 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 240 : 160) : (model.airPodsConnected ? 260 : 195)))))
                                 
                                 // 2. AirPlay Device Drawer Below (Full Notch Width without moving anything above)
                                 if model.state == .expandedMusic && model.isShowingAirPlayInMusic {
@@ -1913,13 +1913,13 @@ extension IslandModel {
         }
         if isExpanded {
             switch state {
-            case .expandedAirDrop: return isShowingAirDropInShelf ? 245 : 165
-            case .expandedMusic: return isShowingAirPlayInMusic ? 445 : 232
-            case .expandedFood: return 85
-            case .expandedPhone: return 92
-            case .expandedNotifications: return 88
-            case .expandedAirPods: return 110
-            case .expandedControls: return airPodsConnected ? 295 : 230
+            case .expandedAirDrop: return isShowingAirDropInShelf ? 235 : 155
+            case .expandedMusic: return isShowingAirPlayInMusic ? 405 : 198
+            case .expandedFood: return 75
+            case .expandedPhone: return 85
+            case .expandedNotifications: return 82
+            case .expandedAirPods: return 100
+            case .expandedControls: return airPodsConnected ? 275 : 210
             case .compact: return physicalNotchHeight
             }
         }
