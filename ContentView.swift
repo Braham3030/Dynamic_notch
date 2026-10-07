@@ -1,3 +1,5 @@
+import AVKit
+import AVFoundation
 struct AirPlayOutputDevice: Identifiable, Hashable {
     let id: String
     let name: String
@@ -339,6 +341,47 @@ enum AutoCloseBehavior: String, CaseIterable, Identifiable {
 }
 
 
+// MARK: - AVPlayer Looping Live Motion Video Player for Apple Music Motion Art
+struct AVPlayerLoopingMotionView: NSViewRepresentable {
+    let videoURL: URL
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        let player = AVQueuePlayer()
+        let playerItem = AVPlayerItem(url: videoURL)
+        let playerLooper = AVPlayerLooper(player: player, templateItem: playerItem)
+        context.coordinator.looper = playerLooper
+        context.coordinator.player = player
+        
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        playerLayer.frame = view.bounds
+        view.layer?.addSublayer(playerLayer)
+        player.isMuted = true
+        player.play()
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let sublayers = nsView.layer?.sublayers {
+            for l in sublayers {
+                l.frame = nsView.bounds
+            }
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var player: AVQueuePlayer?
+        var looper: AVPlayerLooper?
+    }
+}
+
 // MARK: - iOS-Style Live Motion Fluid Artwork Wallpaper Engine
 struct iOSLiveArtworkWallpaperView: View {
     let artwork: NSImage?
@@ -347,6 +390,7 @@ struct iOSLiveArtworkWallpaperView: View {
     let width: CGFloat
     let height: CGFloat
     let intensity: Double
+    let motionVideoURL: URL?
     
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -354,35 +398,42 @@ struct iOSLiveArtworkWallpaperView: View {
             let t = isPlaying ? time : 0.0
             
             // Multi-frequency organic fluid wave displacement for active live motion
-            let driftX1 = sin(t * 0.58) * 26.0
-            let driftY1 = cos(t * 0.44) * 18.0
-            let driftX2 = cos(t * 0.50 + 1.2) * 32.0
-            let driftY2 = sin(t * 0.65 + 0.8) * 20.0
-            let scalePulse = 1.05 + sin(t * 0.68) * 0.06
-            let rotationAngle = sin(t * 0.32) * 4.0
+            let driftX1 = sin(t * 0.58) * 28.0
+            let driftY1 = cos(t * 0.44) * 20.0
+            let driftX2 = cos(t * 0.50 + 1.2) * 35.0
+            let driftY2 = sin(t * 0.65 + 0.8) * 22.0
+            let scalePulse = 1.05 + sin(t * 0.68) * 0.07
+            let rotationAngle = sin(t * 0.32) * 4.5
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
                     .opacity(0.42 * intensity)
                 
-                // Base Live Artwork Wallpaper Layer (Dominating entire left side with fluid zoom, breathing motion, and edge blending)
-                if let art = artwork {
+                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available
+                if let videoURL = motionVideoURL {
+                    AVPlayerLoopingMotionView(videoURL: videoURL)
+                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.50))
+                        .scaleEffect(scalePulse)
+                        .blur(radius: 8)
+                        .opacity(0.85 * intensity)
+                } else if let art = artwork {
+                    // 2. Base High-Res Live Artwork Wallpaper Layer (Dominating entire left side with fluid zoom, breathing motion, and edge blending)
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(160, width * 0.82), height: max(80, height * 1.45))
+                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.50))
                         .scaleEffect(scalePulse)
                         .rotationEffect(.degrees(rotationAngle))
-                        .offset(x: driftX1 * 0.65 - 18, y: driftY1 * 0.65)
-                        .blur(radius: 12)
-                        .opacity(0.75 * intensity)
+                        .offset(x: driftX1 * 0.65 - 20, y: driftY1 * 0.65)
+                        .blur(radius: 10)
+                        .opacity(0.80 * intensity)
                 }
                 
                 // Fluid Orb 1: Primary chromatic dynamic flare
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 180, height: 180)
+                    .frame(width: 190, height: 190)
                     .blur(radius: 36)
                     .offset(x: -30 + driftX1, y: -18 + driftY1)
                     .opacity(0.55 * intensity)
@@ -398,18 +449,18 @@ struct iOSLiveArtworkWallpaperView: View {
                 // Fluid Orb 3: Liquid light wave wash across the bottom-left
                 Ellipse()
                     .fill(primaryColor.opacity(0.75))
-                    .frame(width: 250, height: 90)
+                    .frame(width: 260, height: 95)
                     .blur(radius: 28)
                     .offset(x: driftX2 * 0.75, y: height * 0.28)
                     .opacity(0.48 * intensity)
             }
-            .frame(width: max(140, width * 0.78), height: height)
+            .frame(width: max(150, width * 0.80), height: height)
             .mask(
                 LinearGradient(
                     colors: [
                         Color.black.opacity(1.0),
                         Color.black.opacity(0.95),
-                        Color.black.opacity(0.45),
+                        Color.black.opacity(0.40),
                         Color.clear
                     ],
                     startPoint: .leading,
@@ -663,7 +714,8 @@ struct IslandView: View {
                                 isPlaying: model.isMusicPlaying,
                                 width: model.width,
                                 height: model.height,
-                                intensity: model.artworkGlowIntensity
+                                intensity: model.artworkGlowIntensity,
+                                motionVideoURL: model.liveMotionVideoURL
                             )
                             .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                             .transition(.opacity)
@@ -1509,10 +1561,22 @@ struct IslandView: View {
 
     @ViewBuilder var musicView: some View {
         VStack(spacing: 8) {
-            // Top Row: Live Artwork Wallpaper Takeover (Left) | Title & Artist | Live Dynamic Waveform (Right)
+            // Top Row: Smart Artwork Card vs Live Wallpaper Takeover
             HStack(spacing: 12) {
-                if !model.enableArtworkGlow {
-                    // Standard Fallback Card when Live Wallpaper is toggled off
+                if model.hasLiveMotionWallpaper && model.enableArtworkGlow {
+                    // LIVE WALLPAPER ACTIVE: NO CARD, larger wallpaper fluidly takes over whole left side!
+                    ZStack {
+                        Circle()
+                            .fill(model.artworkColor.opacity(0.32))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .shadow(color: model.artworkColor.opacity(0.6), radius: 6)
+                    .padding(.leading, 4)
+                } else {
+                    // NORMAL ARTWORK: Classic gorgeous rounded artwork card with 3D Flip
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
                         ZStack {
@@ -1537,18 +1601,6 @@ struct IslandView: View {
                     .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
                     .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
                     .zIndex(1)
-                } else {
-                    // Clean Musical Brand Accent while Live Animated Wallpaper commands the entire left side
-                    ZStack {
-                        Circle()
-                            .fill(model.artworkColor.opacity(0.28))
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "music.quarternote.3")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .shadow(color: model.artworkColor.opacity(0.6), radius: 6)
-                    .padding(.leading, 4)
                 }
                 
                 // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews (matching exact 15pt bold font & layout)
@@ -2811,6 +2863,9 @@ class IslandModel: ObservableObject {
     @Published var trackDuration: Double = 1.0
     @Published var playbackPosition: Double = 0.0
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
+    @Published var hasLiveMotionWallpaper: Bool = false
+    @Published var liveMotionVideoURL: URL? = nil
+    private var motionArtworkCache: [String: URL?] = [:]
     @Published var artworkColor: Color = .orange
     @Published var isMusicPlaying: Bool = false
     @Published var enableArtworkGlow: Bool = true
@@ -3646,10 +3701,15 @@ class IslandModel: ObservableObject {
                     self.currentTrack = tTrack
                     self.currentArtist = tArtist
                     
+                    self.hasLiveMotionWallpaper = false
+                    self.liveMotionVideoURL = nil
+                    
                     if let img = finalImage {
                         self.currentArtwork = img
                         self.artworkColor = finalColor
                         self.pendingArtworkRetry = false
+                        // Check online for iOS / Apple Music Live Motion Wallpaper variant
+                        self.fetchArtworkFromWeb(track: tTrack, artist: tArtist, album: tAlbum, cacheKey: cacheKey)
                     } else {
                         // Reset to default music icon while loading — NEVER keep previous track's artwork
                         self.currentArtwork = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
@@ -3692,27 +3752,73 @@ class IslandModel: ObservableObject {
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let results = json["results"] as? [[String: Any]],
-                   let first = results.first,
-                   var artUrlStr = first["artworkUrl100"] as? String {
+                   let first = results.first {
                     
-                    artUrlStr = artUrlStr.replacingOccurrences(of: "100x100bb.jpg", with: "600x600bb.jpg")
-                        .replacingOccurrences(of: "100x100bb.png", with: "600x600bb.png")
+                    var artUrlStr = first["artworkUrl100"] as? String ?? ""
+                    let albumWebUrlStr = (first["collectionViewUrl"] as? String ?? first["trackViewUrl"] as? String)?.components(separatedBy: "?").first
                     
-                    if let artUrl = URL(string: artUrlStr) {
-                        URLSession.shared.dataTask(with: artUrl) { imgData, _, _ in
-                            guard let imgData = imgData, let img = NSImage(data: imgData) else { return }
-                            let color = img.averageColor
+                    // 1. Resolve High-Res Artwork
+                    if !artUrlStr.isEmpty {
+                        artUrlStr = artUrlStr.replacingOccurrences(of: "100x100bb.jpg", with: "600x600bb.jpg")
+                            .replacingOccurrences(of: "100x100bb.png", with: "600x600bb.png")
+                        
+                        if let artUrl = URL(string: artUrlStr) {
+                            URLSession.shared.dataTask(with: artUrl) { imgData, _, _ in
+                                guard let imgData = imgData, let img = NSImage(data: imgData) else { return }
+                                let color = img.averageColor
+                                DispatchQueue.main.async {
+                                    self.artworkCache[cacheKey] = (img, color)
+                                    if self.currentTrackPersistentID == cacheKey {
+                                        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                                            self.currentArtwork = img
+                                            self.artworkColor = color
+                                            self.pendingArtworkRetry = false
+                                        }
+                                    }
+                                }
+                            }.resume()
+                        }
+                    }
+                    
+                    // 2. Check for iOS / Apple Music Live Motion Wallpaper Asset
+                    if let albumWebUrlStr = albumWebUrlStr, let pageURL = URL(string: albumWebUrlStr) {
+                        var pageReq = URLRequest(url: pageURL)
+                        pageReq.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+                        
+                        URLSession.shared.dataTask(with: pageReq) { pageData, _, _ in
+                            guard let pageData = pageData, let html = String(data: pageData, encoding: .utf8) else { return }
+                            
+                            // Check for HLS motion video m3u8 stream or motion artwork video
+                            let pattern = #"https://[^\s"'<>]+\.m3u8"#
+                            var motionFoundURL: URL? = nil
+                            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                                let nsString = html as NSString
+                                let matches = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+                                if let firstMatch = matches.first {
+                                    let matchStr = nsString.substring(with: firstMatch.range)
+                                    motionFoundURL = URL(string: matchStr)
+                                }
+                            }
+                            
+                            let hasMotion = motionFoundURL != nil || html.contains("motionDetailSquare") || html.contains("motionDetailTall") || html.contains("editorialVideo")
+                            
                             DispatchQueue.main.async {
-                                self.artworkCache[cacheKey] = (img, color)
+                                self.motionArtworkCache[cacheKey] = motionFoundURL
                                 if self.currentTrackPersistentID == cacheKey {
                                     withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-                                        self.currentArtwork = img
-                                        self.artworkColor = color
-                                        self.pendingArtworkRetry = false
+                                        self.hasLiveMotionWallpaper = hasMotion
+                                        self.liveMotionVideoURL = motionFoundURL
                                     }
                                 }
                             }
                         }.resume()
+                    } else {
+                        DispatchQueue.main.async {
+                            if self.currentTrackPersistentID == cacheKey {
+                                self.hasLiveMotionWallpaper = false
+                                self.liveMotionVideoURL = nil
+                            }
+                        }
                     }
                 }
             } catch {}
