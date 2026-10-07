@@ -728,6 +728,41 @@ struct IslandView: View {
                     // Explicitly only active when expanded — Genie effect sucking back directly into the artwork card on pause!
                     if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
                         ZStack(alignment: .topLeading) {
+                            // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
+                            if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
+                                iOSLiveArtworkWallpaperView(
+                                    primaryColor: model.artworkColor,
+                                    isPlaying: model.isMusicPlaying,
+                                    width: model.width,
+                                    height: model.height,
+                                    intensity: model.artworkGlowIntensity,
+                                    motionVideoURL: videoURL
+                                )
+                                .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                                .scaleEffect(
+                                    x: model.isMusicPlaying ? 1.0 : 0.12,
+                                    y: model.isMusicPlaying ? 1.0 : 0.26,
+                                    anchor: .topLeading
+                                )
+                                .opacity(model.isMusicPlaying ? 1.0 : 0.0)
+                                .clipShape(
+                                    UnevenRoundedRectangle(
+                                        topLeadingRadius: 0,
+                                        bottomLeadingRadius: model.isMusicPlaying ? 24 : 12,
+                                        bottomTrailingRadius: model.isMusicPlaying ? 24 : 12,
+                                        topTrailingRadius: 0,
+                                        style: .continuous
+                                    )
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
+                                        model.isLiveWallpaperExpanded = false
+                                    }
+                                }
+                                .animation(.spring(response: 0.52, dampingFraction: 0.76), value: model.isMusicPlaying)
+                            }
+                            
                             // Full left-to-right ambient artwork gradient with Genie retraction to artwork anchor (top-left)
                             LinearGradient(
                                 colors: [
@@ -750,34 +785,14 @@ struct IslandView: View {
                             .clipShape(
                                 UnevenRoundedRectangle(
                                     topLeadingRadius: 0,
-                                    bottomLeadingRadius: 24,
-                                    bottomTrailingRadius: 24,
+                                    bottomLeadingRadius: model.isMusicPlaying ? 24 : 12,
+                                    bottomTrailingRadius: model.isMusicPlaying ? 24 : 12,
                                     topTrailingRadius: 0,
                                     style: .continuous
                                 )
                             )
-                            
-                            // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
-                            if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
-                                iOSLiveArtworkWallpaperView(
-                                    primaryColor: model.artworkColor,
-                                    isPlaying: model.isMusicPlaying,
-                                    width: model.width,
-                                    height: model.height,
-                                    intensity: model.artworkGlowIntensity,
-                                    motionVideoURL: videoURL
-                                )
-                                .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                                .transition(.opacity)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
-                                        model.isLiveWallpaperExpanded = false
-                                    }
-                                }
-                            }
                         }
-                        .animation(.spring(response: 0.50, dampingFraction: 0.76), value: model.isMusicPlaying)
+                        .animation(.spring(response: 0.52, dampingFraction: 0.76), value: model.isMusicPlaying)
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
                     
