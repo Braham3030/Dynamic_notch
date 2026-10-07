@@ -1622,9 +1622,9 @@ struct IslandView: View {
                     .zIndex(1)
                 }
                 
-                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & clean track previews (no blue arrows, clean spacing)
+                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & continuous sliding track titles
                 ZStack(alignment: .leading) {
-                    // Real-Time Previous Track Title Preview (clean spacing, zero blue arrows)
+                    // 1. Real-Time Previous Track Title (positioned to the left at -180pt, smoothly slides right into view on right drag)
                     if manualDragOffset > 0 {
                         let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack) 
                             ? model.prevTrackName 
@@ -1632,19 +1632,19 @@ struct IslandView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(prevDisplay)
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
+                                .foregroundColor(.white.opacity(0.95))
                                 .lineLimit(1)
                             Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
                                 .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.60))
+                                .foregroundColor(.white.opacity(0.65))
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset - 300)
-                        .opacity(min(1.0, Double(manualDragOffset) / 35.0))
+                        .offset(x: manualDragOffset - 180)
+                        .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 25.0)))
                     }
                     
-                    // Active Playing Track
+                    // 2. Active Playing Track (slides smoothly with the drag gesture)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
                             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -1657,9 +1657,9 @@ struct IslandView: View {
                     }
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
-                    .opacity(max(0.2, 1.0 - Double(abs(manualDragOffset)) / 150.0))
+                    .opacity(max(0.15, 1.0 - Double(abs(manualDragOffset)) / 120.0))
                     
-                    // Real-Time Next Track Title Preview (clean spacing, zero blue arrows)
+                    // 3. Real-Time Next Track Title (positioned to the right at +180pt, smoothly slides left into view on left drag)
                     if manualDragOffset < 0 {
                         let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack) 
                             ? model.nextTrackName 
@@ -1667,61 +1667,65 @@ struct IslandView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(nextDisplay)
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
+                                .foregroundColor(.white.opacity(0.95))
                                 .lineLimit(1)
                             Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
                                 .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.60))
+                                .foregroundColor(.white.opacity(0.65))
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset + 300)
-                        .opacity(min(1.0, Double(-manualDragOffset) / 35.0))
+                        .offset(x: manualDragOffset + 180)
+                        .opacity(min(1.0, max(0.0, Double(-manualDragOffset) / 25.0)))
                     }
                 }
                 .padding(.leading, 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .mask(
-                    LinearGradient(gradient: Gradient(stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: .black, location: 0.02),
-                        .init(color: .black, location: 0.98),
-                        .init(color: .clear, location: 1.0)
-                    ]), startPoint: .leading, endPoint: .trailing)
-                )
                 .contentShape(Rectangle())
                 .gesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 3)
                         .onChanged { value in
                             manualDragOffset = value.translation.width
                         }
                         .onEnded { drag in
-                            if drag.translation.width < -45 {
+                            if drag.translation.width < -35 {
+                                // Slide completely off to the left and slide next track in from right
                                 model.isForward = true
                                 model.lastManualSkipTime = Date()
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { manualDragOffset = -260 }
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                    manualDragOffset = -220
+                                }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: true)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = 260
-                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) { manualDragOffset = 0 }
+                                        manualDragOffset = 220
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                                            manualDragOffset = 0
+                                        }
                                     }
                                 }
-                            } else if drag.translation.width > 45 {
+                            } else if drag.translation.width > 35 {
+                                // Slide completely off to the right and slide prev track in from left
                                 model.isForward = false
                                 model.lastManualSkipTime = Date()
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { manualDragOffset = 260 }
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                    manualDragOffset = 220
+                                }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
                                     model.skipTrack(forward: false)
                                     DispatchQueue.main.async {
-                                        manualDragOffset = -260
-                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) { manualDragOffset = 0 }
+                                        manualDragOffset = -220
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                                            manualDragOffset = 0
+                                        }
                                     }
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) { manualDragOffset = 0 }
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.70)) {
+                                    manualDragOffset = 0
+                                }
                             }
                         }
                 )
