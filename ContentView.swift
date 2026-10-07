@@ -745,12 +745,12 @@ class IslandModel: ObservableObject {
     @Published var autoCloseBehavior: AutoCloseBehavior = .immediate
     @Published var isHoverExpanded: Bool = false
     var hoverCloseTask: Task<Void, Never>? = nil
-    @Published var showAirPodsLocalization: Bool = false
-    @Published var showControlCenter: Bool = false
-    @Published var showMusic: Bool = false
-    @Published var showPhone: Bool = false
-    @Published var showNotifications: Bool = false
-    @Published var showAirDrop: Bool = false
+    @Published var showAirPodsLocalization: Bool = true
+    @Published var showControlCenter: Bool = true
+    @Published var showMusic: Bool = true
+    @Published var showPhone: Bool = true
+    @Published var showNotifications: Bool = true
+    @Published var showAirDrop: Bool = true
     
     func handleHover(_ isHovering: Bool) {
         hoverCloseTask?.cancel()
@@ -1865,60 +1865,46 @@ struct VisualEffect: NSViewRepresentable {
 struct VerticalSwitcher: View {
     @ObservedObject var model: IslandModel
     var activeState: IslandState
-    @State private var isHovered: Bool = false
     
     var body: some View {
-        VStack(spacing: isHovered ? 10 : 6) {
-            if model.showAirPodsLocalization { switcherButton(icon: "airpodspro", target: .expandedAirPods) }
+        VStack(spacing: 5) {
             if model.showControlCenter { switcherButton(icon: "switch.2", target: .expandedControls) }
             if model.showMusic { switcherButton(icon: "music.note", target: .expandedMusic) }
+            if model.showAirPodsLocalization && model.airPodsConnected { switcherButton(icon: "airpodspro", target: .expandedAirPods) }
             if model.showPhone { switcherButton(icon: "phone", target: .expandedPhone) }
             if model.showNotifications { switcherButton(icon: "bell", target: .expandedNotifications) }
             if model.showAirDrop { switcherButton(icon: "airdrop", target: .expandedAirDrop) }
         }
-        .padding(isHovered ? 7 : 4)
+        .padding(4)
         .background(
-            RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous)
-                .fill(isHovered ? Color.black.opacity(0.65) : Color.black.opacity(0.40))
-                .background(
-                    VisualEffect()
-                        .clipShape(RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous))
-                )
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous)
-                        .stroke(Color.white.opacity(isHovered ? 0.22 : 0.10), lineWidth: 0.8)
+                    Capsule(style: .continuous)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(isHovered ? 0.35 : 0.15), radius: isHovered ? 12 : 4, x: isHovered ? 2 : 0, y: isHovered ? 4 : 1)
         )
-        // Move smoothly from inside the notch right edge when idle to popped out right when hovered
         .offset(
-            x: isHovered ? ((model.width / 2) + 26) : ((model.width / 2) - 18),
-            y: model.physicalNotchHeight + ((model.height - model.physicalNotchHeight) / 2) - (isHovered ? 34 : 22)
+            x: (model.width / 2) - 20,
+            y: model.physicalNotchHeight + ((model.height - model.physicalNotchHeight) / 2) - 26
         )
-        .scaleEffect(isHovered ? 1.0 : 0.80)
-        .animation(.spring(response: 0.32, dampingFraction: 0.74), value: isHovered)
-        .onHover { h in
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.74)) {
-                isHovered = h
-            }
-        }
     }
     
     @ViewBuilder func switcherButton(icon: String, target: IslandState) -> some View {
         let isActive = (activeState == target)
         Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
                 model.state = target
             }
         } label: {
             ZStack {
                 Circle()
-                    .fill(isActive ? Color.white : Color.white.opacity(isHovered ? 0.14 : 0.08))
+                    .fill(isActive ? Color.white : Color.clear)
                 Image(systemName: icon)
-                    .foregroundStyle(isActive ? Color.black : Color.white)
-                    .font(.system(size: isHovered ? 14 : 11, weight: .bold))
+                    .foregroundStyle(isActive ? Color.black : Color.white.opacity(0.8))
+                    .font(.system(size: 10, weight: .bold))
             }
-            .frame(width: isHovered ? 34 : 22, height: isHovered ? 34 : 22)
+            .frame(width: 20, height: 20)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -2051,89 +2037,50 @@ struct SystemControlsView: View {
     
     var body: some View {
         Form {
-            Section(header: Text("Behavior"), footer: Text("Controls how long the island stays open after you move your mouse away.")) {
+            Section(header: Text("Hover & Interaction Behavior"), footer: Text("Controls how long the island stays open after you move your mouse away.")) {
                 Picker("Auto-Close Behavior", selection: $model.autoCloseBehavior) {
                     ForEach(AutoCloseBehavior.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.menu)
             }
             
-            Section(header: Text("System Permissions & Integrations"), footer: Text("All integrations require system permission before making changes or reading data. Disabling an item instantly terminates its active notch activities.")) {
+            Section(header: Text("macOS Permissions"), footer: Text("Dynamic Notch requests native macOS permissions to control brightness & volume, access Apple Music playback, and capture system alerts.")) {
                 HStack {
-                    Image(systemName: "switch.2")
-                        .foregroundStyle(.purple)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Control Center Quick Toggles")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Allows adjusting brightness, volume, Wi-Fi & Bluetooth")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showControlCenter },
-                        set: { newVal in
-                            if newVal {
-                                model.requestControlCenterPermission { _ in }
-                            } else {
-                                model.showControlCenter = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "music.note")
-                        .foregroundStyle(.pink)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Apple Music Access")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Connects to Apple Music server for track info & controls")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showMusic },
-                        set: { newVal in
-                            if newVal {
-                                model.requestMusicPermission { _ in }
-                            } else {
-                                model.showMusic = false
-                                model.isMusicPlaying = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "airpodspro")
+                    Image(systemName: "hand.raised.fill")
                         .foregroundStyle(.blue)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("AirPods & Bluetooth Localization")
+                        Text("Accessibility & System Controls")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Finds paired AirPods and displays connection & battery gauges")
+                        Text("Required to control volume, brightness & system shortcuts")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showAirPodsLocalization },
-                        set: { newVal in
-                            if newVal {
-                                model.requestAirPodsPermission { _ in }
-                            } else {
-                                model.showAirPodsLocalization = false
-                                model.airPodsShowingCompact = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
+                    Button("Grant Access") {
+                        model.requestControlCenterPermission { _ in }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                
+                HStack {
+                    Image(systemName: "applescript.fill")
+                        .foregroundStyle(.pink)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Apple Events & Music Scripting")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Required to read song info, album art & playback controls")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Grant Access") {
+                        model.requestMusicPermission { _ in }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
                 
                 HStack {
@@ -2141,25 +2088,27 @@ struct SystemControlsView: View {
                         .foregroundStyle(.orange)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Live Audio Waveforms (Microphone)")
+                        Text("Microphone Audio Analysis")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Analyzes real-time sound to render live waveforms")
+                        Text("Required for live jumping audio waveform visualization")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.hasMicPermission },
-                        set: { newVal in
-                            if newVal {
-                                model.requestMicPermission { _ in }
-                            } else {
-                                model.hasMicPermission = false
-                                AudioAnalyzer.shared.stopMonitoring()
-                            }
+                    if model.hasMicPermission {
+                        Button("Granted") {
+                            model.requestMicPermission { _ in }
                         }
-                    ))
-                    .labelsHidden()
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(true)
+                    } else {
+                        Button("Grant Access") {
+                            model.requestMicPermission { _ in }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
                 }
                 
                 HStack {
@@ -2167,78 +2116,22 @@ struct SystemControlsView: View {
                         .foregroundStyle(.red)
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("System Notifications")
+                        Text("Notification Center Access")
                             .font(.system(size: 13, weight: .medium))
-                        Text("Floating banners for incoming macOS alerts")
+                        Text("Required to route alerts into the dynamic notch")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showNotifications },
-                        set: { newVal in
-                            if newVal {
-                                model.requestNotificationsPermission { _ in }
-                            } else {
-                                model.showNotifications = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "phone.fill")
-                        .foregroundStyle(.green)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Phone & FaceTime")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Shows live active call status in Dynamic Notch")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                    Button("Grant Access") {
+                        model.requestNotificationsPermission { _ in }
                     }
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showPhone },
-                        set: { newVal in
-                            if newVal {
-                                model.requestPhonePermission { _ in }
-                            } else {
-                                model.showPhone = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "airdrop")
-                        .foregroundStyle(.cyan)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("AirDrop Sharing")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Displays active transfer progress in the notch")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.showAirDrop },
-                        set: { newVal in
-                            if newVal {
-                                model.requestAirDropPermission { _ in }
-                            } else {
-                                model.showAirDrop = false
-                            }
-                        }
-                    ))
-                    .labelsHidden()
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
             }
             
-            Section(footer: Text("If an item was denied previously in macOS, open Privacy & Security Settings to grant access.")) {
+            Section(footer: Text("If a permission was previously denied, open System Settings to enable permissions manually.")) {
                 Button(action: { model.openSystemPrivacySettings() }) {
                     HStack {
                         Image(systemName: "lock.shield.fill")
@@ -2250,7 +2143,141 @@ struct SystemControlsView: View {
         .formStyle(.grouped)
     }
 }
-struct LiveActivitiesView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Global Settings"), footer: Text("Projects a lush, vibrant colored shadow directly onto the ambient background perfectly matched to the dominant color of the active Apple Music track artwork.")) { Toggle("Live Background Glow Effect", isOn: $model.enableArtworkGlow) }; Section(header: Text("Active Layout Modules")) { HStack { Image(systemName: "music.note.list").foregroundStyle(.orange).frame(width: 24); Text("Apple Music Overlay"); Spacer(); Button(model.state == .expandedMusic ? "Terminate" : "Simulate") { model.toggleState(.expandedMusic) } }; HStack { Image(systemName: "bag.fill").foregroundStyle(.green).frame(width: 24); Text("Food Delivery"); Spacer(); Button(model.state == .expandedFood ? "Terminate" : "Simulate") { model.toggleState(.expandedFood) } } } }.formStyle(.grouped) } }
+
+struct LiveActivitiesView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Dynamic Island Modules"), footer: Text("Choose which live activities and widgets appear in the Dynamic Notch and its integrated mini switcher.")) {
+                HStack {
+                    Image(systemName: "switch.2")
+                        .foregroundStyle(.blue)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Control Center Quick Toggles")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Wi-Fi, Bluetooth, Brightness, Volume & AirPods controls")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showControlCenter)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "music.note")
+                        .foregroundStyle(.pink)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Apple Music & Media Player")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Album art, interactive scrubber, waveform & playback controls")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showMusic)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "airpodspro")
+                        .foregroundStyle(.white)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AirPods Integration")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Connection status, real-time battery gauges & listening modes")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showAirPodsLocalization)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "phone.fill")
+                        .foregroundStyle(.green)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Phone & FaceTime")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Displays live call status and mute/end call actions")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showPhone)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "bell.badge.fill")
+                        .foregroundStyle(.red)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System Notifications")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Dynamic floating alert cards in the notch")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showNotifications)
+                        .labelsHidden()
+                }
+                
+                HStack {
+                    Image(systemName: "airdrop")
+                        .foregroundStyle(.cyan)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AirDrop Sharing")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Displays live file transfer progress in the notch")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $model.showAirDrop)
+                        .labelsHidden()
+                }
+            }
+            
+            Section(header: Text("Visual Effects"), footer: Text("Projects a vibrant colored ambient glow matching the active track artwork.")) {
+                Toggle("Live Background Glow Effect", isOn: $model.enableArtworkGlow)
+            }
+            
+            Section(header: Text("Live Activity Previews & Simulations")) {
+                HStack {
+                    Image(systemName: "music.note.list")
+                        .foregroundStyle(.orange)
+                        .frame(width: 24)
+                    Text("Apple Music Player")
+                    Spacer()
+                    Button(model.state == .expandedMusic ? "Terminate" : "Simulate") {
+                        model.toggleState(.expandedMusic)
+                    }
+                }
+                
+                HStack {
+                    Image(systemName: "bag.fill")
+                        .foregroundStyle(.green)
+                        .frame(width: 24)
+                    Text("Food Delivery")
+                    Spacer()
+                    Button(model.state == .expandedFood ? "Terminate" : "Simulate") {
+                        model.toggleState(.expandedFood)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
 
 struct FlipTransitionModifier: ViewModifier {
     var angle: Double
