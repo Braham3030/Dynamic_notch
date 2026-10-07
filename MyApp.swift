@@ -121,6 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private var dragCheckTimer: Timer?
+    private var dragStartTime: Date?
 
     private func setupMouseTracking() {
         // Track mouse globally across all apps for smooth notch hover interactions
@@ -135,7 +136,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
         
-        // Fast periodic checker to detect drag release or drag start across the entire OS
+        // Fast periodic checker to detect drag time progression & release across the entire OS
         dragCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
             self?.checkImageDragState()
         }
@@ -146,8 +147,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let isLeftDown = (mouseButtons & 1) != 0
         let model = IslandModel.shared
         
-        // If left mouse button is NOT pressed, user is not dragging anything -> never open
+        // If left mouse button is NOT pressed, user is not dragging anything -> reset timer and collapse
         guard isLeftDown else {
+            dragStartTime = nil
             if model.isAirDropTargeted && model.state != .expandedAirDrop {
                 DispatchQueue.main.async {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -162,20 +164,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let count = pboard.changeCount
         
         // If pasteboard has never had a drag, or count is 0
-        guard count > 0 else { return }
+        guard count > 0 else {
+            dragStartTime = nil
+            return
+        }
         
         // Check if drag pasteboard contains an image (URL with image extension or raw image data)
         let isPicture = isDragPasteboardAnImage(pboard)
         
         if isPicture {
-            if !model.isAirDropTargeted && model.state != .expandedAirDrop {
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-                        model.isAirDropTargeted = true
+            if dragStartTime == nil {
+                dragStartTime = Date()
+            }
+            
+            let elapsed = Date().timeIntervalSince(dragStartTime ?? Date())
+            let threshold = model.fileDragOpenDelay
+            
+            if elapsed >= threshold {
+                if !model.isAirDropTargeted && model.state != .expandedAirDrop {
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                            model.isAirDropTargeted = true
+                        }
                     }
                 }
             }
         } else {
+            dragStartTime = nil
             if model.isAirDropTargeted && model.state != .expandedAirDrop {
                 DispatchQueue.main.async {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
