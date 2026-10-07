@@ -8,7 +8,7 @@ struct MyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var body: some Scene {
-        WindowGroup("Dynamic Island Settings") {
+        WindowGroup("dyNotch") {
             ContentView()
                 .frame(width: 840, height: 680)
         }
