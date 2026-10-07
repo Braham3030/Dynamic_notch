@@ -692,7 +692,7 @@ struct IslandView: View {
                     
                     // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper
                     // Explicitly only active when expanded — keeping compact small notch pitch black
-                    if model.isExpanded && (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                    if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
                         ZStack(alignment: .leading) {
                             // Full left-to-right ambient artwork gradient all over the notch
                             LinearGradient(
@@ -706,8 +706,8 @@ struct IslandView: View {
                             )
                             .frame(width: model.width, height: model.height)
                             
-                            // ONLY display live motion wallpaper when the track actually possesses an Apple Music live motion video asset
-                            if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
+                            // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
+                            if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
                                 iOSLiveArtworkWallpaperView(
                                     primaryColor: model.artworkColor,
                                     isPlaying: model.isMusicPlaying,
@@ -717,7 +717,7 @@ struct IslandView: View {
                                     motionVideoURL: videoURL
                                 )
                                 .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                                .transition(.opacity)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
                             }
                         }
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
@@ -757,7 +757,7 @@ struct IslandView: View {
                 // Dynamic Track-Pulsating Ambient Edge Glow around artwork and waveform staying strictly at the side edges of the notch
                 .background(
                     Group {
-                        if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                        if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
                             let cornerR = model.isExpanded ? 24.0 : model.compactCornerRadius
                             let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
                             
@@ -1561,19 +1561,41 @@ struct IslandView: View {
 
     @ViewBuilder var musicView: some View {
         VStack(spacing: 8) {
-            // Top Row: Smart Artwork Card vs Live Wallpaper Takeover
-            HStack(spacing: 12) {
-                if !model.hasLiveMotionWallpaper || !model.enableArtworkGlow {
-                    // NORMAL ARTWORK: Classic gorgeous rounded artwork card with 3D Flip
+            // Top Row: Interactive Live Artwork Card | Drag Title | Dynamic Waveform
+            HStack(spacing: 14) {
+                // Artwork Card: Clickable to expand into full live wallpaper view with smooth animations
+                Button {
+                    if model.hasLiveMotionWallpaper {
+                        withAnimation(.spring(response: 0.48, dampingFraction: 0.76)) {
+                            model.isLiveWallpaperExpanded.toggle()
+                        }
+                    }
+                } label: {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.clear)
+                            .frame(width: 52, height: 52)
+                        
                         ZStack {
-                            if let img = model.currentArtwork { 
+                            if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
+                                // Live Video animating smoothly right inside the card!
+                                AVPlayerLoopingMotionView(videoURL: videoURL)
+                                    .frame(width: 52, height: 52)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(model.isLiveWallpaperExpanded ? model.artworkColor : Color.white.opacity(0.18), lineWidth: model.isLiveWallpaperExpanded ? 2.0 : 0.8)
+                                    )
+                            } else if let img = model.currentArtwork { 
                                 Image(nsImage: img)
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 52, height: 52)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                    )
                             } else {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(Color.gray.opacity(0.3))
@@ -1587,35 +1609,32 @@ struct IslandView: View {
                         .transition(.flip3D(isForward: model.isForward))
                     }
                     .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
-                    .shadow(color: Color.black.opacity(0.4), radius: 4, y: 2)
-                    .zIndex(1)
+                    .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.5) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                 }
+                .buttonStyle(.plain)
+                .scaleEffect(model.isLiveWallpaperExpanded ? 1.05 : 1.0)
+                .zIndex(1)
                 
-                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & real track name previews (matching exact 15pt bold font & layout)
+                // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & clean track previews (no blue arrows, clean spacing)
                 ZStack(alignment: .leading) {
-                    // Real-Time Previous Track Title Preview (1:1 identical typography and font size)
+                    // Real-Time Previous Track Title Preview (clean spacing, zero blue arrows)
                     if manualDragOffset > 0 {
                         let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack) 
                             ? model.prevTrackName 
                             : "Previous Track"
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "backward.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Color.cyan)
-                                Text(prevDisplay)
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                            }
+                            Text(prevDisplay)
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.90))
+                                .lineLimit(1)
                             Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
                                 .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
+                                .foregroundColor(.white.opacity(0.60))
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset - 220)
-                        .opacity(min(1.0, Double(manualDragOffset) / 30.0))
+                        .offset(x: manualDragOffset - 300)
+                        .opacity(min(1.0, Double(manualDragOffset) / 35.0))
                     }
                     
                     // Active Playing Track
@@ -1631,31 +1650,26 @@ struct IslandView: View {
                     }
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
-                    .opacity(max(0.2, 1.0 - Double(abs(manualDragOffset)) / 140.0))
+                    .opacity(max(0.2, 1.0 - Double(abs(manualDragOffset)) / 150.0))
                     
-                    // Real-Time Next Track Title Preview (1:1 identical typography and font size)
+                    // Real-Time Next Track Title Preview (clean spacing, zero blue arrows)
                     if manualDragOffset < 0 {
                         let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack) 
                             ? model.nextTrackName 
                             : "Next Track"
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 5) {
-                                Text(nextDisplay)
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                Image(systemName: "forward.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Color.cyan)
-                            }
+                            Text(nextDisplay)
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.90))
+                                .lineLimit(1)
                             Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
                                 .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
+                                .foregroundColor(.white.opacity(0.60))
                                 .lineLimit(1)
                         }
                         .padding(.leading, 4)
-                        .offset(x: manualDragOffset + 220)
-                        .opacity(min(1.0, Double(-manualDragOffset) / 30.0))
+                        .offset(x: manualDragOffset + 300)
+                        .opacity(min(1.0, Double(-manualDragOffset) / 35.0))
                     }
                 }
                 .padding(.leading, 2)
@@ -1883,7 +1897,7 @@ extension IslandModel {
         if isExpanded {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 245 : 165
-            case .expandedMusic: return isShowingAirPlayInMusic ? 435 : 215
+            case .expandedMusic: return isShowingAirPlayInMusic ? 445 : 232
             case .expandedFood: return 85
             case .expandedPhone: return 92
             case .expandedNotifications: return 88
@@ -2852,6 +2866,7 @@ class IslandModel: ObservableObject {
     @Published var playbackPosition: Double = 0.0
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
     @Published var hasLiveMotionWallpaper: Bool = false
+    @Published var isLiveWallpaperExpanded: Bool = false
     @Published var liveMotionVideoURL: URL? = nil
     private var motionArtworkCache: [String: URL?] = [:]
     @Published var artworkColor: Color = .orange
@@ -3690,6 +3705,7 @@ class IslandModel: ObservableObject {
                     self.currentArtist = tArtist
                     
                     self.hasLiveMotionWallpaper = false
+                    self.isLiveWallpaperExpanded = false
                     self.liveMotionVideoURL = nil
                     
                     if let img = finalImage {
