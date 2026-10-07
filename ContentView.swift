@@ -1021,7 +1021,7 @@ struct IslandView: View {
                             HStack(spacing: 8) {
                                 ConnectivityCard(
                                     title: "Wi-Fi",
-                                    subtitle: model.isWifiOn ? model.wifiSSID : "Off",
+                                    subtitle: model.isWifiOn ? (model.wifiSSID.isEmpty ? "Connected" : model.wifiSSID) : "Off",
                                     icon: "wifi",
                                     isOn: model.isWifiOn,
                                     activeTint: .blue,
@@ -2572,7 +2572,7 @@ class IslandModel: ObservableObject {
     @Published var isWifiOn: Bool = true
     @Published var isBluetoothOn: Bool = true
     @Published var wifiBars: Int = 3
-    @Published var wifiSSID: String = "Wi-Fi" 
+    @Published var wifiSSID: String = "" 
     private var wifiTimer: Timer?
     
     @Published var currentTrack: String = ""
@@ -3807,6 +3807,35 @@ class IslandModel: ObservableObject {
         }
     }
 
+    func fetchRealWifiSSID() -> String {
+        if let interface = CWWiFiClient.shared().interface(), let ssid = interface.ssid(), !ssid.isEmpty {
+            return ssid
+        }
+        let ifName = CWWiFiClient.shared().interface()?.interfaceName ?? "en0"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
+        task.arguments = ["getsummary", ifName]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            if let output = String(data: data, encoding: .utf8) {
+                for line in output.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("SSID : ") {
+                        let realSSID = trimmed.replacingOccurrences(of: "SSID : ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !realSSID.isEmpty {
+                            return realSSID
+                        }
+                    }
+                }
+            }
+        } catch {}
+        return ""
+    }
+
     private func updateWifiStrength() {
         guard let interface = CWWiFiClient.shared().interface() else {
             isWifiOn = false
@@ -3833,40 +3862,11 @@ class IslandModel: ObservableObject {
             wifiBars = 1
         }
         
-        // 1. Check CoreWLAN SSID
-        if let ssid = interface.ssid(), !ssid.isEmpty {
-            self.wifiSSID = ssid
-            return
-        }
-        
-        // 2. Instant low-overhead IPConfig SSID resolution
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self = self else { return }
-            let ifName = CWWiFiClient.shared().interface()?.interfaceName ?? "en0"
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
-            task.arguments = ["getsummary", ifName]
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            do {
-                try task.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                task.waitUntilExit()
-                if let output = String(data: data, encoding: .utf8) {
-                    for line in output.components(separatedBy: .newlines) {
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        if trimmed.hasPrefix("SSID : ") {
-                            let realSSID = trimmed.replacingOccurrences(of: "SSID : ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !realSSID.isEmpty {
-                                DispatchQueue.main.async {
-                                    self.wifiSSID = realSSID
-                                }
-                                return
-                            }
-                        }
-                    }
-                }
-            } catch {}
+        let detected = fetchRealWifiSSID()
+        if !detected.isEmpty {
+            self.wifiSSID = detected
+        } else if self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" {
+            self.wifiSSID = "Connected"
         }
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
