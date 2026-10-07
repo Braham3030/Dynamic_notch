@@ -725,9 +725,47 @@ struct IslandView: View {
                     }
                     
                     // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper
-                    // Explicitly only active when expanded — Genie effect sucking back directly into the artwork card on pause!
+                    // Explicitly only active when expanded — 2-Stage Genie Choreography:
+                    // Stage 1: Live Wallpaper FIRST sucks into artwork card!
+                    // Stage 2: Ambient Gradient follows immediately after into the artwork card!
                     if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
                         ZStack(alignment: .topLeading) {
+                            // Full left-to-right ambient artwork gradient with Genie retraction to artwork anchor (top-left)
+                            LinearGradient(
+                                colors: [
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.48 : 0.0) * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.22 : 0.0) * model.artworkGlowIntensity),
+                                    Color.black.opacity(model.isMusicPlaying ? 0.85 : 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: model.width, height: model.height)
+                            // Genie scale & transform directly into top-left (the artwork card)
+                            .scaleEffect(
+                                x: model.isMusicPlaying ? 1.0 : 0.12,
+                                y: model.isMusicPlaying ? 1.0 : 0.26,
+                                anchor: .topLeading
+                            )
+                            .opacity(model.isMusicPlaying ? 1.0 : 0.0)
+                            // Strictly maintain 0 radius for top corners (sharp against Mac bezel)
+                            .clipShape(
+                                UnevenRoundedRectangle(
+                                    topLeadingRadius: 0,
+                                    bottomLeadingRadius: model.isMusicPlaying ? 24 : 12,
+                                    bottomTrailingRadius: model.isMusicPlaying ? 24 : 12,
+                                    topTrailingRadius: 0,
+                                    style: .continuous
+                                )
+                            )
+                            // Gradient animates with a slight stagger when pausing so wallpaper goes in FIRST!
+                            .animation(
+                                model.isMusicPlaying 
+                                    ? .spring(response: 0.45, dampingFraction: 0.78) 
+                                    : .spring(response: 0.48, dampingFraction: 0.76).delay(0.18),
+                                value: model.isMusicPlaying
+                            )
+                            
                             // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
                             if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
                                 iOSLiveArtworkWallpaperView(
@@ -760,39 +798,15 @@ struct IslandView: View {
                                         model.isLiveWallpaperExpanded = false
                                     }
                                 }
-                                .animation(.spring(response: 0.52, dampingFraction: 0.76), value: model.isMusicPlaying)
-                            }
-                            
-                            // Full left-to-right ambient artwork gradient with Genie retraction to artwork anchor (top-left)
-                            LinearGradient(
-                                colors: [
-                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.48 : 0.0) * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.22 : 0.0) * model.artworkGlowIntensity),
-                                    Color.black.opacity(model.isMusicPlaying ? 0.85 : 1.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                            .frame(width: model.width, height: model.height)
-                            // Genie scale & transform directly into top-left (the artwork card)
-                            .scaleEffect(
-                                x: model.isMusicPlaying ? 1.0 : 0.12,
-                                y: model.isMusicPlaying ? 1.0 : 0.26,
-                                anchor: .topLeading
-                            )
-                            .opacity(model.isMusicPlaying ? 1.0 : 0.0)
-                            // Strictly maintain 0 radius for top corners (sharp against Mac bezel)
-                            .clipShape(
-                                UnevenRoundedRectangle(
-                                    topLeadingRadius: 0,
-                                    bottomLeadingRadius: model.isMusicPlaying ? 24 : 12,
-                                    bottomTrailingRadius: model.isMusicPlaying ? 24 : 12,
-                                    topTrailingRadius: 0,
-                                    style: .continuous
+                                // Live wallpaper moves FIRST into the artwork card immediately on pause
+                                .animation(
+                                    model.isMusicPlaying 
+                                        ? .spring(response: 0.48, dampingFraction: 0.76).delay(0.15) 
+                                        : .spring(response: 0.38, dampingFraction: 0.78),
+                                    value: model.isMusicPlaying
                                 )
-                            )
+                            }
                         }
-                        .animation(.spring(response: 0.52, dampingFraction: 0.76), value: model.isMusicPlaying)
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
                     
