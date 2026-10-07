@@ -1744,7 +1744,17 @@ class IslandModel: ObservableObject {
     @Published var physicalNotchHeight: CGFloat = 32 
     @Published var baseNotchWidth: CGFloat = 200 
     @Published var displayMode: ScreenDisplayMode = .both
-    @Published var settingsBackgroundStyle: SettingsBackgroundStyle = .liquidGlass
+    @Published var settingsBackgroundStyle: SettingsBackgroundStyle = {
+        if let saved = UserDefaults.standard.string(forKey: "saved_settingsBackgroundStyle"),
+           let style = SettingsBackgroundStyle(rawValue: saved) {
+            return style
+        }
+        return .systemDefault
+    }() {
+        didSet {
+            UserDefaults.standard.set(settingsBackgroundStyle.rawValue, forKey: "saved_settingsBackgroundStyle")
+        }
+    }
     @Published var settingsGlassIntensity: Double = 0.75
     @Published var settingsWindowOpacity: Double = 0.85
     @Published var settingsWallpaperBlur: Double = 0.0
@@ -2318,6 +2328,9 @@ struct MusicWaveform: View {
 
 
 enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
+    case systemDefault = "Default (Auto)"
+    case pureWhite = "Pure White"
+    case pureBlack = "Pure Black"
     case liquidGlass = "Liquid Glass"
     case sonoma = "Sonoma Sunset"
     case sequoia = "Sequoia Pines"
@@ -2331,6 +2344,9 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var icon: String {
         switch self {
+        case .systemDefault: return "circle.lefthalf.filled"
+        case .pureWhite: return "sun.max.fill"
+        case .pureBlack: return "moon.fill"
         case .liquidGlass: return "drop.fill"
         case .sonoma: return "sun.horizon.fill"
         case .sequoia: return "tree.fill"
@@ -2345,8 +2361,11 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     
     var subtitle: String {
         switch self {
-        case .liquidGlass: return "Ultra frosted dynamic glass"
-        case .sonoma: return "Warm twilight landscape"
+        case .systemDefault: return "Auto Light / Dark mode wallpaper"
+        case .pureWhite: return "Minimalist crisp white frosted glass"
+        case .pureBlack: return "Deep true black OLED noir"
+        case .liquidGlass: return "Ultra frosted dynamic liquid glass"
+        case .sonoma: return "Warm twilight landscape glow"
         case .sequoia: return "Deep pine forest emerald"
         case .aurora: return "Vibrant cosmic radiance"
         case .neon: return "Vivid synthwave glow"
@@ -2354,6 +2373,15 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
         case .dune: return "Golden hour desert warmth"
         case .slate: return "High contrast titanium slate"
         case .customPicture: return "Choose image from Photos / Finder"
+        }
+    }
+    
+    var isLight: Bool {
+        switch self {
+        case .pureWhite:
+            return true
+        default:
+            return false
         }
     }
 }
@@ -2419,6 +2447,8 @@ struct SettingsWindowBackground: View {
     var blurRadius: Double = 0.0
     var customImage: NSImage? = nil
     
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
         ZStack {
             // Base visual effect blur for macOS vibrancy
@@ -2428,6 +2458,44 @@ struct SettingsWindowBackground: View {
             // Rich artistic wallpaper layer with configurable blur
             Group {
                 switch style {
+                case .systemDefault:
+                    if colorScheme == .dark {
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.14, green: 0.14, blue: 0.18).opacity(0.92 * opacity),
+                                Color(red: 0.06, green: 0.06, blue: 0.09).opacity(0.96 * opacity),
+                                Color(red: 0.02, green: 0.02, blue: 0.03).opacity(0.99 * opacity)
+                            ],
+                            center: .topLeading,
+                            startRadius: 50,
+                            endRadius: 700
+                        )
+                    } else {
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.98, blue: 1.0).opacity(0.95 * opacity),
+                                Color(red: 0.92, green: 0.93, blue: 0.96).opacity(0.92 * opacity),
+                                Color(red: 0.88, green: 0.90, blue: 0.94).opacity(0.90 * opacity)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                    
+                case .pureWhite:
+                    LinearGradient(
+                        colors: [
+                            Color(white: 0.98).opacity(0.96 * opacity),
+                            Color(white: 0.92).opacity(0.94 * opacity),
+                            Color(white: 0.88).opacity(0.92 * opacity)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    
+                case .pureBlack:
+                    Color(white: 0.02).opacity(0.98 * opacity)
+                    
                 case .customPicture:
                     if let img = customImage {
                         Image(nsImage: img)
@@ -2496,7 +2564,6 @@ struct SettingsWindowBackground: View {
                         endPoint: .bottomTrailing
                     )
                 case .obsidian:
-                    // High-contrast deep obsidian with soft radiant spotlight
                     RadialGradient(
                         colors: [
                             Color(red: 0.18, green: 0.18, blue: 0.24).opacity(0.92 * opacity),
@@ -2519,7 +2586,6 @@ struct SettingsWindowBackground: View {
                         endPoint: .bottomTrailing
                     )
                 case .slate:
-                    // High-contrast clean dark titanium slate with top-down luminescent sheen
                     LinearGradient(
                         colors: [
                             Color(red: 0.28, green: 0.31, blue: 0.38).opacity(0.88 * opacity),
@@ -2571,52 +2637,61 @@ struct ContentView: View {
             
             HStack(spacing: 0) {
                 // Minimizable Sidebar Navigation
-                VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 4) {
-                    // Header with Liquid Glass Toggle
+                VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
+                    // Liquid Glass Sidebar Toggle Button right up top (No dyNotch or Preferences text!)
                     HStack {
-                        if !model.isSidebarCollapsed {
-                            Text("dyNotch")
-                                .font(.headline.weight(.bold))
-                                .foregroundColor(.white)
-                                .shadow(color: .black.opacity(0.3), radius: 2)
-                        }
-                        
-                        Spacer(minLength: 0)
-                        
-                        // Liquid Glass Minimize/Expand Toggle Button
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                                 model.isSidebarCollapsed.toggle()
                             }
                         } label: {
                             ZStack {
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.15))
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.20), Color.white.opacity(0.08)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
                                     .overlay(
-                                        Capsule(style: .continuous)
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                                             .stroke(
                                                 LinearGradient(
-                                                    colors: [Color.white.opacity(0.4), Color.white.opacity(0.1)],
+                                                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.12)],
                                                     startPoint: .top,
                                                     endPoint: .bottom
                                                 ),
-                                                lineWidth: 0.75
+                                                lineWidth: 0.8
                                             )
                                     )
-                                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                                    .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 1.5)
                                 
-                                Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
+                                HStack(spacing: 6) {
+                                    Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                    
+                                    if !model.isSidebarCollapsed {
+                                        Text("Hide Sidebar")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(.white.opacity(0.9))
+                                    }
+                                }
+                                .padding(.horizontal, model.isSidebarCollapsed ? 0 : 8)
                             }
-                            .frame(width: 28, height: 24)
+                            .frame(width: model.isSidebarCollapsed ? 36 : 120, height: 28)
                         }
                         .buttonStyle(.plain)
-                        .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Minimize Sidebar")
+                        .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Hide Sidebar")
+                        
+                        if !model.isSidebarCollapsed {
+                            Spacer()
+                        }
                     }
-                    .padding(.horizontal, model.isSidebarCollapsed ? 8 : 16)
-                    .padding(.top, 44)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, model.isSidebarCollapsed ? 8 : 14)
+                    .padding(.top, 40)
+                    .padding(.bottom, 10)
                     
                     // Navigation Items
                     ForEach(SettingsPane.allCases) { pane in
