@@ -680,17 +680,17 @@ struct IslandView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.leading, 20)
-                                .padding(.trailing, 46) // Balances the right-side switcher dock
+                                .padding(.leading, 18)
+                                .padding(.trailing, 48) // Fixed exact balance for the right-side switcher dock across all tabs
                                 
-                                // Right Side: Compact Liquid Glass Vertical Switcher
-                                HStack {
-                                    Spacer()
+                                // Right Side: Compact Liquid Glass Vertical Switcher anchored with exact right margin matching Music tab
+                                HStack(spacing: 0) {
+                                    Spacer(minLength: 0)
                                     VerticalSwitcher(model: model, activeState: model.state)
-                                        .padding(.trailing, 8)
+                                        .padding(.trailing, 10)
                                 }
                             }
-                            .frame(maxHeight: .infinity, alignment: .center)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         }
                     }
                 }
@@ -989,7 +989,7 @@ struct IslandView: View {
                                 action: model.toggleBluetooth
                             )
                         }
-                        .frame(width: 340)
+                        .frame(maxWidth: .infinity)
                         
                         // 2. Middle Row: Brightness Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
@@ -1001,9 +1001,10 @@ struct IslandView: View {
                             CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in 
                                 model.applySystemBrightness(forcedValue: val) 
                             }
-                            .frame(width: 340, height: 28)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 28)
                         }
-                        .frame(width: 340)
+                        .frame(maxWidth: .infinity)
                         
                         // 3. Middle Row: Volume Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
@@ -1015,20 +1016,22 @@ struct IslandView: View {
                             CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in 
                                 model.applySystemVolume(forcedValue: val) 
                             }
-                            .frame(width: 340, height: 28)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 28)
                         }
-                        .frame(width: 340)
+                        .frame(maxWidth: .infinity)
                         
                         // 4. Bottom Row: AirPods Noise Control Liquid Glass Slider (Only visible when AirPods are connected)
                         if model.airPodsConnected {
                             AirPodsListeningModeSlider(model: model)
-                                .frame(width: 340)
+                                .frame(maxWidth: .infinity)
                                 .transition(.asymmetric(
                                     insertion: .opacity.combined(with: .move(edge: .bottom)),
                                     removal: .opacity
                                 ))
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 } else {
                     disabledFeatureNotice("Control Center Quick Toggles Disabled")
                 }
@@ -1580,13 +1583,13 @@ extension IslandModel {
         if isAirDropTargeted { return 440 }
         if isExpanded {
             switch state {
-            case .expandedAirDrop: return 440
-            case .expandedMusic: return 420
-            case .expandedFood: return 360
-            case .expandedPhone: return 420
-            case .expandedNotifications: return 420
-            case .expandedAirPods: return 420
-            case .expandedControls: return 420
+            case .expandedAirDrop: return 436
+            case .expandedMusic: return 436
+            case .expandedFood: return 380
+            case .expandedPhone: return 436
+            case .expandedNotifications: return 436
+            case .expandedAirPods: return 436
+            case .expandedControls: return 436
             case .compact: return baseNotchWidth
             }
         }
