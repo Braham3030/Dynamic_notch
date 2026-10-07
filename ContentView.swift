@@ -398,69 +398,86 @@ struct iOSLiveArtworkWallpaperView: View {
             let t = isPlaying ? time : 0.0
             
             // Multi-frequency organic fluid wave displacement for active live motion
-            let driftX1 = sin(t * 0.58) * 28.0
-            let driftY1 = cos(t * 0.44) * 20.0
-            let driftX2 = cos(t * 0.50 + 1.2) * 35.0
-            let driftY2 = sin(t * 0.65 + 0.8) * 22.0
-            let scalePulse = 1.05 + sin(t * 0.68) * 0.07
-            let rotationAngle = sin(t * 0.32) * 4.5
+            let driftX1 = sin(t * 0.45) * 16.0
+            let driftY1 = cos(t * 0.35) * 10.0
+            let driftX2 = cos(t * 0.40 + 1.2) * 22.0
+            let driftY2 = sin(t * 0.50 + 0.8) * 14.0
+            let scalePulse = 1.03 + sin(t * 0.55) * 0.04
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
-                    .opacity(0.42 * intensity)
+                    .opacity(0.35 * intensity)
                 
-                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available
+                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available (100% SHARP HD on left!)
                 if let videoURL = motionVideoURL {
+                    // Crisp HD Video on Left
                     AVPlayerLoopingMotionView(videoURL: videoURL)
-                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.50))
+                        .frame(width: max(160, width * 0.55), height: max(85, height * 1.25))
                         .scaleEffect(scalePulse)
-                        .blur(radius: 8)
-                        .opacity(0.85 * intensity)
+                        .offset(x: driftX1 * 0.4 - 10, y: driftY1 * 0.4)
+                        .opacity(0.95 * intensity)
+                    
+                    // Blurred video glow flowing softly toward the right
+                    AVPlayerLoopingMotionView(videoURL: videoURL)
+                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.45))
+                        .scaleEffect(scalePulse * 1.05)
+                        .offset(x: 40 + driftX2 * 0.6, y: driftY2 * 0.5)
+                        .blur(radius: 26)
+                        .opacity(0.65 * intensity)
                 } else if let art = artwork {
-                    // 2. Base High-Res Live Artwork Wallpaper Layer (Dominating entire left side with fluid zoom, breathing motion, and edge blending)
+                    // 2. Base High-Res Live Artwork (100% SHARP HD on Left!)
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.50))
+                        .frame(width: max(160, width * 0.55), height: max(85, height * 1.25))
                         .scaleEffect(scalePulse)
-                        .rotationEffect(.degrees(rotationAngle))
-                        .offset(x: driftX1 * 0.65 - 20, y: driftY1 * 0.65)
-                        .blur(radius: 10)
-                        .opacity(0.80 * intensity)
+                        .offset(x: driftX1 * 0.4 - 10, y: driftY1 * 0.4)
+                        .opacity(0.95 * intensity)
+                    
+                    // Blurred artwork flow extending seamlessly into the right side
+                    Image(nsImage: art)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.45))
+                        .scaleEffect(scalePulse * 1.05)
+                        .offset(x: 40 + driftX2 * 0.6, y: driftY2 * 0.5)
+                        .blur(radius: 26)
+                        .opacity(0.65 * intensity)
                 }
                 
-                // Fluid Orb 1: Primary chromatic dynamic flare
+                // Fluid Orb 1: Primary chromatic dynamic flare flowing to the center-right
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 190, height: 190)
-                    .blur(radius: 36)
-                    .offset(x: -30 + driftX1, y: -18 + driftY1)
-                    .opacity(0.55 * intensity)
+                    .frame(width: 170, height: 170)
+                    .blur(radius: 34)
+                    .offset(x: 60 + driftX1, y: -10 + driftY1)
+                    .opacity(0.48 * intensity)
                 
-                // Fluid Orb 2: Ambient electric accent flare
+                // Fluid Orb 2: Ambient electric accent flare on the right
                 Circle()
                     .fill(Color(hue: 0.52, saturation: 0.80, brightness: 0.98))
-                    .frame(width: 150, height: 150)
-                    .blur(radius: 32)
-                    .offset(x: 75 + driftX2, y: 16 + driftY2)
-                    .opacity(0.35 * intensity)
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 30)
+                    .offset(x: 140 + driftX2, y: 15 + driftY2)
+                    .opacity(0.30 * intensity)
                 
-                // Fluid Orb 3: Liquid light wave wash across the bottom-left
+                // Fluid Orb 3: Liquid light wave wash across the bottom
                 Ellipse()
-                    .fill(primaryColor.opacity(0.75))
-                    .frame(width: 260, height: 95)
+                    .fill(primaryColor.opacity(0.70))
+                    .frame(width: 240, height: 85)
                     .blur(radius: 28)
-                    .offset(x: driftX2 * 0.75, y: height * 0.28)
-                    .opacity(0.48 * intensity)
+                    .offset(x: 50 + driftX2 * 0.7, y: height * 0.28)
+                    .opacity(0.42 * intensity)
             }
-            .frame(width: max(150, width * 0.80), height: height)
+            .frame(width: max(150, width * 0.85), height: height)
             .mask(
                 LinearGradient(
                     colors: [
                         Color.black.opacity(1.0),
-                        Color.black.opacity(0.95),
-                        Color.black.opacity(0.40),
+                        Color.black.opacity(1.0),
+                        Color.black.opacity(0.85),
+                        Color.black.opacity(0.35),
                         Color.clear
                     ],
                     startPoint: .leading,
@@ -1563,19 +1580,7 @@ struct IslandView: View {
         VStack(spacing: 8) {
             // Top Row: Smart Artwork Card vs Live Wallpaper Takeover
             HStack(spacing: 12) {
-                if model.hasLiveMotionWallpaper && model.enableArtworkGlow {
-                    // LIVE WALLPAPER ACTIVE: NO CARD, larger wallpaper fluidly takes over whole left side!
-                    ZStack {
-                        Circle()
-                            .fill(model.artworkColor.opacity(0.32))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .shadow(color: model.artworkColor.opacity(0.6), radius: 6)
-                    .padding(.leading, 4)
-                } else {
+                if !model.hasLiveMotionWallpaper || !model.enableArtworkGlow {
                     // NORMAL ARTWORK: Classic gorgeous rounded artwork card with 3D Flip
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
