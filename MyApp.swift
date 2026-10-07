@@ -104,6 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Outside notch: Set ignoresMouseEvents = true so WindowServer passes 100% of clicks straight to Apple Music, Settings, Finder, etc.!
                 if !win.ignoresMouseEvents {
                     win.ignoresMouseEvents = true
+        win.registerForDraggedTypes([.fileURL, .URL])
                 }
             }
         }

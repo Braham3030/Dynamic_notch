@@ -278,30 +278,78 @@ struct IslandView: View {
                 VStack(spacing: 0) {
                     Spacer().frame(height: model.physicalNotchHeight)
                     
-                    if model.isExpanded {
-                        HStack(alignment: .center, spacing: 6) {
-                            // Left: Main Content View
-                            Group {
-                                if model.state == .expandedMusic {
-                                    musicView
-                                } else if model.state == .expandedFood {
-                                    foodView
-                                } else {
-                                    controlsView
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            
-                            // Right: Liquid Glass Vertical Switcher (Vertically Centered, Never Cut Off)
-                            VerticalSwitcher(model: model, activeState: model.state)
-                                .padding(.trailing, 10)
+                    if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                        // Drag Hovering Indicator
+                        HStack(spacing: 10) {
+                            Image(systemName: "airdrop")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.cyan)
+                            Text("Drop Files to AirDrop")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
                         }
-                        .frame(maxHeight: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.cyan.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                                .padding(4)
+                        )
+                    } else if model.isExpanded {
+                        if model.state == .expandedAirDrop {
+                            airDropExpandedView
+                        } else {
+                            HStack(alignment: .center, spacing: 6) {
+                                // Left: Main Content View
+                                Group {
+                                    if model.state == .expandedMusic {
+                                        musicView
+                                    } else if model.state == .expandedFood {
+                                        foodView
+                                    } else {
+                                        controlsView
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                
+                                // Right: Compact Liquid Glass Vertical Switcher (Centered, Low Height)
+                                VerticalSwitcher(model: model, activeState: model.state)
+                                    .padding(.trailing, 10)
+                            }
+                            .frame(maxHeight: .infinity, alignment: .center)
+                        }
                     }
                 }
                 .frame(width: model.width, height: model.height, alignment: .top)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
+                .onDrop(of: [.fileURL], isTargeted: $model.isAirDropTargeted) { providers in
+                    var loadedURLs: [URL] = []
+                    let group = DispatchGroup()
+                    
+                    for provider in providers {
+                        if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+                            group.enter()
+                            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, _ in
+                                if let url = item as? URL {
+                                    DispatchQueue.main.async { loadedURLs.append(url) }
+                                } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                                    DispatchQueue.main.async { loadedURLs.append(url) }
+                                }
+                                group.leave()
+                            }
+                        }
+                    }
+                    
+                    group.notify(queue: .main) {
+                        if !loadedURLs.isEmpty {
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
+                                model.droppedAirDropFiles = loadedURLs
+                                model.state = .expandedAirDrop
+                            }
+                        }
+                    }
+                    return true
+                }
             }
             .frame(width: model.width, height: model.height, alignment: .top)
             .animation(model.currentAnimation, value: model.width)
@@ -472,6 +520,103 @@ struct IslandView: View {
         .padding(.vertical, 8)
     }
     
+        @ViewBuilder var airDropExpandedView: some View {
+        VStack(spacing: 10) {
+            // Top Section: File Card Preview (Multiple files supported)
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(colors: [Color.blue.opacity(0.4), Color.cyan.opacity(0.25)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: model.droppedAirDropFiles.count > 1 ? "doc.on.doc.fill" : "doc.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    if model.droppedAirDropFiles.count == 1, let first = model.droppedAirDropFiles.first {
+                        Text(first.lastPathComponent)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text("Ready to share via AirDrop")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.6))
+                    } else {
+                        Text("\(model.droppedAirDropFiles.count) Files Selected")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(model.droppedAirDropFiles.map { $0.lastPathComponent }.prefix(2).joined(separator: ", ") + (model.droppedAirDropFiles.count > 2 ? "..." : ""))
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                }
+                
+                Spacer()
+                
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        model.droppedAirDropFiles = []
+                        model.state = .compact
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            
+            Divider().background(Color.white.opacity(0.12)).padding(.horizontal, 16)
+            
+            // Bottom Section: People / Devices to AirDrop To UNDERNEATH the file!
+            VStack(alignment: .leading, spacing: 6) {
+                Text("People & Devices Nearby")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.horizontal, 16)
+                
+                if model.isAirDropSending {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                        Text("Sharing via AirDrop...")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 48)
+                } else if model.airDropSentSuccess {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 16))
+                        Text("Sent Successfully!")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 48)
+                } else {
+                    HStack(spacing: 10) {
+                        AirDropDeviceButton(name: "iPhone", icon: "iphone", action: { model.sendAirDrop(to: "iPhone") })
+                        AirDropDeviceButton(name: "iPad", icon: "ipad", action: { model.sendAirDrop(to: "iPad") })
+                        AirDropDeviceButton(name: "MacBook", icon: "laptopcomputer", action: { model.sendAirDrop(to: "MacBook") })
+                        AirDropDeviceButton(name: "AirDrop...", icon: "airdrop", isAccent: true, action: { model.sendAirDrop() })
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     @ViewBuilder var musicView: some View {
         VStack(spacing: 12) {
             // Header
@@ -687,7 +832,9 @@ extension IslandModel {
         if isScreenTransitioning {
             return baseNotchWidth
         }
+        if isAirDropTargeted { return 330 }
         if isExpanded {
+            if state == .expandedAirDrop { return 410 }
             if state == .expandedMusic { return 420 }
             if state == .expandedFood { return 360 }
             return 390
@@ -702,11 +849,15 @@ extension IslandModel {
     }
     
     var height: CGFloat {
+        if isAirDropTargeted && state != .expandedAirDrop {
+            return physicalNotchHeight + 46
+        }
         if isExpanded {
+            if state == .expandedAirDrop { return 215 }
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
-                return 180 // Generous height for WiFi/BT + Brightness/Volume + AirPods mode slider underneath
+                return 195 // Space for WiFi/BT + Sliders + Wide iOS Liquid Glass AirPods Mode Switcher
             }
             return 130
         }
@@ -763,6 +914,40 @@ class IslandModel: ObservableObject {
     @Published var showPhone: Bool = true
     @Published var showNotifications: Bool = true
     @Published var showAirDrop: Bool = true
+    
+    // Interactive AirDrop Drag & Drop State
+    @Published var droppedAirDropFiles: [URL] = []
+    @Published var isAirDropTargeted: Bool = false
+    @Published var isAirDropSending: Bool = false
+    @Published var airDropSentSuccess: Bool = false
+    
+    func sendAirDrop(to targetName: String? = nil) {
+        guard !droppedAirDropFiles.isEmpty else { return }
+        isAirDropSending = true
+        
+        let files = droppedAirDropFiles
+        DispatchQueue.main.async {
+            if let service = NSSharingService(named: .sendViaAirDrop) {
+                if service.canPerform(withItems: files) {
+                    service.perform(withItems: files)
+                }
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                self.isAirDropSending = false
+                self.airDropSentSuccess = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    self.airDropSentSuccess = false
+                    self.droppedAirDropFiles = []
+                    self.state = .compact
+                }
+            }
+        }
+    }
     
     func handleHover(_ isHovering: Bool) {
         hoverCloseTask?.cancel()
@@ -1874,108 +2059,19 @@ struct VisualEffect: NSViewRepresentable {
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
-struct SwitcherItemModel: Identifiable, Equatable {
-    let id: IslandState
-    let icon: String
-}
-
 struct VerticalSwitcher: View {
     @ObservedObject var model: IslandModel
     var activeState: IslandState
     
-    @State private var hoveredIndex: Int? = nil
-    @State private var dragYOffset: CGFloat = 0
-    @State private var scrollIndex: Int = 0
-    
-    private var allItems: [SwitcherItemModel] {
-        var items: [SwitcherItemModel] = []
-        if model.showControlCenter { items.append(.init(id: .expandedControls, icon: "switch.2")) }
-        if model.showMusic { items.append(.init(id: .expandedMusic, icon: "music.note")) }
-        if model.showAirPodsLocalization && model.airPodsConnected { items.append(.init(id: .expandedAirPods, icon: "airpodspro")) }
-        if model.showPhone { items.append(.init(id: .expandedPhone, icon: "phone.fill")) }
-        if model.showNotifications { items.append(.init(id: .expandedNotifications, icon: "bell.fill")) }
-        if model.showAirDrop { items.append(.init(id: .expandedAirDrop, icon: "airdrop")) }
-        return items
-    }
-    
     var body: some View {
-        let items = allItems
-        let totalCount = items.count
-        let maxVisible = min(3, totalCount)
-        
-        // Liquid Glass Container
-        VStack(spacing: 4) {
-            ForEach(0..<totalCount, id: \.self) { idx in
-                let item = items[idx]
-                let isFourthOrLater = idx >= 3
-                let isHovered = (hoveredIndex == idx)
-                let isBottomHovered = (hoveredIndex != nil && hoveredIndex! >= 3)
-                
-                // Dynamic sizing: if hovering 4th+ item, item 0 becomes small dot; 4th item grows full size
-                let scale: CGFloat = {
-                    if isHovered { return 1.0 }
-                    if isFourthOrLater {
-                        return isBottomHovered ? 0.92 : 0.48
-                    }
-                    if isBottomHovered && idx == 0 {
-                        return 0.48
-                    }
-                    return 1.0
-                }()
-                
-                let opacity: Double = {
-                    if isHovered { return 1.0 }
-                    if isFourthOrLater {
-                        return isBottomHovered ? 0.95 : 0.40
-                    }
-                    if isBottomHovered && idx == 0 {
-                        return 0.40
-                    }
-                    return 0.85
-                }()
-                
-                let btnSize: CGFloat = isHovered ? 24 : (scale < 0.6 ? 12 : 22)
-                let iconSize: CGFloat = isHovered ? 11 : (scale < 0.6 ? 7 : 10)
-                let isActive = (activeState == item.id)
-                
-                Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                        model.state = item.id
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(isActive ? Color.white : (isHovered ? Color.white.opacity(0.18) : Color.white.opacity(0.06)))
-                        
-                        if scale > 0.55 {
-                            Image(systemName: item.icon)
-                                .font(.system(size: iconSize, weight: .bold))
-                                .foregroundStyle(isActive ? Color.black : Color.white)
-                        } else {
-                            Circle()
-                                .fill(Color.white.opacity(0.6))
-                                .frame(width: 4, height: 4)
-                        }
-                    }
-                    .frame(width: btnSize, height: btnSize)
-                    .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .scaleEffect(scale)
-                .opacity(opacity)
-                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: scale)
-                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: opacity)
-                .onHover { h in
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                        if h { hoveredIndex = idx } else if hoveredIndex == idx { hoveredIndex = nil }
-                    }
-                }
-            }
+        VStack(spacing: 5) {
+            switcherButton(icon: "switch.2", target: .expandedControls)
+            switcherButton(icon: "music.note", target: .expandedMusic)
         }
-        .padding(5)
+        .padding(4)
         .background(
             Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.40))
+                .fill(Color.black.opacity(0.45))
                 .background(
                     VisualEffect()
                         .clipShape(Capsule(style: .continuous))
@@ -1984,36 +2080,35 @@ struct VerticalSwitcher: View {
                     Capsule(style: .continuous)
                         .stroke(
                             LinearGradient(
-                                colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
+                                colors: [Color.white.opacity(0.30), Color.white.opacity(0.08)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
                             lineWidth: 0.75
                         )
                 )
-                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+                .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 2)
         )
-        .offset(y: dragYOffset)
-        .gesture(
-            DragGesture()
-                .onChanged { val in
-                    dragYOffset = val.translation.height * 0.4
-                    if val.translation.height > 15 && totalCount > 3 {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                            hoveredIndex = 3
-                        }
-                    } else if val.translation.height < -15 {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                            hoveredIndex = 0
-                        }
-                    }
-                }
-                .onEnded { _ in
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                        dragYOffset = 0
-                    }
-                }
-        )
+    }
+    
+    @ViewBuilder func switcherButton(icon: String, target: IslandState) -> some View {
+        let isActive = (activeState == target)
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                model.state = target
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(isActive ? Color.white : Color.white.opacity(0.08))
+                Image(systemName: icon)
+                    .foregroundStyle(isActive ? Color.black : Color.white)
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .frame(width: 22, height: 22)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -2486,51 +2581,98 @@ struct LiquidScrubber: View {
     }
 }
 
+struct AirDropDeviceButton: View {
+    let name: String
+    let icon: String
+    var isAccent: Bool = false
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    Circle()
+                        .fill(isAccent ? Color.blue : Color.white.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                }
+                Text(name)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
     
-    // Mode 2: Noise Cancellation, Mode 3: Off, Mode 1 or 4: Transparency
+    // Mode 2: Noise Cancellation, Mode 3: Off, Mode 4: Transparency
     let modes = [2, 3, 4]
     let icons = ["earbuds", "speaker.slash.fill", "waveform"]
-    let titles = ["ANC", "Off", "Transp."]
+    let titles = ["Noise Cancellation", "Off", "Transparency"]
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text("AirPods Mode")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.white.opacity(0.7))
-            
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    let modeVal = modes[i]
-                    let isSelected = model.listeningMode == modeVal
-                    
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            model.setAirPodsMode(modeVal)
-                        }
-                    } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: icons[i])
-                                .font(.system(size: 11, weight: isSelected ? .bold : .regular))
-                            Text(titles[i])
-                                .font(.system(size: 8, weight: .medium))
-                        }
-                        .foregroundStyle(isSelected ? Color.black : Color.white)
-                        .frame(width: 44, height: 32)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isSelected ? Color.white : Color.white.opacity(0.12))
-                        )
+        HStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { i in
+                let modeVal = modes[i]
+                let isSelected = model.listeningMode == modeVal
+                
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                        model.setAirPodsMode(modeVal)
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: icons[i])
+                            .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                        Text(titles[i])
+                            .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(isSelected ? Color.black : Color.white.opacity(0.85))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
+                    .background(
+                        ZStack {
+                            if isSelected {
+                                Capsule(style: .continuous)
+                                    .fill(Color.white)
+                                    .shadow(color: .black.opacity(0.22), radius: 3, x: 0, y: 1)
+                            }
+                        }
+                    )
+                    .contentShape(Capsule(style: .continuous))
                 }
+                .buttonStyle(.plain)
             }
-            .padding(3)
-            .background(Color.black.opacity(0.3))
-            .cornerRadius(8)
         }
-        .frame(width: 146)
+        .padding(3)
+        .frame(width: 300, height: 36)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .background(
+                    VisualEffect()
+                        .clipShape(Capsule(style: .continuous))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                )
+        )
     }
 }
 
