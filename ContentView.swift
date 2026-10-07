@@ -7988,54 +7988,68 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable AirDrop Sharing Module", isOn: $model.showAirDrop)
                 
-                // Liquid Glass File Drag Open Delay Slider (1:1 identical with Volume/Brightness Liquid Glass CustomSlider)
-                VStack(alignment: .leading, spacing: 5) {
+                // Settings Liquid Glass Slider Matching Image Design (Electric Blue track + White Pill Knob + Dotted Scale)
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Drag-To-Open Delay")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.55))
-                            .padding(.leading, 2)
+                        HStack(spacing: 6) {
+                            Image(systemName: "timer")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(red: 0.0, green: 0.58, blue: 1.0))
+                            Text("Drag-To-Open Save File Notch Delay")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
                         
                         Spacer()
                         
                         Text(model.fileDragOpenDelay == 0 ? "Instant (0.0s)" : String(format: "%.1fs", model.fileDragOpenDelay))
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.85))
-                            .padding(.trailing, 2)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(red: 0.0, green: 0.62, blue: 1.0))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color(red: 0.0, green: 0.58, blue: 1.0).opacity(0.18))
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(Color(red: 0.0, green: 0.58, blue: 1.0).opacity(0.35), lineWidth: 0.5)
+                                    )
+                            )
                     }
                     
-                    CustomSlider(
-                        value: Binding(
-                            get: { model.fileDragOpenDelay / 10.0 },
-                            set: { newVal in
-                                let rounded = (newVal * 10.0 * 10.0).rounded() / 10.0
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                                    model.fileDragOpenDelay = rounded
-                                }
-                            }
-                        ),
-                        icon: "timer"
+                    SettingsLiquidGlassSlider(
+                        value: $model.fileDragOpenDelay,
+                        range: 0.0...10.0,
+                        step: 0.5,
+                        totalDots: 36
                     )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 28)
+                    .padding(.vertical, 4)
                     
                     HStack {
-                        Text("0s")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                        Text("0s (Instant)")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
                         Spacer()
                         Text("5s")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
                         Spacer()
-                        Text("10s")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                        Text("10s (Long Drag)")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
                     }
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 4)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 2)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                        )
+                )
+                .padding(.vertical, 4)
                 
                 HStack {
                     Text("Interactive Notch State")
@@ -8760,6 +8774,119 @@ struct AirPodsListeningModeSlider: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
+    }
+}
+
+struct SettingsLiquidGlassSlider: View {
+    @Binding var value: Double // Range: 0.0 to 1.0 (or mapped)
+    var range: ClosedRange<Double> = 0.0...10.0
+    var step: Double = 0.5
+    var totalDots: Int = 36
+    
+    @State private var isDragging: Bool = false
+    
+    private var normalizedProgress: Double {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return max(0.0, min(1.0, (value - range.lowerBound) / span))
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                let trackWidth = geo.size.width
+                let trackHeight: CGFloat = 8
+                let knobWidth: CGFloat = 34
+                let knobHeight: CGFloat = 20
+                let progress = CGFloat(normalizedProgress)
+                let knobX = min(max(knobWidth / 2.0, progress * trackWidth), trackWidth - (knobWidth / 2.0))
+                
+                ZStack(alignment: .leading) {
+                    // 1. Frosted Liquid Glass Track Background
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.18))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.75
+                                )
+                        )
+                        .frame(height: trackHeight)
+                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
+                    
+                    // 2. Vivid Electric Blue Progress Track
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.0, green: 0.50, blue: 1.0), Color(red: 0.0, green: 0.62, blue: 1.0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(trackHeight, knobX), height: trackHeight)
+                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
+                    
+                    // 3. Smooth White Oval / Capsule Floating Knob
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white, Color(white: 0.94)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: knobWidth, height: knobHeight)
+                        .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
+                        .shadow(color: Color(red: 0.0, green: 0.5, blue: 1.0).opacity(0.25), radius: 6, x: 0, y: 0)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(0.9), lineWidth: 0.75)
+                        )
+                        .scaleEffect(isDragging ? 1.08 : 1.0)
+                        .offset(x: knobX - (knobWidth / 2.0))
+                        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: isDragging)
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            isDragging = true
+                            let fraction = max(0.0, min(1.0, Double(gesture.location.x / trackWidth)))
+                            let span = range.upperBound - range.lowerBound
+                            let rawVal = range.lowerBound + (fraction * span)
+                            let steppedVal = (rawVal / step).rounded() * step
+                            let clamped = min(max(range.lowerBound, steppedVal), range.upperBound)
+                            if abs(value - clamped) > 0.01 {
+                                withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+                                    value = clamped
+                                }
+                            }
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                        }
+                )
+            }
+            .frame(height: 22)
+            
+            // 4. Dot Grid Scale Underneath Matching Design Image
+            HStack(spacing: 0) {
+                ForEach(0..<totalDots, id: \.self) { dotIdx in
+                    let dotProgress = Double(dotIdx) / Double(totalDots - 1)
+                    let isPassed = dotProgress <= normalizedProgress
+                    Circle()
+                        .fill(isPassed ? Color.white.opacity(0.65) : Color.white.opacity(0.22))
+                        .frame(width: 3, height: 3)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 8)
+        }
     }
 }
 
