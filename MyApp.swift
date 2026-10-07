@@ -23,14 +23,123 @@ class IslandOverlayWindow: NSPanel {
     override var acceptsFirstResponder: Bool { false }
 }
 
+class IslandDropTargetHostingView<Content: View>: NSHostingView<Content> {
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let pboard = sender.draggingPasteboard
+        let types = pboard.types ?? []
+        let hasFiles = types.contains(.fileURL) || types.contains(.URL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        if hasFiles {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    IslandModel.shared.isAirDropTargeted = true
+                }
+            }
+            return .copy
+        }
+        return []
+    }
+    
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let pboard = sender.draggingPasteboard
+        let types = pboard.types ?? []
+        let hasFiles = types.contains(.fileURL) || types.contains(.URL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        return hasFiles ? .copy : []
+    }
+    
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                IslandModel.shared.isAirDropTargeted = false
+            }
+        }
+    }
+    
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pboard = sender.draggingPasteboard
+        if let directURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !directURLs.isEmpty {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                    IslandModel.shared.isAirDropTargeted = false
+                    for u in directURLs {
+                        if !IslandModel.shared.droppedAirDropFiles.contains(u) {
+                            IslandModel.shared.droppedAirDropFiles.append(u)
+                        }
+                    }
+                    IslandModel.shared.state = .expandedAirDrop
+                }
+            }
+            return true
+        }
+        return false
+    }
+}
+
+
+struct FullScreenGlowView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        GeometryReader { geo in
+            if model.enableFullWindowGlow && model.isMusicPlaying {
+                ZStack {
+                    // Outer peripheral display border glow
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.95),
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.50),
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.20),
+                                    Color.clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 36
+                        )
+                        .blur(radius: 28)
+                        .blendMode(.plusLighter)
+                    
+                    // Top ambient floodlight glow directly below display notch
+                    VStack {
+                        RadialGradient(
+                            colors: [
+                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.60),
+                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.15),
+                                Color.clear
+                            ],
+                            center: .top,
+                            startRadius: 20,
+                            endRadius: min(geo.size.width, geo.size.height) * 0.65
+                        )
+                        .frame(height: 280)
+                        .blur(radius: 35)
+                        .blendMode(.plusLighter)
+                        
+                        Spacer()
+                    }
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.6), value: model.artworkColor)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [(window: NSWindow, screen: NSScreen)] = []
+    var glowWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     private var mouseMonitorLocal: Any?
     private var mouseMonitorGlobal: Any?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let icon = NSImage(named: "AppIcon") ?? NSImage(contentsOfFile: Bundle.main.path(forResource: "AppIcon", ofType: "icns") ?? "") {
+            NSApplication.shared.applicationIconImage = icon
+        }
         // Initialize Sparkle OTA updater
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
@@ -66,47 +175,117 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    private var dragCheckTimer: Timer?
+    private var dragStartTime: Date?
+
     private func setupMouseTracking() {
-        // Track mouse globally across all apps (Apple Music, Finder, Settings, etc.)
+        // Track mouse globally across all apps for smooth notch hover interactions
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            // ONLY open AirDrop in the notch when the user is actively dragging REAL files or photos!
-            if event.type == .leftMouseDragged {
-                let pboard = NSPasteboard(name: .drag)
-                if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
-                    let hasRealFilesOrPhotos = urls.contains { url in
-                        let ext = url.pathExtension.lowercased()
-                        let isPhotoOrFile = url.isFileURL || !ext.isEmpty || FileManager.default.fileExists(atPath: url.path)
-                        return isPhotoOrFile
-                    }
-                    if hasRealFilesOrPhotos {
-                        DispatchQueue.main.async {
-                            if !IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    IslandModel.shared.isAirDropTargeted = true
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.checkImageDragState()
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.checkImageDragState()
             return event
         }
         
-        // Auto reset targeted state on mouse up only after a safety delay if not in expandedAirDrop
-        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
+        // Fast periodic checker to detect drag time progression & release across the entire OS
+        dragCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
+            self?.checkImageDragState()
+        }
+    }
+    
+    private func checkImageDragState() {
+        let mouseButtons = NSEvent.pressedMouseButtons
+        let isLeftDown = (mouseButtons & 1) != 0
+        let model = IslandModel.shared
+        
+        // If left mouse button is NOT pressed, user is not dragging anything -> reset timer and collapse
+        guard isLeftDown else {
+            dragStartTime = nil
+            if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        IslandModel.shared.isAirDropTargeted = false
+                        model.isAirDropTargeted = false
+                    }
+                }
+            }
+            return
+        }
+        
+        let pboard = NSPasteboard(name: .drag)
+        let count = pboard.changeCount
+        
+        // If pasteboard has never had a drag, or count is 0
+        guard count > 0 else {
+            dragStartTime = nil
+            return
+        }
+        
+        // Check if drag pasteboard contains an image (URL with image extension or raw image data)
+        let isPicture = isDragPasteboardAnImage(pboard)
+        
+        if isPicture {
+            if dragStartTime == nil {
+                dragStartTime = Date()
+            }
+            
+            let elapsed = Date().timeIntervalSince(dragStartTime ?? Date())
+            let threshold = model.fileDragOpenDelay
+            
+            if elapsed >= threshold {
+                if !model.isAirDropTargeted && model.state != .expandedAirDrop {
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                            model.isAirDropTargeted = true
+                        }
+                    }
+                }
+            }
+        } else {
+            dragStartTime = nil
+            if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        model.isAirDropTargeted = false
                     }
                 }
             }
         }
+    }
+    
+    private func isDragPasteboardAnImage(_ pboard: NSPasteboard) -> Bool {
+        let types = pboard.types ?? []
+        
+        // 1. Check for raw image pasteboard types
+        let imageTypeIdentifiers = [
+            NSPasteboard.PasteboardType.tiff,
+            NSPasteboard.PasteboardType.png,
+            NSPasteboard.PasteboardType("public.image"),
+            NSPasteboard.PasteboardType("public.png"),
+            NSPasteboard.PasteboardType("public.jpeg"),
+            NSPasteboard.PasteboardType("com.compuserve.gif"),
+            NSPasteboard.PasteboardType("public.heic"),
+            NSPasteboard.PasteboardType("public.tiff")
+        ]
+        
+        for t in imageTypeIdentifiers {
+            if types.contains(t) { return true }
+        }
+        
+        // 2. Check for URLs with picture extensions (.png, .jpg, .jpeg, .heic, .webp, .gif, .tiff, .svg, .bmp, .icns)
+        if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+            let imageExts: Set<String> = ["png", "jpg", "jpeg", "heic", "webp", "gif", "tiff", "tif", "svg", "bmp", "icns", "raw", "cr2", "nef", "arw", "dng"]
+            for url in urls {
+                if imageExts.contains(url.pathExtension.lowercased()) {
+                    return true
+                }
+            }
+        }
+        
+        return false
     }
     
     private func handleMouseLocation(_ location: NSPoint) {
@@ -118,12 +297,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let screen = item.screen
             let win = item.window
             
-            // Calculate active notch rect on this screen in macOS screen coordinates
-            // Include extra right margin when expanded so the popout switcher is never blocked by ignoresMouseEvents
+            // Calculate strict active notch rect on this screen in macOS screen coordinates
             let extraRight: CGFloat = model.isExpanded ? 90 : 0
             let notchX = screen.frame.midX - (width / 2.0)
             let notchY = screen.frame.maxY - height
-            let activeRect = NSRect(x: notchX - 10, y: notchY - 10, width: width + 20 + extraRight, height: height + 20)
+            // When compact: strictly match notch boundary with 0 vertical overhang below the notch
+            let activeRect: NSRect
+            if model.isExpanded {
+                activeRect = NSRect(x: notchX - 6, y: notchY - 6, width: width + 12 + extraRight, height: height + 6)
+            } else {
+                activeRect = NSRect(x: notchX, y: notchY, width: width, height: height)
+            }
             
             let isInside = activeRect.contains(location)
             
@@ -136,7 +320,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Outside notch: Set ignoresMouseEvents = true so WindowServer passes 100% of clicks straight to Apple Music, Settings, Finder, etc.!
                 if !win.ignoresMouseEvents {
                     win.ignoresMouseEvents = true
-        win.registerForDraggedTypes([.fileURL, .URL])
                 }
             }
         }
@@ -170,18 +353,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for screen in targetScreens {
                 let win = self.createIslandWindow(for: screen)
                 self.islandWindows.append((window: win, screen: screen))
+                
+                let glowWin = self.createScreenGlowWindow(for: screen)
+                self.glowWindows.append(glowWin)
             }
         }
     }
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingController = NSHostingController(rootView: islandView)
-        hostingController.view.wantsLayer = true
-        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingView = IslandDropTargetHostingView(rootView: islandView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.registerForDraggedTypes([.fileURL, .URL])
         
         let width: CGFloat = 680
-        let height: CGFloat = 280
+        let height: CGFloat = 500
         
         let originX = screen.frame.midX - (width / 2.0)
         let originY = screen.frame.maxY - height
@@ -192,7 +380,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        win.contentViewController = hostingController
+        win.contentView = hostingView
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false
@@ -201,8 +389,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.isRestorable = false 
         // Default to ignoring mouse events so underlying apps (Apple Music, Settings, Finder) are NEVER blocked!
         win.ignoresMouseEvents = true
+        win.registerForDraggedTypes([.fileURL, .URL])
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
+        win.orderFrontRegardless()
+        return win
+    }
+
+    func createScreenGlowWindow(for screen: NSScreen) -> NSWindow {
+        let glowView = FullScreenGlowView()
+        let hostingView = NSHostingView(rootView: glowView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.autoresizingMask = [.width, .height]
+        
+        let win = NSWindow(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        win.contentView = hostingView
+        win.backgroundColor = .clear
+        win.isOpaque = false
+        win.hasShadow = false
+        win.level = .floating
+        win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        win.isRestorable = false
+        win.ignoresMouseEvents = true
+        win.setFrame(screen.frame, display: true)
         win.orderFrontRegardless()
         return win
     }
