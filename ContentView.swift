@@ -1537,6 +1537,52 @@ class IslandModel: ObservableObject {
     @Published var showAirDrop: Bool = true
     @Published var airDropMode: Int = 1 // 0: Off, 1: Contacts Only, 2: Everyone
     
+    @Published var liveActivitiesOrder: [LiveActivityType] = {
+        if let saved = UserDefaults.standard.stringArray(forKey: "saved_liveActivitiesOrder") {
+            let loaded = saved.compactMap { LiveActivityType(rawValue: $0) }
+            if !loaded.isEmpty {
+                var order = loaded
+                for item in LiveActivityType.allCases {
+                    if !order.contains(item) {
+                        order.append(item)
+                    }
+                }
+                return order
+            }
+        }
+        return LiveActivityType.allCases
+    }() {
+        didSet {
+            UserDefaults.standard.set(liveActivitiesOrder.map { $0.rawValue }, forKey: "saved_liveActivitiesOrder")
+        }
+    }
+    
+    func moveLiveActivity(from sourceIndex: Int, to destinationIndex: Int) {
+        guard sourceIndex >= 0, sourceIndex < liveActivitiesOrder.count,
+              destinationIndex >= 0, destinationIndex < liveActivitiesOrder.count,
+              sourceIndex != destinationIndex else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            let item = liveActivitiesOrder.remove(at: sourceIndex)
+            liveActivitiesOrder.insert(item, at: destinationIndex)
+        }
+    }
+    
+    func moveLiveActivityUp(_ type: LiveActivityType) {
+        guard let idx = liveActivitiesOrder.firstIndex(of: type), idx > 0 else { return }
+        moveLiveActivity(from: idx, to: idx - 1)
+    }
+    
+    func moveLiveActivityDown(_ type: LiveActivityType) {
+        guard let idx = liveActivitiesOrder.firstIndex(of: type), idx < liveActivitiesOrder.count - 1 else { return }
+        moveLiveActivity(from: idx, to: idx + 1)
+    }
+    
+    func resetLiveActivitiesOrder() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            liveActivitiesOrder = LiveActivityType.allCases
+        }
+    }
+    
     func fetchAirDropMode() {
         DispatchQueue.global(qos: .utility).async {
             let process = Process()
@@ -2223,6 +2269,34 @@ class IslandModel: ObservableObject {
         }
     }
 
+    private var notificationDismissWorkItem: DispatchWorkItem?
+    @Published var notificationTitle: String = "Messages • Sarah Jenkins"
+    @Published var notificationMessage: String = "Are we still meeting at 3 PM today?"
+    @Published var notificationAppIcon: String = "message.fill"
+
+    func triggerNotificationBanner(title: String = "Messages • Sarah Jenkins", message: String = "Are we still meeting at 3 PM today?", icon: String = "message.fill") {
+        notificationDismissWorkItem?.cancel()
+        self.notificationTitle = title
+        self.notificationMessage = message
+        self.notificationAppIcon = icon
+        
+        // Pop-out the notch dynamically into expanded notifications state
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+            self.state = .expandedNotifications
+        }
+        
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            if self.state == .expandedNotifications {
+                withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
+                    self.state = .compact
+                }
+            }
+        }
+        notificationDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5, execute: work)
+    }
+
     func triggerMacBatteryBanner() {
         macBatteryDismissWorkItem?.cancel()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -2850,55 +2924,92 @@ struct CircularBatteryGauge: View {
     }
 }
 
+enum LiveActivityType: String, CaseIterable, Identifiable, Codable {
+    case music = "Apple Music & Media Player"
+    case phone = "Phone & FaceTime Calls"
+    case airpods = "AirPods Integration"
+    case airdrop = "AirDrop Sharing"
+    case notifications = "System Notifications"
+    case controlCenter = "Control Center Quick Toggles"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .music: return "music.note"
+        case .phone: return "phone.fill"
+        case .airpods: return "airpodspro"
+        case .airdrop: return "paperplane.fill"
+        case .notifications: return "bell.badge.fill"
+        case .controlCenter: return "switch.2"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .music: return "Album art, track scrubber, waveform & playback"
+        case .phone: return "Live call status, contact avatar & mute actions"
+        case .airpods: return "AirPods battery levels & noise cancellation"
+        case .airdrop: return "Incoming/outgoing file transfer progress"
+        case .notifications: return "Dynamic floating alerts & message previews"
+        case .controlCenter: return "Wi-Fi, Bluetooth, volume & screen brightness"
+        }
+    }
+    
+    var tintColor: Color {
+        switch self {
+        case .music: return .pink
+        case .phone: return .green
+        case .airpods: return .cyan
+        case .airdrop: return .blue
+        case .notifications: return .red
+        case .controlCenter: return .blue
+        }
+    }
+}
+
 struct MusicWaveform: View {
     @ObservedObject var model = IslandModel.shared
-    @ObservedObject var analyzer = AudioAnalyzer.shared
     var isPlaying: Bool
     var color: Color = .white
     
-    // Wave frequencies & phase offsets for continuous fluid Apple Music waveform animation
-    let frequencies: [Double] = [3.8, 5.2, 4.1, 6.0, 4.7]
-    let phases: [Double] = [0.0, 1.2, 2.4, 0.8, 1.9]
     let minHeight: CGFloat = 3.5
-    let maxHeight: CGFloat = 16.0
+    let maxHeight: CGFloat = 17.0
     
     var body: some View {
         if isPlaying {
-            if model.useRealAudioWaveform {
-                // Real Live Audio FFT Frequency Analysis Waveform
-                HStack(spacing: 2.2) {
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+                let hash = Double(abs(trackKey.hashValue % 1000))
+                let tempo = 120.0 + (Double(abs(trackKey.hashValue % 30)) - 15.0)
+                let beatTime = (model.playbackPosition * (tempo / 60.0)) * Double.pi * 2.0
+                
+                HStack(spacing: 2.4) {
                     ForEach(0..<5, id: \.self) { i in
-                        let peak = i < analyzer.peaks.count ? analyzer.peaks[i] : 0.2
-                        let h = minHeight + CGFloat(peak) * (maxHeight - minHeight)
+                        let freq = [4.5, 6.2, 8.4, 5.8, 7.6][i]
+                        let phase = [0.0, 1.4, 2.8, 4.2, 5.6][i] + (hash * 0.005)
+                        
+                        let beatPulse = sin(beatTime + phase) * 0.35 + 0.35
+                        let continuousFlow = sin(time * freq + phase * 2.0) * 0.28 + 0.30
+                        let harmonic = cos(time * (freq * 0.5) + phase) * 0.15
+                        
+                        let combined = max(0.12, min(1.0, beatPulse * 0.55 + continuousFlow * 0.35 + harmonic * 0.10 + 0.15))
+                        let h = minHeight + CGFloat(combined) * (maxHeight - minHeight)
+                        
                         Capsule()
                             .fill(color)
-                            .frame(width: 3.2, height: max(minHeight, min(maxHeight, h)))
-                            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: peak)
+                            .frame(width: 3.0, height: h)
                     }
                 }
                 .frame(height: maxHeight, alignment: .center)
-            } else {
-                // Simulated Fluid Procedural Apple Waveform
-                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
-                    let time = timeline.date.timeIntervalSinceReferenceDate
-                    HStack(spacing: 2.2) {
-                        ForEach(0..<5, id: \.self) { i in
-                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
-                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
-                            Capsule()
-                                .fill(color)
-                                .frame(width: 3.2, height: h)
-                        }
-                    }
-                    .frame(height: maxHeight, alignment: .center)
-                }
             }
         } else {
-            HStack(spacing: 2.2) {
+            HStack(spacing: 2.4) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule()
                         .fill(color.opacity(0.6))
-                        .frame(width: 3.2, height: minHeight)
+                        .frame(width: 3.0, height: minHeight)
                 }
             }
             .frame(height: maxHeight, alignment: .center)
@@ -5128,17 +5239,27 @@ struct BatterySettingsView: View {
 }
 
 
-struct ActivityPreviewFrame<Content: View>: View {
+
+struct AuthenticNotchPreviewFrame<Content: View>: View {
+    let height: CGFloat
     let content: Content
     
-    init(@ViewBuilder content: () -> Content) {
+    init(height: CGFloat = 138, @ViewBuilder content: () -> Content) {
+        self.height = height
         self.content = content()
     }
     
     var body: some View {
         ZStack {
+            // Screen Bezel Background Frame
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.40))
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.12, green: 0.12, blue: 0.17), Color(red: 0.05, green: 0.06, blue: 0.09)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(
@@ -5151,11 +5272,47 @@ struct ActivityPreviewFrame<Content: View>: View {
                         )
                 )
             
-            content
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+            // Authentic Top-Anchored Dynamic Notch Capsule
+            VStack(spacing: 0) {
+                ZStack(alignment: .top) {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 18,
+                        bottomTrailingRadius: 18,
+                        topTrailingRadius: 0,
+                        style: .continuous
+                    )
+                    .fill(Color.black)
+                    .overlay(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: 18,
+                            bottomTrailingRadius: 18,
+                            topTrailingRadius: 0,
+                            style: .continuous
+                        )
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.06), Color.white.opacity(0.24)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    )
+                    .shadow(color: Color.black.opacity(0.7), radius: 8, x: 0, y: 4)
+                    
+                    content
+                        .padding(.horizontal, 14)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                }
+                .frame(width: 370)
+                
+                Spacer(minLength: 0)
+            }
         }
-        .frame(height: 72)
+        .frame(height: height)
     }
 }
 
@@ -5164,47 +5321,191 @@ struct LiveActivitiesView: View {
     
     var body: some View {
         Form {
-            // MARK: - 1. Apple Music & Media Player
+            // MARK: - Dynamically Ordered Live Activity Sections
+            ForEach(model.liveActivitiesOrder) { activityType in
+                sectionForActivity(activityType)
+            }
+            
+            // MARK: - Reordering & Stack Layout Customizer
             Section(
-                header: Text("Apple Music & Media Player"),
-                footer: Text("Features dynamic album artwork, interactive track scrubber, waveform visualizer, and playback controls.")
+                header: Text("Live Activities Stack Order & Layout"),
+                footer: Text("Customize the priority and vertical stacking order of Live Activities. Items higher in the list appear first in both the settings hierarchy and notch switcher.")
             ) {
-                ActivityPreviewFrame {
-                    HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 38, height: 38)
-                            .overlay(
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 16))
+                VStack(spacing: 8) {
+                    ForEach(Array(model.liveActivitiesOrder.enumerated()), id: \.element.id) { index, activity in
+                        HStack(spacing: 12) {
+                            // Order number badge
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.12))
+                                    .frame(width: 24, height: 24)
+                                Text("\(index + 1)")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
-                            )
-                        
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Blinding Lights")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("The Weeknd")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        
-                        Spacer()
-                        
-                        // Mini waveform preview
-                        HStack(spacing: 2) {
-                            ForEach([0.3, 0.7, 1.0, 0.5, 0.8], id: \.self) { h in
-                                Capsule()
-                                    .fill(Color.orange)
-                                    .frame(width: 2.8, height: 16 * h)
+                            }
+                            
+                            // Activity Icon
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(activity.tintColor.opacity(0.2))
+                                    .frame(width: 30, height: 30)
+                                
+                                if activity == .airdrop {
+                                    AirDropSymbolView(size: 16, color: .cyan)
+                                } else {
+                                    Image(systemName: activity.icon)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(activity.tintColor)
+                                }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(activity.rawValue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(activity.subtitle)
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Spacer()
+                            
+                            // Move Up / Move Down Buttons
+                            HStack(spacing: 4) {
+                                Button {
+                                    model.moveLiveActivityUp(activity)
+                                } label: {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .frame(width: 26, height: 24)
+                                        .background(Color.white.opacity(index > 0 ? 0.12 : 0.04))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(index == 0)
+                                .opacity(index > 0 ? 1.0 : 0.35)
+                                
+                                Button {
+                                    model.moveLiveActivityDown(activity)
+                                } label: {
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .frame(width: 26, height: 24)
+                                        .background(Color.white.opacity(index < model.liveActivitiesOrder.count - 1 ? 0.12 : 0.04))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(index == model.liveActivitiesOrder.count - 1)
+                                .opacity(index < model.liveActivitiesOrder.count - 1 ? 1.0 : 0.35)
+                                
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.35))
+                                    .frame(width: 22, height: 24)
                             }
                         }
-                        .frame(height: 18)
-                        .padding(.trailing, 4)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    
+                    HStack {
+                        Spacer()
+                        Button("Reset Stack Layout to Default") {
+                            model.resetLiveActivitiesOrder()
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.blue)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
+    }
+    
+    // MARK: - Section Builders for Each Live Activity
+    @ViewBuilder
+    private func sectionForActivity(_ type: LiveActivityType) -> some View {
+        switch type {
+        case .music:
+            Section(
+                header: Text("Apple Music & Media Player"),
+                footer: Text("Displays live track metadata, album artwork halo, interactive liquid scrubber, and track-derived audio waveform.")
+            ) {
+                AuthenticNotchPreviewFrame(height: 148) {
+                    VStack(spacing: 8) {
+                        // Top row: Artwork, Title & Artist, Waveform
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 38, height: 38)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .shadow(color: Color.orange.opacity(0.4), radius: 5)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Blinding Lights")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("The Weeknd — After Hours")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Spacer()
+                            
+                            MusicWaveform(isPlaying: true, color: .orange)
+                                .frame(width: 32, height: 20)
+                        }
                         
-                        Image(systemName: "pause.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white)
+                        // Scrubber row
+                        VStack(spacing: 3) {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.2))
+                                        .frame(height: 4)
+                                    Capsule()
+                                        .fill(Color.white)
+                                        .frame(width: geo.size.width * 0.35, height: 4)
+                                }
+                            }
+                            .frame(height: 4)
+                            
+                            HStack {
+                                Text("1:12")
+                                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.55))
+                                Spacer()
+                                Text("-2:08")
+                                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.55))
+                            }
+                        }
+                        
+                        // Controls row
+                        HStack(spacing: 34) {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                            Image(systemName: "pause.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.top, 2)
                     }
                 }
                 .padding(.vertical, 4)
@@ -5224,19 +5525,20 @@ struct LiveActivitiesView: View {
                 }
             }
             
-            // MARK: - 2. Phone & FaceTime Calls
+        case .phone:
             Section(
                 header: Text("Phone & FaceTime Calls"),
-                footer: Text("Displays incoming and active phone or FaceTime calls with caller contact and call actions.")
+                footer: Text("Displays incoming and active phone or FaceTime calls with caller contact, timer, and action buttons.")
             ) {
-                ActivityPreviewFrame {
-                    HStack(spacing: 12) {
+                AuthenticNotchPreviewFrame(height: 100) {
+                    HStack(spacing: 14) {
                         ZStack {
                             Circle()
                                 .fill(Color.green)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 42, height: 42)
+                                .shadow(color: Color.green.opacity(0.4), radius: 6)
                             Image(systemName: "phone.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: 18))
                                 .foregroundColor(.white)
                         }
                         
@@ -5245,26 +5547,36 @@ struct LiveActivitiesView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.6))
                             Text("Tim Cook")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
+                            Text("02:14")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.green)
                         }
                         
                         Spacer()
                         
-                        Text("02:14")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(.green)
-                            .padding(.trailing, 6)
-                        
-                        ZStack {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 28, height: 28)
-                            Image(systemName: "phone.down.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white)
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "phone.down.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                            }
+                            
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.18))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "mic.slash.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.vertical, 4)
                 
@@ -5279,24 +5591,24 @@ struct LiveActivitiesView: View {
                 }
             }
             
-            // MARK: - 3. AirDrop File Sharing
+        case .airdrop:
             Section(
                 header: Text("AirDrop Sharing"),
-                footer: Text("Displays live outgoing and incoming file sharing progress with real-time transfer animations.")
+                footer: Text("Displays live file transfer status and animated progress bar in the Dynamic Notch.")
             ) {
-                ActivityPreviewFrame {
+                AuthenticNotchPreviewFrame(height: 98) {
                     HStack(spacing: 12) {
                         ZStack {
                             Circle()
                                 .fill(Color.cyan.opacity(0.25))
-                                .frame(width: 36, height: 36)
-                            AirDropSymbolView(size: 18, color: .cyan)
+                                .frame(width: 40, height: 40)
+                            AirDropSymbolView(size: 20, color: .cyan)
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text("AirDrop • 3 Photos")
-                                    .font(.system(size: 12, weight: .bold))
+                                Text("AirDrop Transfer")
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(.white)
                                 Spacer()
                                 Text("75%")
@@ -5308,15 +5620,20 @@ struct LiveActivitiesView: View {
                                 ZStack(alignment: .leading) {
                                     Capsule()
                                         .fill(Color.white.opacity(0.18))
-                                        .frame(height: 4)
+                                        .frame(height: 5)
                                     Capsule()
                                         .fill(LinearGradient(colors: [.cyan, .blue], startPoint: .leading, endPoint: .trailing))
-                                        .frame(width: geo.size.width * 0.75, height: 4)
+                                        .frame(width: geo.size.width * 0.75, height: 5)
                                 }
                             }
-                            .frame(height: 4)
+                            .frame(height: 5)
+                            
+                            Text("Receiving 3 items from Brahamjeet's iPhone...")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.6))
                         }
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.vertical, 4)
                 
@@ -5332,47 +5649,48 @@ struct LiveActivitiesView: View {
                 }
             }
             
-            // MARK: - 4. AirPods Integration
+        case .airpods:
             Section(
                 header: Text("AirPods Integration"),
-                footer: Text("Shows paired AirPods connection, discrete left/right/case battery levels, and listening mode toggles.")
+                footer: Text("Presents real-time AirPods Pro connection status, left/right battery percentages, and listening mode.")
             ) {
-                ActivityPreviewFrame {
+                AuthenticNotchPreviewFrame(height: 95) {
                     HStack(spacing: 14) {
                         Image(systemName: "airpodspro")
-                            .font(.system(size: 22))
+                            .font(.system(size: 24))
                             .foregroundColor(.white)
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text("AirPods Pro")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white)
-                            Text("Noise Cancellation Active")
+                            Text("Connected • Noise Cancellation")
                                 .font(.system(size: 10))
                                 .foregroundColor(.cyan)
                         }
                         
                         Spacer()
                         
-                        HStack(spacing: 8) {
-                            HStack(spacing: 3) {
+                        HStack(spacing: 10) {
+                            HStack(spacing: 4) {
                                 Text("L 98%")
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.85))
                                 Image(systemName: "battery.100")
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 12))
                                     .foregroundColor(.green)
                             }
-                            HStack(spacing: 3) {
+                            HStack(spacing: 4) {
                                 Text("R 100%")
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.85))
                                 Image(systemName: "battery.100")
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 12))
                                     .foregroundColor(.green)
                             }
                         }
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.vertical, 4)
                 
@@ -5387,38 +5705,40 @@ struct LiveActivitiesView: View {
                 }
             }
             
-            // MARK: - 5. System Notifications
+        case .notifications:
             Section(
                 header: Text("System Notifications"),
-                footer: Text("Presents dynamic floating alert banners smoothly expanding from the notch.")
+                footer: Text("Pops out the dynamic notch to display sleek floating alert cards for messages and alerts.")
             ) {
-                ActivityPreviewFrame {
+                AuthenticNotchPreviewFrame(height: 98) {
                     HStack(spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(Color.green)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 38, height: 38)
+                                .shadow(color: Color.green.opacity(0.3), radius: 5)
                             Image(systemName: "message.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: 18))
                                 .foregroundColor(.white)
                         }
                         
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text("Messages • Sarah Jenkins")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
                                 Spacer()
                                 Text("now")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.white.opacity(0.5))
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.white.opacity(0.55))
                             }
                             Text("Are we still meeting at 3 PM today?")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.8))
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.9))
                                 .lineLimit(1)
                         }
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.vertical, 4)
                 
@@ -5427,47 +5747,85 @@ struct LiveActivitiesView: View {
                 HStack {
                     Text("Interactive Notch State")
                     Spacer()
-                    Button(model.state == .expandedNotifications ? "Terminate Simulation" : "Simulate Notification Alert") {
-                        model.toggleState(.expandedNotifications)
+                    Button("Pop-Out Notification") {
+                        model.triggerNotificationBanner(
+                            title: "Messages • Sarah Jenkins",
+                            message: "Are we still meeting at 3 PM today?",
+                            icon: "message.fill"
+                        )
                     }
                 }
             }
             
-            // MARK: - 6. Control Center Quick Toggles
+        case .controlCenter:
             Section(
                 header: Text("Control Center Quick Toggles"),
-                footer: Text("Quick access toggles for Wi-Fi, Bluetooth, Audio Volume, and Screen Brightness.")
+                footer: Text("Quick access cards for Wi-Fi, Bluetooth, Screen Brightness, and System Audio Volume.")
             ) {
-                ActivityPreviewFrame {
-                    HStack(spacing: 10) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "wifi")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("Wi-Fi On")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.white)
+                AuthenticNotchPreviewFrame(height: 105) {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wifi")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("Wi-Fi • Connected")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .clipShape(Capsule())
+                            
+                            HStack(spacing: 6) {
+                                Image(systemName: "bolt.horizontal.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("Bluetooth • On")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .clipShape(Capsule())
+                            
+                            Spacer()
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .clipShape(Capsule())
                         
-                        HStack(spacing: 6) {
-                            Image(systemName: "bolt.horizontal.fill")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("Bluetooth")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.white)
+                        HStack(spacing: 12) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sun.max.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+                                Capsule()
+                                    .fill(Color.white.opacity(0.2))
+                                    .overlay(
+                                        GeometryReader { g in
+                                            Capsule().fill(Color.white).frame(width: g.size.width * 0.7)
+                                        }
+                                    )
+                                    .frame(height: 6)
+                            }
+                            
+                            HStack(spacing: 6) {
+                                Image(systemName: "speaker.wave.3.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+                                Capsule()
+                                    .fill(Color.white.opacity(0.2))
+                                    .overlay(
+                                        GeometryReader { g in
+                                            Capsule().fill(Color.white).frame(width: g.size.width * 0.6)
+                                        }
+                                    )
+                                    .frame(height: 6)
+                            }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .clipShape(Capsule())
-                        
-                        Spacer()
+                        .padding(.horizontal, 4)
                     }
+                    .padding(.top, 4)
                 }
                 .padding(.vertical, 4)
                 
@@ -5482,9 +5840,6 @@ struct LiveActivitiesView: View {
                 }
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .toggleStyle(.switch)
     }
 }
 
