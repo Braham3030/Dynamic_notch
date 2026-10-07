@@ -569,7 +569,13 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 2. Middle Row: Brightness Slider with Title
+                        // 2. AirDrop Row: Working Liquid Glass Slider
+                        if model.showAirDrop {
+                            AirDropReceivingModeSlider(model: model)
+                                .frame(width: 340)
+                        }
+                        
+                        // 3. Middle Row: Brightness Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Brightness")
                                 .font(.system(size: 10, weight: .semibold))
@@ -583,7 +589,7 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 3. Middle Row: Volume Slider with Title
+                        // 4. Middle Row: Volume Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Volume")
                                 .font(.system(size: 10, weight: .semibold))
@@ -597,7 +603,7 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 4. Bottom Row: AirPods Noise Control Slider
+                        // 5. Bottom Row: AirPods Noise Control Slider
                         if model.airPodsConnected && model.showAirPodsLocalization {
                             AirPodsListeningModeSlider(model: model)
                                 .frame(width: 340)
@@ -1025,10 +1031,11 @@ extension IslandModel {
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls {
+                let baseHeight: CGFloat = showAirDrop ? 255 : 190
                 if airPodsConnected && showAirPodsLocalization {
-                    return 270
+                    return baseHeight + 75
                 }
-                return 190
+                return baseHeight
             }
         }
         return physicalNotchHeight
@@ -1236,6 +1243,55 @@ class IslandModel: ObservableObject {
     @Published var showPhone: Bool = true
     @Published var showNotifications: Bool = true
     @Published var showAirDrop: Bool = true
+    @Published var airDropMode: Int = 1 // 0: Off, 1: Contacts Only, 2: Everyone
+    
+    func fetchAirDropMode() {
+        DispatchQueue.global(qos: .utility).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            process.arguments = ["read", "com.apple.sharingd", "DiscoverableMode"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                    DispatchQueue.main.async {
+                        if output.contains("Everyone") {
+                            self.airDropMode = 2
+                        } else if output.contains("Off") {
+                            self.airDropMode = 0
+                        } else {
+                            self.airDropMode = 1 // Contacts Only
+                        }
+                    }
+                }
+            } catch {}
+        }
+    }
+    
+    func setAirDropMode(_ mode: Int) {
+        self.airDropMode = mode
+        let modeStr: String
+        switch mode {
+        case 0: modeStr = "Off"
+        case 2: modeStr = "Everyone"
+        default: modeStr = "Contacts Only"
+        }
+        DispatchQueue.global(qos: .utility).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            process.arguments = ["write", "com.apple.sharingd", "DiscoverableMode", "-string", modeStr]
+            try? process.run()
+            process.waitUntilExit()
+            
+            let killSharingd = Process()
+            killSharingd.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            killSharingd.arguments = ["-HUP", "sharingd"]
+            try? killSharingd.run()
+        }
+    }
     
     // Interactive AirDrop Drag & Drop State
     @Published var droppedAirDropFiles: [URL] = [] {
@@ -3313,6 +3369,118 @@ struct AirPodsHeadIcon: View {
                 }
             }
         }
+    }
+}
+
+struct AirDropReceivingModeSlider: View {
+    @ObservedObject var model: IslandModel
+    
+    let modes = [0, 1, 2]
+    let titles = ["Off", "Contacts Only", "Everyone"]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("AIRDROP RECEIVING")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.leading, 2)
+                Spacer()
+                Text(titles[min(2, max(0, model.airDropMode))])
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundColor(.cyan)
+                    .padding(.trailing, 2)
+            }
+            
+            VStack(spacing: 5) {
+                // Liquid Glass Capsule Track
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                            .background(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                        
+                        HStack(spacing: 0) {
+                            ForEach(0..<3, id: \.self) { i in
+                                let modeVal = modes[i]
+                                let isSelected = model.airDropMode == modeVal
+                                
+                                Button {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                        model.setAirDropMode(modeVal)
+                                    }
+                                } label: {
+                                    ZStack {
+                                        if isSelected {
+                                            Circle()
+                                                .fill(
+                                                    LinearGradient(
+                                                        colors: [Color.cyan, Color.blue],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                )
+                                                .frame(width: 32, height: 32)
+                                                .shadow(color: Color.cyan.opacity(0.45), radius: 5, x: 0, y: 1)
+                                        }
+                                        
+                                        Group {
+                                            if modeVal == 0 {
+                                                Image(systemName: "nosign")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundColor(isSelected ? .white : .white.opacity(0.45))
+                                            } else if modeVal == 1 {
+                                                Image(systemName: "person.2.fill")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                                            } else {
+                                                Image(systemName: "globe")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .contentShape(Capsule(style: .continuous))
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { gesture in
+                                let fraction = max(0.0, min(1.0, gesture.location.x / geo.size.width))
+                                let index = min(2, max(0, Int(fraction * 3.0)))
+                                let newMode = modes[index]
+                                if model.airDropMode != newMode {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        model.setAirDropMode(newMode)
+                                    }
+                                }
+                            }
+                    )
+                }
+                .frame(height: 34)
+                
+                // Labels underneath the capsule pill
+                HStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { i in
+                        let modeVal = modes[i]
+                        let isSelected = model.airDropMode == modeVal
+                        Text(titles[i])
+                            .font(.system(size: 9, weight: isSelected ? .bold : .medium))
+                            .foregroundColor(isSelected ? .cyan : .white.opacity(0.55))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+            }
+        }
+        .frame(width: 340)
     }
 }
 
