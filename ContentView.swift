@@ -272,9 +272,94 @@ struct IslandView: View {
             ZStack(alignment: .top) {
                 // The Full Dynamic Notch Background
                 ZStack {
-                    // 1. Black Dynamic Notch Base Underneath
-                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
-                        .fill(Color.black)
+                    // 1. Dynamic Notch Theme Base Underneath
+                    let cornerRadius = model.isExpanded ? 24.0 : model.compactCornerRadius
+                    let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius, topTrailingRadius: 0, style: .continuous)
+                    
+                    switch model.notchTheme {
+                    case .classicBlack:
+                        shape.fill(Color.black)
+                    case .liquidGlass:
+                        ZStack {
+                            shape.fill(Color.black.opacity(0.85))
+                            shape.fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.20 * model.notchGlassOpacity), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                        }
+                        .overlay(
+                            shape.stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.35 * model.notchGlassOpacity), Color.white.opacity(0.10 * model.notchGlassOpacity)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1.0
+                            )
+                        )
+                    case .neonCyber:
+                        ZStack {
+                            shape.fill(Color(red: 0.05, green: 0.02, blue: 0.10))
+                        }
+                        .overlay(
+                            shape.stroke(
+                                LinearGradient(
+                                    colors: [Color(red: 0.0, green: 0.9, blue: 1.0).opacity(model.notchGlowIntensity), Color(red: 1.0, green: 0.1, blue: 0.6).opacity(model.notchGlowIntensity)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                            .shadow(color: Color.cyan.opacity(0.6 * model.notchGlowIntensity), radius: 6)
+                        )
+                    case .titaniumFrost:
+                        ZStack {
+                            shape.fill(Color(red: 0.12, green: 0.13, blue: 0.16))
+                            shape.fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.12), Color.clear],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        }
+                        .overlay(
+                            shape.stroke(Color.white.opacity(0.25), lineWidth: 1.0)
+                        )
+                    case .auroraGlow:
+                        ZStack {
+                            shape.fill(Color(red: 0.04, green: 0.03, blue: 0.08))
+                        }
+                        .overlay(
+                            shape.stroke(
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(model.notchGlowIntensity), Color.teal.opacity(model.notchGlowIntensity)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                            .shadow(color: Color.purple.opacity(0.5 * model.notchGlowIntensity), radius: 6)
+                        )
+                    case .goldenTwilight:
+                        ZStack {
+                            shape.fill(Color(red: 0.08, green: 0.04, blue: 0.02))
+                        }
+                        .overlay(
+                            shape.stroke(
+                                LinearGradient(
+                                    colors: [Color.orange.opacity(model.notchGlowIntensity), Color.pink.opacity(model.notchGlowIntensity)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                            .shadow(color: Color.orange.opacity(0.5 * model.notchGlowIntensity), radius: 6)
+                        )
+                    }
                     
                     // 2. Soft, Glassy Dynamic Notch Gradient with Music (Translucent & subtle, starts solid black in compact mode)
                     if model.isExpanded, model.state == .expandedMusic, model.enableArtworkGlow {
@@ -1760,6 +1845,27 @@ class IslandModel: ObservableObject {
     @Published var settingsWallpaperBlur: Double = 0.0
     @Published var customWallpaperImage: NSImage? = nil
     @Published var isSidebarCollapsed: Bool = false
+    @Published var notchTheme: NotchTheme = {
+        if let saved = UserDefaults.standard.string(forKey: "saved_notchTheme"),
+           let theme = NotchTheme(rawValue: saved) {
+            return theme
+        }
+        return .classicBlack
+    }() {
+        didSet {
+            UserDefaults.standard.set(notchTheme.rawValue, forKey: "saved_notchTheme")
+        }
+    }
+    @Published var notchGlassOpacity: Double = 0.85 {
+        didSet {
+            UserDefaults.standard.set(notchGlassOpacity, forKey: "saved_notchGlassOpacity")
+        }
+    }
+    @Published var notchGlowIntensity: Double = 0.75 {
+        didSet {
+            UserDefaults.standard.set(notchGlowIntensity, forKey: "saved_notchGlowIntensity")
+        }
+    }
     
     func pickCustomWallpaper() {
         let panel = NSOpenPanel()
@@ -2327,6 +2433,40 @@ struct MusicWaveform: View {
 }
 
 
+
+enum NotchTheme: String, CaseIterable, Identifiable {
+    case classicBlack = "Classic Obsidian"
+    case liquidGlass = "Liquid Glass"
+    case neonCyber = "Cyberpunk Neon"
+    case titaniumFrost = "Titanium Slate"
+    case auroraGlow = "Aurora Radiance"
+    case goldenTwilight = "Golden Sunset"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .classicBlack: return "circle.fill"
+        case .liquidGlass: return "drop.fill"
+        case .neonCyber: return "bolt.fill"
+        case .titaniumFrost: return "square.fill"
+        case .auroraGlow: return "sparkles"
+        case .goldenTwilight: return "sun.horizon.fill"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .classicBlack: return "Authentic Apple OLED Jet Black"
+        case .liquidGlass: return "Frosted glass with specular rim"
+        case .neonCyber: return "Glowing neon cyan & magenta rim"
+        case .titaniumFrost: return "Brushed dark titanium finish"
+        case .auroraGlow: return "Celestial purple & emerald rim"
+        case .goldenTwilight: return "Warm amber twilight reflection"
+        }
+    }
+}
+
 enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     case systemDefault = "Default (Auto)"
     case pureWhite = "Pure White"
@@ -2388,6 +2528,7 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
 
 enum SettingsPane: String, CaseIterable, Identifiable {
     case appearance = "Appearance & Physics"
+    case notchStyling = "Notch Styling"
     case background = "Window & Background"
     case display = "Hardware Calibration"
     case liveActivities = "Live Activities"
@@ -2398,6 +2539,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .appearance: return "sparkles"
+        case .notchStyling: return "capsule.portrait.fill"
         case .background: return "paintpalette.fill"
         case .display: return "display"
         case .liveActivities: return "bolt.fill"
@@ -2616,10 +2758,273 @@ struct SettingsWindowBackground: View {
     }
 }
 
+
+struct NotchCardView: View {
+    let theme: NotchTheme
+    let isSelected: Bool
+    let isLightBg: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                thumbnail
+                labelSection
+            }
+            .padding(6)
+            .background(cardBackground)
+            .overlay(cardBorder)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private var thumbnail: some View {
+        ZStack {
+            thumbnailBackground
+                .frame(height: 54)
+                .cornerRadius(8)
+            
+            Image(systemName: theme.icon)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.6), radius: 3)
+            
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.blue, lineWidth: 2.5)
+                
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .background(Circle().fill(Color.white))
+                            .font(.system(size: 13))
+                            .padding(4)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var thumbnailBackground: some View {
+        switch theme {
+        case .classicBlack:
+            Color.black
+        case .liquidGlass:
+            LinearGradient(colors: [Color.blue.opacity(0.4), Color.black.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .neonCyber:
+            LinearGradient(colors: [Color.purple.opacity(0.6), Color.cyan.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .titaniumFrost:
+            Color(red: 0.18, green: 0.20, blue: 0.24)
+        case .auroraGlow:
+            LinearGradient(colors: [Color.purple.opacity(0.7), Color.teal.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .goldenTwilight:
+            LinearGradient(colors: [Color.orange.opacity(0.7), Color.pink.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+    
+    private var labelSection: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(theme.rawValue)
+                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                .lineLimit(1)
+            Text(theme.subtitle)
+                .font(.system(size: 9))
+                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                .lineLimit(1)
+        }
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(isSelected ? Color.blue.opacity(0.18) : (isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06)))
+    }
+    
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .stroke(isSelected ? Color.blue.opacity(0.6) : (isLightBg ? Color.black.opacity(0.1) : Color.white.opacity(0.12)), lineWidth: 1)
+    }
+}
+struct NotchStylingView: View {
+    @ObservedObject var model = IslandModel.shared
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isLightBg: Bool {
+        if model.settingsBackgroundStyle == .pureWhite { return true }
+        if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
+        return false
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Live Interactive Notch Theme Preview
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Dynamic Notch Live Preview")
+                        .font(.headline)
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    
+                    ZStack {
+                        LinearGradient(
+                            colors: [Color(red: 0.10, green: 0.12, blue: 0.18), Color(red: 0.05, green: 0.06, blue: 0.10)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 110)
+                        
+                        VStack(spacing: 0) {
+                            HStack(spacing: 12) {
+                                Circle().fill(Color.green).frame(width: 8, height: 8)
+                                Text("dyNotch • " + model.notchTheme.rawValue)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Image(systemName: "waveform")
+                                    .foregroundColor(.cyan)
+                                    .font(.system(size: 11))
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(width: 260, height: 34)
+                            .background(
+                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 18, bottomTrailingRadius: 18, topTrailingRadius: 0, style: .continuous)
+                                    .fill(notchPreviewBase)
+                            )
+                            .overlay(
+                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 18, bottomTrailingRadius: 18, topTrailingRadius: 0, style: .continuous)
+                                    .stroke(notchPreviewBorder, lineWidth: 1.2)
+                            )
+                            .shadow(color: .black.opacity(0.5), radius: 8, x: 0, y: 4)
+                            
+                            Spacer()
+                        }
+                    }
+                    .frame(height: 110)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(isLightBg ? Color.black.opacity(0.15) : Color.white.opacity(0.18), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, 28)
+                
+                // Notch Theme Gallery
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Select Notch Theme")
+                        .font(.headline)
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        ForEach(NotchTheme.allCases) { theme in
+                            NotchCardView(
+                                theme: theme,
+                                isSelected: model.notchTheme == theme,
+                                isLightBg: isLightBg
+                            ) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    model.notchTheme = theme
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 28)
+                
+                // Visual Effects Section
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Music Artwork Ambient Glow")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            Text("Projects a vibrant colored aura under the notch matching active album artwork.")
+                                .font(.system(size: 11))
+                                .foregroundColor(isLightBg ? Color(red: 0.35, green: 0.35, blue: 0.45) : .white.opacity(0.6))
+                        }
+                        Spacer()
+                        Toggle("", isOn: $model.enableArtworkGlow)
+                            .labelsHidden()
+                    }
+                    .padding(14)
+                    .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                    .cornerRadius(10)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Label("Liquid Glass Translucency", systemImage: "drop.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            Spacer()
+                            Text(model.notchGlassOpacity > 0.75 ? "Full Glass" : "Soft Frost")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.blue)
+                        }
+                        Slider(value: $model.notchGlassOpacity, in: 0.2...1.0)
+                    }
+                    .padding(14)
+                    .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                    .cornerRadius(10)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Label("Rim Glow & Specular Intensity", systemImage: "sparkles")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            Spacer()
+                            Text(model.notchGlowIntensity > 0.75 ? "Vibrant" : "Subtle")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.blue)
+                        }
+                        Slider(value: $model.notchGlowIntensity, in: 0.2...1.0)
+                    }
+                    .padding(14)
+                    .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
+                    .cornerRadius(10)
+                }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 24)
+            }
+            .padding(.top, 6)
+        }
+    }
+    
+    private var notchPreviewBase: Color {
+        switch model.notchTheme {
+        case .classicBlack: return .black
+        case .liquidGlass: return Color.black.opacity(0.8)
+        case .neonCyber: return Color(red: 0.05, green: 0.02, blue: 0.10)
+        case .titaniumFrost: return Color(red: 0.12, green: 0.13, blue: 0.16)
+        case .auroraGlow: return Color(red: 0.04, green: 0.03, blue: 0.08)
+        case .goldenTwilight: return Color(red: 0.08, green: 0.04, blue: 0.02)
+        }
+    }
+    
+    private var notchPreviewBorder: Color {
+        switch model.notchTheme {
+        case .classicBlack: return .clear
+        case .liquidGlass: return Color.white.opacity(0.4)
+        case .neonCyber: return Color.cyan
+        case .titaniumFrost: return Color.white.opacity(0.3)
+        case .auroraGlow: return Color.purple
+        case .goldenTwilight: return Color.orange
+        }
+    }
+}
 struct ContentView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var selectedPane: SettingsPane = .appearance
     @State private var hoveredPane: SettingsPane? = nil
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isLightBg: Bool {
+        if model.settingsBackgroundStyle == .pureWhite { return true }
+        if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
+        return false
+    }
     
     var body: some View {
         ZStack {
@@ -2638,7 +3043,7 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 // Minimizable Sidebar Navigation
                 VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
-                    // Liquid Glass Sidebar Toggle Button right up top (No dyNotch or Preferences text!)
+                    // Top-level Circular Liquid Glass Toggle Button (Zero text up top!)
                     HStack {
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
@@ -2646,52 +3051,46 @@ struct ContentView: View {
                             }
                         } label: {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                Circle()
                                     .fill(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.20), Color.white.opacity(0.08)],
+                                            colors: [
+                                                Color.white.opacity(isLightBg ? 0.40 : 0.22),
+                                                Color.white.opacity(isLightBg ? 0.18 : 0.08)
+                                            ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        Circle()
                                             .stroke(
                                                 LinearGradient(
-                                                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.12)],
+                                                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.18)],
                                                     startPoint: .top,
                                                     endPoint: .bottom
                                                 ),
-                                                lineWidth: 0.8
+                                                lineWidth: 1.0
                                             )
                                     )
-                                    .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 1.5)
+                                    .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 1.5)
                                 
-                                HStack(spacing: 6) {
-                                    Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white)
-                                    
-                                    if !model.isSidebarCollapsed {
-                                        Text("Hide Sidebar")
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.white.opacity(0.9))
-                                    }
-                                }
-                                .padding(.horizontal, model.isSidebarCollapsed ? 0 : 8)
+                                Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.12, green: 0.12, blue: 0.18) : .white)
                             }
-                            .frame(width: model.isSidebarCollapsed ? 36 : 120, height: 28)
+                            .frame(width: 32, height: 32)
                         }
                         .buttonStyle(.plain)
-                        .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Hide Sidebar")
+                        .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")
                         
                         if !model.isSidebarCollapsed {
                             Spacer()
                         }
                     }
-                    .padding(.horizontal, model.isSidebarCollapsed ? 8 : 14)
-                    .padding(.top, 40)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, model.isSidebarCollapsed ? 8 : 16)
+                    .padding(.top, 36)
+                    .padding(.bottom, 8)
                     
                     // Navigation Items
                     ForEach(SettingsPane.allCases) { pane in
@@ -2717,9 +3116,9 @@ struct ContentView: View {
                             .padding(.horizontal, model.isSidebarCollapsed ? 6 : 12)
                             .background(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(isSelected ? Color.blue : (hoveredPane == pane ? Color.white.opacity(0.12) : Color.clear))
+                                    .fill(isSelected ? Color.blue : (hoveredPane == pane ? (isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)) : Color.clear))
                             )
-                            .foregroundStyle(isSelected ? Color.white : Color.white.opacity(0.85))
+                            .foregroundStyle(isSelected ? Color.white : (isLightBg ? Color(red: 0.15, green: 0.15, blue: 0.22) : Color.white.opacity(0.9)))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -2733,10 +3132,10 @@ struct ContentView: View {
                 }
                 .frame(width: model.isSidebarCollapsed ? 58 : 235, alignment: model.isSidebarCollapsed ? .center : .leading)
                 .frame(maxHeight: .infinity)
-                .background(Color.black.opacity(0.28))
+                .background(isLightBg ? Color.black.opacity(0.06) : Color.black.opacity(0.28))
                 
                 Divider()
-                    .opacity(0.3)
+                    .opacity(0.25)
                     .ignoresSafeArea()
                 
                 // Detail Content Area with High-Contrast Text
@@ -2744,8 +3143,8 @@ struct ContentView: View {
                     HStack {
                         Text(selectedPane.rawValue)
                             .font(.title2.bold())
-                            .foregroundColor(.white)
-                            .shadow(color: .black.opacity(0.3), radius: 2)
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            .shadow(color: isLightBg ? .clear : .black.opacity(0.3), radius: 2)
                         Spacer()
                     }
                     .padding(.horizontal, 28)
@@ -2755,6 +3154,8 @@ struct ContentView: View {
                     switch selectedPane {
                     case .appearance:
                         AnimationSettingsView()
+                    case .notchStyling:
+                        NotchStylingView()
                     case .background:
                         BackgroundSettingsView(selectedPane: $selectedPane)
                     case .display:
@@ -3406,9 +3807,7 @@ struct LiveActivitiesView: View {
                 }
             }
             
-            Section(header: Text("Visual Effects"), footer: Text("Projects a vibrant colored ambient glow matching the active track artwork.")) {
-                Toggle("Live Background Glow Effect", isOn: $model.enableArtworkGlow)
-            }
+
             
             Section(header: Text("Live Activity Previews & Simulations")) {
                 HStack {
