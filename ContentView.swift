@@ -1136,25 +1136,36 @@ struct IslandView: View {
     }
 
     @ViewBuilder var musicView: some View {
-        VStack(spacing: 10) {
-            // Header with 100% symmetrical spacing relative to physical notch
+        VStack(spacing: 8) {
+            // Top Row: Artwork (Left) | Title & Artist (Center-Left) | Waveform Speaker / Audio Output Icon (Right)
             HStack(spacing: 12) {
+                // Large Rounded Artwork with 3D Flip
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 46, height: 46)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 52, height: 52)
                     ZStack {
                         if let img = model.currentArtwork { 
-                            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            Image(nsImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 52, height: 52)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         } else {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.opacity(0.3)).frame(width: 46, height: 46)
-                            Image(systemName: "music.note").font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 52, height: 52)
+                            Image(systemName: "music.note")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(.white)
                         }
                     }
                     .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                     .transition(.flip3D(isForward: model.isForward))
                 }
                 .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
+                .shadow(color: Color.black.opacity(0.35), radius: 4, y: 2)
                 .zIndex(1)
                 
+                // Track Title & Artist with Swipe Gesture for Previous/Next
                 ZStack(alignment: .leading) {
                     // Previous Track Indicator
                     if manualDragOffset > 0 {
@@ -1168,14 +1179,14 @@ struct IslandView: View {
                         .offset(x: manualDragOffset - 220)
                     }
                     
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.white.opacity(0.65))
                             .lineLimit(1)
                     }
                     .offset(x: manualDragOffset)
@@ -1192,14 +1203,12 @@ struct IslandView: View {
                         .offset(x: manualDragOffset + 220)
                     }
                 }
-                .padding(.leading, 12)
-                .padding(.trailing, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .mask(
                     LinearGradient(gradient: Gradient(stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: .black, location: 0.04),
-                        .init(color: .black, location: 0.96),
+                        .init(color: .black, location: 0.03),
+                        .init(color: .black, location: 0.97),
                         .init(color: .clear, location: 1.0)
                     ]), startPoint: .leading, endPoint: .trailing)
                 )
@@ -1248,80 +1257,122 @@ struct IslandView: View {
                 .offset(y: showsExpandedMusicDetails ? 0 : -72)
                 .allowsHitTesting(showsExpandedMusicDetails)
                 
-                Spacer(minLength: 12)
+                // Top-Right: Sound Waveform Broadcast / Audio Device Target Icon (Matches Screenshot)
                 ZStack {
-                    MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
+                    Image(systemName: "waveform.badge.magnifyingglass")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(.white.opacity(0.65))
                 }
-                .frame(width: 32, height: 22)
+                .frame(width: 32, height: 32)
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
                 .zIndex(1)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 4)
             
-            // Scrubber
+            // Middle Row: Scrubber with Left (Elapsed) and Right (Remaining) Monospaced Timers
             LiquidScrubber()
-                .padding(.top, 4)
+                .padding(.top, 2)
                 .opacity(showsExpandedMusicDetails ? 1 : 0)
                 .offset(y: showsExpandedMusicDetails ? 0 : -52)
             
-            // Media Controls with large generous hitboxes (no accidental collapses)
-            HStack(spacing: 28) {
+            // Bottom Row: Star Favorite (Far Left) | Backward | Play/Pause | Forward | AirPlay/AirPods (Far Right)
+            HStack(alignment: .center) {
+                // Star Favorite Button (Far Left)
                 Button(action: {
-                    bouncePrev += 1
-                    model.skipTrack(forward: false)
+                    // Star / Favorite track action
                 }) {
                     ZStack {
                         Rectangle()
                             .fill(Color.clear)
-                            .frame(width: 48, height: 44)
+                            .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .symbolEffect(.bounce, value: bouncePrev)
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
                     }
                 }
                 .buttonStyle(.plain)
                 
-                Button(action: {
-                    model.togglePlayPause()
-                }) {
-                    ZStack {
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(width: 56, height: 48)
-                            .contentShape(Rectangle())
-                        Image(systemName: model.isMusicPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(.white)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                }
-                .buttonStyle(.plain)
+                Spacer()
                 
+                // Center Controls: Backward | Play/Pause | Forward
+                HStack(spacing: 32) {
+                    Button(action: {
+                        bouncePrev += 1
+                        model.skipTrack(forward: false)
+                    }) {
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(width: 44, height: 40)
+                                .contentShape(Rectangle())
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
+                                .symbolEffect(.bounce, value: bouncePrev)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: {
+                        model.togglePlayPause()
+                    }) {
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(width: 52, height: 48)
+                                .contentShape(Rectangle())
+                            Image(systemName: model.isMusicPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 30, weight: .bold))
+                                .foregroundColor(.white)
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: {
+                        bounceNext += 1
+                        model.skipTrack(forward: true)
+                    }) {
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(width: 44, height: 40)
+                                .contentShape(Rectangle())
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
+                                .symbolEffect(.bounce, value: bounceNext)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Spacer()
+                
+                // AirPlay / AirPods Route Output Button (Far Right)
                 Button(action: {
-                    bounceNext += 1
-                    model.skipTrack(forward: true)
+                    // Open sound output picker or switch listening route
                 }) {
                     ZStack {
                         Rectangle()
                             .fill(Color.clear)
-                            .frame(width: 48, height: 44)
+                            .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .symbolEffect(.bounce, value: bounceNext)
+                        Image(systemName: model.airPodsConnected ? "airpodspro" : "airplayaudio")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
                     }
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .padding(.top, 2)
             .opacity(showsExpandedMusicDetails ? 1 : 0)
             .offset(y: showsExpandedMusicDetails ? 0 : -36)
             .allowsHitTesting(showsExpandedMusicDetails)
         }
-        .padding(16)
+        .padding(14)
     }
 
     @ViewBuilder var foodView: some View {
