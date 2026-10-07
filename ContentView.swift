@@ -3431,13 +3431,17 @@ class IslandModel: ObservableObject {
             let scriptSource = """
             tell application "Music"
                 set devList to {}
+                set appVol to 80
+                try
+                    set appVol to sound volume
+                end try
                 try
                     set allDevs to every AirPlay device
                     repeat with d in allDevs
                         set dName to name of d
                         set dSel to selected of d
                         set dKind to kind of d as string
-                        set dVol to 80
+                        set dVol to appVol
                         try
                             set dVol to sound volume of d
                         end try
@@ -3478,9 +3482,14 @@ class IslandModel: ObservableObject {
             self.airPlayDevices[idx].volume = volume
         }
         let intVol = Int(round(volume * 100))
+        let isComp = device.kind.lowercased().contains("computer") || device.name.lowercased().contains("mac")
+        
         DispatchQueue.global(qos: .userInitiated).async {
             let scriptSource = """
             tell application "Music"
+                try
+                    set sound volume to \(intVol)
+                end try
                 try
                     set targetDev to first AirPlay device whose name is "\(device.name)"
                     set sound volume of targetDev to \(intVol)
@@ -3493,45 +3502,38 @@ class IslandModel: ObservableObject {
     
     func selectAirPlayDevice(_ device: AirPlayOutputDevice) {
         let isCurrentlySelected = device.isSelected
+        let targetSelected = !isCurrentlySelected
+        
         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-            if isCurrentlySelected {
-                // Toggle off / Disconnect
-                var updated = self.airPlayDevices.map { dev in
-                    AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: (dev.id == device.id ? false : dev.isSelected), kind: dev.kind, volume: dev.volume)
-                }
-                // If nothing is selected, select the default Computer speaker
-                if !updated.contains(where: { $0.isSelected }) {
-                    if let compIdx = updated.firstIndex(where: { $0.kind.lowercased().contains("computer") || $0.name.lowercased().contains("mac") }) {
-                        updated[compIdx] = AirPlayOutputDevice(id: updated[compIdx].id, name: updated[compIdx].name, isSelected: true, kind: updated[compIdx].kind, volume: updated[compIdx].volume)
-                    } else if !updated.isEmpty {
-                        updated[0] = AirPlayOutputDevice(id: updated[0].id, name: updated[0].name, isSelected: true, kind: updated[0].kind, volume: updated[0].volume)
-                    }
-                }
-                self.airPlayDevices = updated
-            } else {
-                // Connect
-                self.airPlayDevices = self.airPlayDevices.map {
-                    AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind, volume: $0.volume)
+            // For Bluetooth/AirPods and Computer, single active output route is standard
+            self.airPlayDevices = self.airPlayDevices.map { dev in
+                if dev.id == device.id {
+                    return AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: targetSelected, kind: dev.kind, volume: dev.volume)
+                } else if targetSelected && (device.kind.lowercased().contains("bluetooth") || dev.kind.lowercased().contains("bluetooth") || device.kind.lowercased().contains("computer") || dev.kind.lowercased().contains("computer")) {
+                    return AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: false, kind: dev.kind, volume: dev.volume)
+                } else {
+                    return dev
                 }
             }
         }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let shouldDisconnect = isCurrentlySelected
+            let isTargetSelected = targetSelected
             let scriptSource = """
             tell application "Music"
                 try
                     set allDevs to every AirPlay device
                     repeat with d in allDevs
                         if name of d is "\(device.name)" then
-                            if \(shouldDisconnect ? "true" : "false") then
+                            set selected of d to \(isTargetSelected ? "true" : "false")
+                        else if \(isTargetSelected ? "true" : "false") and (kind of d is "computer" or kind of d is "Bluetooth device" or name of d contains "AirPods") then
+                            try
                                 set selected of d to false
-                            else
-                                set selected of d to true
-                            end if
+                            end try
                         end if
                     end repeat
-                    -- If no output device is selected after disconnecting, fallback to Mac Computer speakers
+                    
+                    -- Fallback to computer if nothing selected
                     set anySelected to false
                     repeat with d in allDevs
                         if selected of d is true then
@@ -3548,6 +3550,7 @@ class IslandModel: ObservableObject {
             """
             var err: NSDictionary?
             _ = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err)
+            Thread.sleep(forTimeInterval: 0.2)
             self?.fetchAirPlayDevices()
         }
     }
