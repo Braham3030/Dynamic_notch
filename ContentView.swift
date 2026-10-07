@@ -5516,7 +5516,35 @@ struct HardwareCalibrationView: View {
     }
 }
 
-struct BluetoothShape: Shape { func path(in rect: CGRect) -> Path { var path = Path(); let midX = rect.midX; let w = rect.width * 0.25; let h = rect.height * 0.4; let startY = rect.midY - h; let endY = rect.midY + h; path.move(to: CGPoint(x: midX - w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX + w, y: endY - h*0.5)); path.addLine(to: CGPoint(x: midX, y: endY)); path.addLine(to: CGPoint(x: midX, y: startY)); path.addLine(to: CGPoint(x: midX + w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX - w, y: endY - h*0.5)); return path } }
+struct BluetoothShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let cx = rect.midX
+        let top = rect.minY + rect.height * 0.12
+        let bottom = rect.maxY - rect.height * 0.12
+        let h = bottom - top
+        let cy = top + h * 0.5
+        let span = rect.width * 0.42
+        
+        let pTop = CGPoint(x: cx, y: top)
+        let pBottom = CGPoint(x: cx, y: bottom)
+        let pRightTop = CGPoint(x: cx + span, y: top + h * 0.25)
+        let pRightBottom = CGPoint(x: cx + span, y: bottom - h * 0.25)
+        let pLeftTop = CGPoint(x: cx - span, y: top + h * 0.25)
+        let pLeftBottom = CGPoint(x: cx - span, y: bottom - h * 0.25)
+        
+        // Continuous standard Bluetooth rune line:
+        // LeftBottom -> RightTop -> Top -> Bottom -> RightBottom -> LeftTop
+        p.move(to: pLeftBottom)
+        p.addLine(to: pRightTop)
+        p.addLine(to: pTop)
+        p.addLine(to: pBottom)
+        p.addLine(to: pRightBottom)
+        p.addLine(to: pLeftTop)
+        
+        return p
+    }
+}
 struct ConnectivityCard: View {
     let title: String
     let subtitle: String
@@ -5542,8 +5570,11 @@ struct ConnectivityCard: View {
                         WiFiBarSymbol(bars: isOn ? wifiBars : 0, color: isOn ? .white : .white.opacity(0.6))
                     } else if icon == "bluetooth.custom" {
                         BluetoothShape()
-                            .fill(isOn ? Color.white : Color.white.opacity(0.6))
-                            .frame(width: 12, height: 16)
+                            .stroke(
+                                isOn ? Color.white : Color.white.opacity(0.6),
+                                style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+                            )
+                            .frame(width: 10, height: 14)
                     } else {
                         Image(systemName: icon)
                             .font(.system(size: 12, weight: .bold))
@@ -5604,20 +5635,13 @@ struct WiFiBarSymbol: View {
     
     var body: some View {
         ZStack {
-            if bars >= 3 {
-                Image(systemName: "wifi")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(color)
-            } else if bars == 2 {
-                Image(systemName: "wifi.badge.plus") // or wifi with 2 bars
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(color)
-            } else if bars == 1 {
-                Image(systemName: "wifi.exclamationmark")
+            if bars <= 0 {
+                Image(systemName: "wifi.slash")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(color)
             } else {
-                Image(systemName: "wifi.slash")
+                let variableVal = max(0.25, min(1.0, Double(bars) / 3.0))
+                Image(systemName: "wifi", variableValue: variableVal)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(color)
             }
