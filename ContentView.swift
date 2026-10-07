@@ -8574,7 +8574,7 @@ struct LiquidScrubber: View {
     @State private var dragProgress: Double = 0.0
     
     let scrubberWidth: CGFloat = 220
-    let scrubberHeight: CGFloat = 20
+    let scrubberHeight: CGFloat = 22
 
     var body: some View {
         let currentProgress = isDragging ? dragProgress : (model.playbackPosition / model.trackDuration)
@@ -8591,53 +8591,74 @@ struct LiquidScrubber: View {
                 .frame(width: 32, alignment: .trailing)
             
             ZStack(alignment: .leading) {
-                // 1. Translucent Liquid Glass Background Track
+                // 1. Translucent Liquid Glass Background Groove Track
                 Capsule()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(width: scrubberWidth, height: 4.5)
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: scrubberWidth, height: 5)
                     .overlay(
                         Capsule()
                             .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
                     )
                     
-                // 2. Liquid Glass Active Progress Track matching Waveform Color!
+                // 2. Liquid Glass Active Progress Track matching Waveform Color
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [progressTint.opacity(0.85), progressTint],
+                            colors: [progressTint.opacity(0.75), progressTint],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: currentTrackWidth, height: 4.5)
+                    .frame(width: currentTrackWidth, height: 5)
                     .shadow(color: progressTint.opacity(0.45), radius: 3, x: 0, y: 0)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
                     
-                // 3. Apple-Style Liquid Glass Translucent Scrubber Knob
+                // 3. Ultra Liquid Glass Pill / Capsule Slider Knob (like Settings with Specular Glass Rim & Halo)
                 ZStack {
-                    // Soft circular ambient glow
-                    Circle()
-                        .fill(progressTint.opacity(isDragging ? 0.45 : 0.20))
-                        .frame(width: isDragging ? 22 : 14, height: isDragging ? 22 : 14)
-                        .blur(radius: isDragging ? 4 : 2)
+                    // Ambient halo glow behind knob
+                    Capsule()
+                        .fill(progressTint.opacity(isDragging ? 0.50 : 0.25))
+                        .frame(width: isDragging ? 26 : 14, height: isDragging ? 18 : 14)
+                        .blur(radius: isDragging ? 5 : 2.5)
                     
-                    // Glass knob body
-                    Circle()
+                    // Liquid Glass Translucent Base
+                    Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [Color.white, Color(white: 0.92)],
+                                colors: [
+                                    Color.white.opacity(0.95),
+                                    Color.white.opacity(0.70)
+                                ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: isDragging ? 16 : 10, height: isDragging ? 16 : 10)
+                        .frame(width: isDragging ? 22 : 11, height: isDragging ? 15 : 11)
+                        // Specular Light Refraction Border
                         .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.95), lineWidth: 1)
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white,
+                                            Color.white.opacity(0.45),
+                                            Color.white.opacity(0.85)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.0
+                                )
                         )
-                        .shadow(color: Color.black.opacity(0.35), radius: isDragging ? 4 : 2, x: 0, y: 1.5)
+                        // Subtle Inner Liquid Pill Core
+                        .overlay(
+                            Capsule()
+                                .fill(progressTint.opacity(isDragging ? 0.35 : 0.15))
+                                .frame(width: isDragging ? 8 : 4, height: isDragging ? 6 : 4)
+                        )
+                        .shadow(color: Color.black.opacity(0.35), radius: isDragging ? 5 : 2.5, x: 0, y: 1.5)
                 }
-                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 8 : 5)), scrubberWidth - (isDragging ? 16 : 10)))
+                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 11 : 5.5)), scrubberWidth - (isDragging ? 22 : 11)))
                 .animation(.spring(response: 0.28, dampingFraction: 0.65), value: isDragging)
             }
             .frame(width: scrubberWidth, height: scrubberHeight, alignment: .center)

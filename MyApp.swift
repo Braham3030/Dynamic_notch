@@ -74,8 +74,63 @@ class IslandDropTargetHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+
+struct FullScreenGlowView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        GeometryReader { geo in
+            if model.enableFullWindowGlow && model.isMusicPlaying {
+                ZStack {
+                    // Outer peripheral display border glow
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.95),
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.50),
+                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.20),
+                                    Color.clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 36
+                        )
+                        .blur(radius: 28)
+                        .blendMode(.plusLighter)
+                    
+                    // Top ambient floodlight glow directly below display notch
+                    VStack {
+                        RadialGradient(
+                            colors: [
+                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.60),
+                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.15),
+                                Color.clear
+                            ],
+                            center: .top,
+                            startRadius: 20,
+                            endRadius: min(geo.size.width, geo.size.height) * 0.65
+                        )
+                        .frame(height: 280)
+                        .blur(radius: 35)
+                        .blendMode(.plusLighter)
+                        
+                        Spacer()
+                    }
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.6), value: model.artworkColor)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var islandWindows: [(window: NSWindow, screen: NSScreen)] = []
+    var glowWindows: [NSWindow] = []
     var updaterController: SPUStandardUpdaterController!
     var cancellables = Set<AnyCancellable>()
     private var mouseMonitorLocal: Any?
@@ -298,6 +353,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for screen in targetScreens {
                 let win = self.createIslandWindow(for: screen)
                 self.islandWindows.append((window: win, screen: screen))
+                
+                let glowWin = self.createScreenGlowWindow(for: screen)
+                self.glowWindows.append(glowWin)
             }
         }
     }
@@ -334,6 +392,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.registerForDraggedTypes([.fileURL, .URL])
         
         win.setFrame(NSRect(x: originX, y: originY, width: width, height: height), display: true)
+        win.orderFrontRegardless()
+        return win
+    }
+
+    func createScreenGlowWindow(for screen: NSScreen) -> NSWindow {
+        let glowView = FullScreenGlowView()
+        let hostingView = NSHostingView(rootView: glowView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.autoresizingMask = [.width, .height]
+        
+        let win = NSWindow(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        win.contentView = hostingView
+        win.backgroundColor = .clear
+        win.isOpaque = false
+        win.hasShadow = false
+        win.level = .floating
+        win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        win.isRestorable = false
+        win.ignoresMouseEvents = true
+        win.setFrame(screen.frame, display: true)
         win.orderFrontRegardless()
         return win
     }
