@@ -660,8 +660,8 @@ extension IslandModel {
             if state == .expandedFood { return 360 }
             return 380
         }
-        if airPodsShowingCompact || airPodsConnected {
-            return baseNotchWidth + 72
+        if airPodsConnected || airPodsShowingCompact {
+            return baseNotchWidth + 80
         }
         if isMusicPlaying {
             return baseNotchWidth + 96
@@ -929,14 +929,7 @@ class IslandModel: ObservableObject {
     }
 
     @Published var airPodsShowingCompact: Bool = false
-    @Published var airPodsConnected: Bool = false {
-        didSet {
-            if airPodsConnected {
-                airPodsShowingCompact = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { self.airPodsShowingCompact = false }
-            } else { airPodsShowingCompact = false }
-        }
-    }
+    @Published var airPodsConnected: Bool = false
     
         @Published var brightness: Double = 0.65 {
         didSet { applySystemBrightness() }
@@ -1333,16 +1326,13 @@ class IslandModel: ObservableObject {
             
             DispatchQueue.main.async {
                 if let airpods = foundConnectedAirPods {
-                    if !self.airPodsConnected {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         self.airPodsName = airpods.name
                         self.airPodsBatteryLevel = airpods.battery
                         self.airPodsConnected = true
-                    } else {
-                        self.airPodsName = airpods.name
-                        self.airPodsBatteryLevel = airpods.battery
                     }
                 } else {
-                    if self.airPodsConnected {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         self.airPodsConnected = false
                     }
                 }
@@ -1382,41 +1372,40 @@ class IslandModel: ObservableObject {
 
 
 struct AirPods3DView: View {
-    @State private var flipAngle: Double = 0
-    @State private var pulseScale: CGFloat = 1.0
+    @State private var flipDegrees: Double = 0
+    @State private var floatBob: CGFloat = 0
     
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1.5) {
+            // Left AirPod with 3D Y-Axis Flip & Perspective
             Image(systemName: "airpodspro.left")
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.white)
+                .offset(y: floatBob)
                 .rotation3DEffect(
-                    .degrees(flipAngle),
+                    .degrees(flipDegrees),
                     axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.3
+                    perspective: 0.25
                 )
             
+            // Right AirPod with subtle staggered 3D Flip & Perspective
             Image(systemName: "airpodspro.right")
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.white)
+                .offset(y: -floatBob)
                 .rotation3DEffect(
-                    .degrees(flipAngle),
+                    .degrees(flipDegrees),
                     axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.3
+                    perspective: 0.25
                 )
         }
-        .scaleEffect(pulseScale)
+        .padding(.leading, 2)
         .onAppear {
-            // Initial dynamic entrance flip
-            withAnimation(.spring(response: 0.75, dampingFraction: 0.65)) {
-                flipAngle = 360
-            }
-            // Continuous subtle iPhone-style 3D flip cycle
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false).delay(1.0)) {
-                flipAngle += 360
-                pulseScale = 1.04
+            withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: false)) {
+                flipDegrees = 360
+                floatBob = 1.0
             }
         }
     }
