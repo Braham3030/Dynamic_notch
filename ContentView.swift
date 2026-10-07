@@ -725,22 +725,37 @@ struct IslandView: View {
                     }
                     
                     // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper
-                    // Explicitly only active when expanded — retracts dynamically back into artwork card when paused!
+                    // Explicitly only active when expanded — Genie effect sucking back directly into the artwork card on pause!
                     if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
-                        ZStack(alignment: .leading) {
-                            // Full left-to-right ambient artwork gradient all over the notch
+                        ZStack(alignment: .topLeading) {
+                            // Full left-to-right ambient artwork gradient with Genie retraction to artwork anchor (top-left)
                             LinearGradient(
                                 colors: [
-                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.48 : 0.08) * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.20 : 0.0) * model.artworkGlowIntensity),
-                                    Color.black.opacity(model.isMusicPlaying ? 0.85 : 0.98)
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.48 : 0.0) * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity((model.isMusicPlaying ? 0.22 : 0.0) * model.artworkGlowIntensity),
+                                    Color.black.opacity(model.isMusicPlaying ? 0.85 : 1.0)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
-                            .frame(width: model.isMusicPlaying ? model.width : 70, height: model.height)
-                            .clipShape(RoundedRectangle(cornerRadius: model.isMusicPlaying ? 24 : 14, style: .continuous))
-                            .animation(.spring(response: 0.48, dampingFraction: 0.76), value: model.isMusicPlaying)
+                            .frame(width: model.width, height: model.height)
+                            // Genie scale & transform directly into top-left (the artwork card)
+                            .scaleEffect(
+                                x: model.isMusicPlaying ? 1.0 : 0.12,
+                                y: model.isMusicPlaying ? 1.0 : 0.26,
+                                anchor: .topLeading
+                            )
+                            .opacity(model.isMusicPlaying ? 1.0 : 0.0)
+                            // Strictly maintain 0 radius for top corners (sharp against Mac bezel)
+                            .clipShape(
+                                UnevenRoundedRectangle(
+                                    topLeadingRadius: 0,
+                                    bottomLeadingRadius: 24,
+                                    bottomTrailingRadius: 24,
+                                    topTrailingRadius: 0,
+                                    style: .continuous
+                                )
+                            )
                             
                             // Full-bleed live wallpaper takeover ONLY when expanded via artwork card tap
                             if model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded, let videoURL = model.liveMotionVideoURL {
@@ -762,7 +777,7 @@ struct IslandView: View {
                                 }
                             }
                         }
-                        .animation(.spring(response: 0.48, dampingFraction: 0.76), value: model.isMusicPlaying)
+                        .animation(.spring(response: 0.50, dampingFraction: 0.76), value: model.isMusicPlaying)
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
                     
