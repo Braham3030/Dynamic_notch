@@ -778,9 +778,15 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 4. Bottom Row: AirPods Noise Control Liquid Glass Slider
-                        AirPodsListeningModeSlider(model: model)
-                            .frame(width: 340)
+                        // 4. Bottom Row: AirPods Noise Control Liquid Glass Slider (Only visible when AirPods are connected)
+                        if model.airPodsConnected {
+                            AirPodsListeningModeSlider(model: model)
+                                .frame(width: 340)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity
+                                ))
+                        }
                     }
                 } else {
                     disabledFeatureNotice("Control Center Quick Toggles Disabled")
@@ -1201,7 +1207,7 @@ extension IslandModel {
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls {
-                return 270
+                return airPodsConnected ? 270 : 205
             }
         }
         return physicalNotchHeight
@@ -2224,21 +2230,22 @@ class IslandModel: ObservableObject {
     @Published var adaptiveBalance: Double = 0.5 // 0.0: More Noise Cancellation <---> 1.0: More Transparency
     
     func setAirPodsMode(_ mode: Int) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
             self.listeningMode = mode
         }
         DispatchQueue.global(qos: .userInitiated).async {
             guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
-            let sel = Selector("setListeningMode:")
-            typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt32) -> Bool
+            let sel = Selector(("setListeningMode:"))
+            typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Void
             
             for device in devices {
-                let name = device.nameOrAddress ?? ""
-                if name.contains("AirPods") || device.deviceClassMajor == 4 {
-                    if device.responds(to: sel) {
+                if device.isConnected() {
+                    let name = device.nameOrAddress ?? ""
+                    let isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats") || device.deviceClassMajor == 4
+                    if isAppleAudio && device.responds(to: sel) {
                         let imp = device.method(for: sel)
                         let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
-                        _ = fn(device, sel, UInt32(mode))
+                        fn(device, sel, UInt8(mode))
                     }
                 }
             }
@@ -2296,21 +2303,39 @@ class IslandModel: ObservableObject {
             guard let self = self else { return }
             guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
             
-            var foundConnectedAirPods: (name: String, battery: Double)? = nil
+            var foundConnectedAirPods: (name: String, battery: Double, currentMode: Int?)? = nil
+            
+            let selIsAdvanced = Selector(("isAdvancedAppleAudioDevice"))
+            let selANC = Selector(("isANCSupported"))
+            let selListen = Selector(("listeningMode"))
+            let selSingle = Selector(("batteryPercentSingle"))
+            let selLeft = Selector(("batteryPercentLeft"))
+            let selRight = Selector(("batteryPercentRight"))
+            
+            typealias BoolIMP = @convention(c) (AnyObject, Selector) -> Bool
+            typealias GetListeningModeIMP = @convention(c) (AnyObject, Selector) -> UInt8
+            typealias BatIMP = @convention(c) (AnyObject, Selector) -> UInt8
             
             for device in devices {
                 let name = device.nameOrAddress ?? ""
-                let isAirPods = name.localizedCaseInsensitiveContains("AirPods")
-                if isAirPods && device.isConnected() {
+                var isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats")
+                
+                if !isAppleAudio && device.responds(to: selIsAdvanced) {
+                    let imp = device.method(for: selIsAdvanced)
+                    let fn = unsafeBitCast(imp, to: BoolIMP.self)
+                    isAppleAudio = fn(device, selIsAdvanced)
+                }
+                
+                if !isAppleAudio && device.responds(to: selANC) {
+                    let imp = device.method(for: selANC)
+                    let fn = unsafeBitCast(imp, to: BoolIMP.self)
+                    isAppleAudio = fn(device, selANC)
+                }
+                
+                if isAppleAudio && device.isConnected() {
                     var leftBat: Double = -1
                     var rightBat: Double = -1
                     var singleBat: Double = -1
-                    
-                    let selSingle = Selector(("batteryPercentSingle"))
-                    let selLeft = Selector(("batteryPercentLeft"))
-                    let selRight = Selector(("batteryPercentRight"))
-                    
-                    typealias BatIMP = @convention(c) (AnyObject, Selector) -> UInt8
                     
                     if device.responds(to: selLeft) {
                         let imp = device.method(for: selLeft)
@@ -2331,14 +2356,24 @@ class IslandModel: ObservableObject {
                         if val > 0 && val <= 100 { singleBat = Double(val) / 100.0 }
                     }
                     
-                    var bestBattery: Double = 0.80
+                    var bestBattery: Double = 0.85
                     if singleBat > 0 {
                         bestBattery = singleBat
                     } else if leftBat > 0 || rightBat > 0 {
                         bestBattery = max(leftBat > 0 ? leftBat : 0, rightBat > 0 ? rightBat : 0)
                     }
                     
-                    foundConnectedAirPods = (name: name, battery: bestBattery)
+                    var activeMode: Int? = nil
+                    if device.responds(to: selListen) {
+                        let imp = device.method(for: selListen)
+                        let fn = unsafeBitCast(imp, to: GetListeningModeIMP.self)
+                        let mode = fn(device, selListen)
+                        if mode >= 1 && mode <= 4 {
+                            activeMode = Int(mode)
+                        }
+                    }
+                    
+                    foundConnectedAirPods = (name: name, battery: bestBattery, currentMode: activeMode)
                     break
                 }
             }
@@ -2348,9 +2383,14 @@ class IslandModel: ObservableObject {
                     let wasConnected = self.airPodsConnected
                     self.airPodsName = airpods.name
                     self.airPodsBatteryLevel = airpods.battery
+                    if let mode = airpods.currentMode {
+                        self.listeningMode = mode
+                    }
                     
                     if !wasConnected {
-                        self.airPodsConnected = true
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            self.airPodsConnected = true
+                        }
                         self.triggerAirPodsBanner()
                     }
                 } else {
