@@ -87,9 +87,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let win = item.window
             
             // Calculate active notch rect on this screen in macOS screen coordinates
+            // Include extra right margin when expanded so the popout switcher is never blocked by ignoresMouseEvents
+            let extraRight: CGFloat = model.isExpanded ? 90 : 0
             let notchX = screen.frame.midX - (width / 2.0)
             let notchY = screen.frame.maxY - height
-            let activeRect = NSRect(x: notchX - 8, y: notchY - 8, width: width + 16, height: height + 16)
+            let activeRect = NSRect(x: notchX - 10, y: notchY - 10, width: width + 20 + extraRight, height: height + 20)
             
             let isInside = activeRect.contains(location)
             
@@ -145,8 +147,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
         
-        let width: CGFloat = 500
-        let height: CGFloat = 240
+        let width: CGFloat = 680
+        let height: CGFloat = 280
         
         let originX = screen.frame.midX - (width / 2.0)
         let originY = screen.frame.maxY - height

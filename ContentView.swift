@@ -292,11 +292,10 @@ struct IslandView: View {
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
                 
-                // Side Switcher Popout
+                // Side Switcher Popout & Mini Inside Dock
                 if model.isExpanded {
                     VerticalSwitcher(model: model, activeState: model.state)
-                        .offset(x: (model.width / 2) + 24 + 18, y: model.physicalNotchHeight + ((model.height - model.physicalNotchHeight) / 2) - 40)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
             .frame(width: model.width, height: model.height, alignment: .top)
@@ -587,19 +586,26 @@ struct IslandView: View {
                 .opacity(showsExpandedMusicDetails ? 1 : 0)
                 .offset(y: showsExpandedMusicDetails ? 0 : -52)
             
-            // Media Controls
-            HStack(spacing: 36) {
+            // Media Controls with large generous hitboxes (no accidental collapses)
+            HStack(spacing: 28) {
                 Button(action: {
                     bouncePrev += 1
                     DispatchQueue.global(qos: .background).async { 
                         _ = NSAppleScript(source: "tell application \"Music\" to previous track")?.executeAndReturnError(nil) 
                     }
                 }) {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .symbolEffect(.bounce, value: bouncePrev)
-                }.buttonStyle(.plain)
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 48, height: 44)
+                            .contentShape(Rectangle())
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .symbolEffect(.bounce, value: bouncePrev)
+                    }
+                }
+                .buttonStyle(.plain)
                 
                 Button(action: {
                     // Instantly visually swap with morphing animation
@@ -608,11 +614,18 @@ struct IslandView: View {
                         _ = NSAppleScript(source: "tell application \"Music\" to playpause")?.executeAndReturnError(nil) 
                     }
                 }) {
-                    Image(systemName: model.isMusicPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.white)
-                        .contentTransition(.symbolEffect(.replace))
-                }.buttonStyle(.plain)
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 56, height: 48)
+                            .contentShape(Rectangle())
+                        Image(systemName: model.isMusicPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.white)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+                .buttonStyle(.plain)
                 
                 Button(action: {
                     bounceNext += 1
@@ -620,11 +633,18 @@ struct IslandView: View {
                         _ = NSAppleScript(source: "tell application \"Music\" to next track")?.executeAndReturnError(nil) 
                     }
                 }) {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .symbolEffect(.bounce, value: bounceNext)
-                }.buttonStyle(.plain)
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(width: 48, height: 44)
+                            .contentShape(Rectangle())
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .symbolEffect(.bounce, value: bounceNext)
+                    }
+                }
+                .buttonStyle(.plain)
             }
             .padding(.top, 4)
             .opacity(showsExpandedMusicDetails ? 1 : 0)
@@ -1845,9 +1865,10 @@ struct VisualEffect: NSViewRepresentable {
 struct VerticalSwitcher: View {
     @ObservedObject var model: IslandModel
     var activeState: IslandState
+    @State private var isHovered: Bool = false
     
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: isHovered ? 10 : 6) {
             if model.showAirPodsLocalization { switcherButton(icon: "airpodspro", target: .expandedAirPods) }
             if model.showControlCenter { switcherButton(icon: "switch.2", target: .expandedControls) }
             if model.showMusic { switcherButton(icon: "music.note", target: .expandedMusic) }
@@ -1855,13 +1876,32 @@ struct VerticalSwitcher: View {
             if model.showNotifications { switcherButton(icon: "bell", target: .expandedNotifications) }
             if model.showAirDrop { switcherButton(icon: "airdrop", target: .expandedAirDrop) }
         }
-        .padding(8)
+        .padding(isHovered ? 7 : 4)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.3))
-                .background(VisualEffect().clipShape(RoundedRectangle(cornerRadius: 16)))
-                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+            RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous)
+                .fill(isHovered ? Color.black.opacity(0.65) : Color.black.opacity(0.40))
+                .background(
+                    VisualEffect()
+                        .clipShape(RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: isHovered ? 18 : 12, style: .continuous)
+                        .stroke(Color.white.opacity(isHovered ? 0.22 : 0.10), lineWidth: 0.8)
+                )
+                .shadow(color: .black.opacity(isHovered ? 0.35 : 0.15), radius: isHovered ? 12 : 4, x: isHovered ? 2 : 0, y: isHovered ? 4 : 1)
         )
+        // Move smoothly from inside the notch right edge when idle to popped out right when hovered
+        .offset(
+            x: isHovered ? ((model.width / 2) + 26) : ((model.width / 2) - 18),
+            y: model.physicalNotchHeight + ((model.height - model.physicalNotchHeight) / 2) - (isHovered ? 34 : 22)
+        )
+        .scaleEffect(isHovered ? 1.0 : 0.80)
+        .animation(.spring(response: 0.32, dampingFraction: 0.74), value: isHovered)
+        .onHover { h in
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.74)) {
+                isHovered = h
+            }
+        }
     }
     
     @ViewBuilder func switcherButton(icon: String, target: IslandState) -> some View {
@@ -1873,12 +1913,13 @@ struct VerticalSwitcher: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(isActive ? Color.white : Color.white.opacity(0.1))
+                    .fill(isActive ? Color.white : Color.white.opacity(isHovered ? 0.14 : 0.08))
                 Image(systemName: icon)
                     .foregroundStyle(isActive ? Color.black : Color.white)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: isHovered ? 14 : 11, weight: .bold))
             }
-            .frame(width: 36, height: 36)
+            .frame(width: isHovered ? 34 : 22, height: isHovered ? 34 : 22)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
     }
