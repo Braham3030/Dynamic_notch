@@ -1,3 +1,5 @@
+import IOKit.ps
+import IOKit.pwr_mgt
 
 struct ArcShape: Shape {
     var startAngle: Angle
@@ -491,6 +493,13 @@ struct IslandView: View {
                                 insertion: .scale(scale: 0.9).combined(with: .opacity),
                                 removal: .scale(scale: 0.9).combined(with: .opacity)
                             ))
+                    } else if model.macBatteryShowingCompact || model.alwaysShowMacBatteryInNotch {
+                        compactMacBatteryActivity
+                            .frame(width: model.width, height: model.physicalNotchHeight)
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.9).combined(with: .opacity),
+                                removal: .scale(scale: 0.9).combined(with: .opacity)
+                            ))
                     }
                 }
                 
@@ -661,34 +670,60 @@ struct IslandView: View {
         .padding(.horizontal, 14)
     }
 
+    @ViewBuilder private var compactMacBatteryActivity: some View {
+        HStack(spacing: 0) {
+            // Left wing: Battery indicator & Lightning bolt
+            HStack(spacing: 4) {
+                Image(systemName: model.isMacCharging || model.isMacPluggedIn ? "battery.100.bolt" : (model.macBatteryLevel <= 0.2 ? "battery.25" : "battery.100"))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(model.isMacCharging || model.isMacPluggedIn ? .green : (model.macBatteryLevel <= model.batteryWarningLevel ? .red : (model.isMacLowPowerMode ? .yellow : .white)))
+                    .symbolEffect(.bounce, value: model.isMacCharging)
+            }
+            .frame(width: 26, height: 26)
+
+            Spacer(minLength: 0)
+
+            // Right wing: Numerical Battery Percentage
+            Text("\(Int(model.macBatteryLevel * 100))%")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(model.isMacCharging || model.isMacPluggedIn ? .green : (model.macBatteryLevel <= model.batteryWarningLevel ? .red : (model.isMacLowPowerMode ? .yellow : .white)))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+    }
+
     @ViewBuilder private var compactMusicActivity: some View {
         HStack(spacing: 0) {
             ZStack {
-                Group {
+                RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.clear).frame(width: 24, height: 24)
+                ZStack {
                     if let artwork = model.currentArtwork {
                         Image(nsImage: artwork)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .frame(width: 24, height: 24)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     } else {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.18))
+                            .frame(width: 24, height: 24)
                         Image(systemName: "music.note")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.white.opacity(0.18))
                     }
                 }
-                .id(model.currentTrackTitle)
+                .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                 .transition(.flip3D(isForward: model.isForward))
             }
-            .frame(width: 24, height: 24)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
+            .zIndex(1)
 
             Spacer(minLength: 0)
 
             MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
                 .frame(width: 24, height: 16)
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
+                .zIndex(1)
         }
         .padding(.horizontal, 12)
         .opacity(model.isScreenTransitioning ? 0 : 1)
@@ -1194,6 +1229,9 @@ extension IslandModel {
         }
         if isMusicPlaying {
             return baseNotchWidth + 108
+        }
+        if macBatteryShowingCompact || alwaysShowMacBatteryInNotch {
+            return baseNotchWidth + 84
         }
         return baseNotchWidth
     }
@@ -1943,6 +1981,84 @@ class IslandModel: ObservableObject {
     @Published var isScreenTransitioning: Bool = false
     private var transitionDebounceTask: Task<Void, Never>? = nil
 
+    // Waveform visualization choice (Fake procedural vs Real live FFT)
+    @Published var useRealAudioWaveform: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_useRealAudioWaveform") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_useRealAudioWaveform")
+        }
+        return false
+    }() {
+        didSet {
+            UserDefaults.standard.set(useRealAudioWaveform, forKey: "saved_useRealAudioWaveform")
+            if useRealAudioWaveform {
+                if hasMicPermission {
+                    AudioAnalyzer.shared.startMonitoring()
+                } else {
+                    requestMicPermission { granted in
+                        if granted { AudioAnalyzer.shared.startMonitoring() }
+                    }
+                }
+            } else {
+                AudioAnalyzer.shared.stopMonitoring()
+            }
+        }
+    }
+
+    // MacBook Battery Management & Live Activities
+    @Published var macBatteryLevel: Double = 1.0
+    @Published var isMacCharging: Bool = false
+    @Published var isMacPluggedIn: Bool = false
+    @Published var isMacLowPowerMode: Bool = false
+    @Published var macBatteryShowingCompact: Bool = false
+    private var macBatteryDismissWorkItem: DispatchWorkItem?
+    private var macBatteryRunLoopSource: CFRunLoopSource?
+    private var lastChargingState: Bool? = nil
+    private var lastLowBatteryAlertLevel: Double? = nil
+
+    @Published var batteryReduceMotionInLowPower: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_batteryReduceMotionInLowPower") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_batteryReduceMotionInLowPower")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(batteryReduceMotionInLowPower, forKey: "saved_batteryReduceMotionInLowPower")
+        }
+    }
+
+    @Published var batteryLowWarningEnabled: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_batteryLowWarningEnabled") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_batteryLowWarningEnabled")
+        }
+        return true
+    }() {
+        didSet {
+            UserDefaults.standard.set(batteryLowWarningEnabled, forKey: "saved_batteryLowWarningEnabled")
+        }
+    }
+
+    @Published var batteryWarningLevel: Double = {
+        if UserDefaults.standard.object(forKey: "saved_batteryWarningLevel") != nil {
+            return UserDefaults.standard.double(forKey: "saved_batteryWarningLevel")
+        }
+        return 0.20
+    }() {
+        didSet {
+            UserDefaults.standard.set(batteryWarningLevel, forKey: "saved_batteryWarningLevel")
+        }
+    }
+
+    @Published var alwaysShowMacBatteryInNotch: Bool = {
+        if UserDefaults.standard.object(forKey: "saved_alwaysShowMacBatteryInNotch") != nil {
+            return UserDefaults.standard.bool(forKey: "saved_alwaysShowMacBatteryInNotch")
+        }
+        return false
+    }() {
+        didSet {
+            UserDefaults.standard.set(alwaysShowMacBatteryInNotch, forKey: "saved_alwaysShowMacBatteryInNotch")
+        }
+    }
+
     init() {
         refreshPermissionStates()
         readSystemBrightness()
@@ -1952,6 +2068,92 @@ class IslandModel: ObservableObject {
         startScreenTransitionMonitoring()
         startAirPodsMonitoring()
         startAudioDeviceMonitoring()
+        startMacBatteryMonitoring()
+    }
+
+    func startMacBatteryMonitoring() {
+        fetchMacBatteryState(isInitial: true)
+        
+        let loop = IOPSNotificationCreateRunLoopSource({ _ in
+            IslandModel.shared.fetchMacBatteryState(isInitial: false)
+        }, nil)?.takeRetainedValue()
+        
+        if let loop = loop {
+            macBatteryRunLoopSource = loop
+            CFRunLoopAddSource(CFRunLoopGetMain(), loop, .defaultMode)
+        }
+        
+        // Low Power Mode notification observer
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isMacLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+        
+        // Safety periodic timer
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.fetchMacBatteryState(isInitial: false)
+        }
+    }
+
+    func fetchMacBatteryState(isInitial: Bool) {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else {
+            return
+        }
+        
+        for ps in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, ps)?.takeUnretainedValue() as? [String: Any] else { continue }
+            let charging = desc[kIOPSIsChargingKey as String] as? Bool ?? false
+            let currentCap = desc[kIOPSCurrentCapacityKey as String] as? Int ?? 100
+            let maxCap = desc[kIOPSMaxCapacityKey as String] as? Int ?? 100
+            let powerSourceState = desc[kIOPSPowerSourceStateKey as String] as? String ?? ""
+            let pluggedIn = (powerSourceState == (kIOPSACPowerValue as String)) || charging
+            let level = maxCap > 0 ? (Double(currentCap) / Double(maxCap)) : 1.0
+            let lpm = ProcessInfo.processInfo.isLowPowerModeEnabled
+            
+            DispatchQueue.main.async {
+                self.macBatteryLevel = level
+                self.isMacCharging = charging
+                self.isMacPluggedIn = pluggedIn
+                self.isMacLowPowerMode = lpm
+                
+                // Trigger live activity banner when charger gets connected
+                if let prevCharging = self.lastChargingState {
+                    if (!prevCharging && (charging || pluggedIn)) {
+                        self.triggerMacBatteryBanner()
+                    }
+                }
+                self.lastChargingState = charging || pluggedIn
+                
+                // Check battery warning threshold
+                if self.batteryLowWarningEnabled && !pluggedIn && level <= self.batteryWarningLevel {
+                    if self.lastLowBatteryAlertLevel == nil || (self.lastLowBatteryAlertLevel! > self.batteryWarningLevel) {
+                        self.triggerMacBatteryBanner()
+                    }
+                    self.lastLowBatteryAlertLevel = level
+                } else if pluggedIn || level > self.batteryWarningLevel {
+                    self.lastLowBatteryAlertLevel = nil
+                }
+            }
+            break
+        }
+    }
+
+    func triggerMacBatteryBanner() {
+        macBatteryDismissWorkItem?.cancel()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            self.macBatteryShowingCompact = true
+        }
+        let work = DispatchWorkItem { [weak self] in
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
+                self?.macBatteryShowingCompact = false
+            }
+        }
+        macBatteryDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2, execute: work)
     }
 
     func startScreenTransitionMonitoring() {
@@ -2443,7 +2645,20 @@ class IslandModel: ObservableObject {
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
     
-    var currentAnimation: Animation { switch animationCurve { case .spring: return .spring(response: animationDuration, dampingFraction: 0.62, blendDuration: 0.1); case .bouncy: return .spring(response: animationDuration, dampingFraction: 0.45, blendDuration: 0.1); case .smooth: return .easeInOut(duration: animationDuration); case .easeIn: return .easeIn(duration: animationDuration); case .easeOut: return .easeOut(duration: animationDuration); case .linear: return .linear(duration: animationDuration); case .custom: return .timingCurve(customC1.x, customC1.y, customC2.x, customC2.y, duration: animationDuration) } }
+    var currentAnimation: Animation {
+        if batteryReduceMotionInLowPower && isMacLowPowerMode {
+            return .linear(duration: 0.12)
+        }
+        switch animationCurve {
+        case .spring: return .spring(response: animationDuration, dampingFraction: 0.62, blendDuration: 0.1)
+        case .bouncy: return .spring(response: animationDuration, dampingFraction: 0.45, blendDuration: 0.1)
+        case .smooth: return .easeInOut(duration: animationDuration)
+        case .easeIn: return .easeIn(duration: animationDuration)
+        case .easeOut: return .easeOut(duration: animationDuration)
+        case .linear: return .linear(duration: animationDuration)
+        case .custom: return .timingCurve(customC1.x, customC1.y, customC2.x, customC2.y, duration: animationDuration)
+        }
+    }
     func toggleState(_ nextState: IslandState) { if state == nextState { state = .compact } else { state = nextState } }
 }
 
@@ -2517,6 +2732,8 @@ struct CircularBatteryGauge: View {
 }
 
 struct MusicWaveform: View {
+    @ObservedObject var model = IslandModel.shared
+    @ObservedObject var analyzer = AudioAnalyzer.shared
     var isPlaying: Bool
     var color: Color = .white
     
@@ -2528,18 +2745,34 @@ struct MusicWaveform: View {
     
     var body: some View {
         if isPlaying {
-            TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
+            if model.useRealAudioWaveform {
+                // Real Live Audio FFT Frequency Analysis Waveform
                 HStack(spacing: 2.2) {
                     ForEach(0..<5, id: \.self) { i in
-                        let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
-                        let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                        let peak = i < analyzer.peaks.count ? analyzer.peaks[i] : 0.2
+                        let h = minHeight + CGFloat(peak) * (maxHeight - minHeight)
                         Capsule()
                             .fill(color)
-                            .frame(width: 3.2, height: h)
+                            .frame(width: 3.2, height: max(minHeight, min(maxHeight, h)))
+                            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: peak)
                     }
                 }
                 .frame(height: maxHeight, alignment: .center)
+            } else {
+                // Simulated Fluid Procedural Apple Waveform
+                TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 2.2) {
+                        ForEach(0..<5, id: \.self) { i in
+                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
+                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 3.2, height: h)
+                        }
+                    }
+                    .frame(height: maxHeight, alignment: .center)
+                }
             }
         } else {
             HStack(spacing: 2.2) {
@@ -2656,6 +2889,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case notchStyling = "Notch Styling"
     case background = "Window & Background"
     case display = "Hardware Calibration"
+    case battery = "Battery"
     case liveActivities = "Live Activities"
     case systemControls = "System Controls"
     case softwareUpdate = "Software Update"
@@ -2668,6 +2902,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .notchStyling: return "capsule.portrait.fill"
         case .background: return "paintpalette.fill"
         case .display: return "display"
+        case .battery: return "battery.100.bolt"
         case .liveActivities: return "bolt.fill"
         case .systemControls: return "switch.2"
         case .softwareUpdate: return "arrow.triangle.2.circlepath.circle.fill"
@@ -3405,6 +3640,8 @@ struct ContentView: View {
                             BackgroundSettingsView(selectedPane: $selectedPane)
                         case .display:
                             HardwareCalibrationView()
+                        case .battery:
+                            BatterySettingsView()
                         case .liveActivities:
                             LiveActivitiesView()
                         case .systemControls:
@@ -3494,7 +3731,7 @@ struct BezierGraph: View {
 
 struct AnimationSettingsView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Morphing Physics"), footer: Text("Drag anywhere inside the Sandbox Graph to instantly trace out custom trajectories.")) { VStack(alignment: .leading, spacing: 30) { VStack(alignment: .leading, spacing: 18) { Picker("Curve Algorithm", selection: $model.animationCurve) { ForEach(AnimationCurve.allCases, id: \.self) { curve in Text(curve.rawValue).tag(curve) } }; VStack(alignment: .leading, spacing: 6) { HStack { Text("Duration Time"); Spacer(); Text(String(format: "%.1fs", model.animationDuration)).monospacedDigit().foregroundStyle(.secondary) }; Slider(value: $model.animationDuration, in: 0.1...1.5, step: 0.1) } }; VStack(alignment: .leading) { Text(model.animationCurve == .custom ? "Live Physics Sandbox" : "System Easing Math").font(.subheadline.weight(.medium)).foregroundStyle(model.animationCurve == .custom ? .orange : .secondary).padding(.bottom, 6); BezierGraph(model: model).frame(height: 250).padding(.horizontal, 26).padding(.vertical, 20).background(Color(NSColor.textBackgroundColor)).cornerRadius(12).shadow(color: model.animationCurve == .custom ? Color.orange.opacity(0.3) : .clear, radius: 10).animation(.spring(response: 0.35, dampingFraction: 0.7), value: model.animationCurve) }.padding(.top, 4) }.padding(.vertical, 12) } }.formStyle(.grouped)
         .scrollContentBackground(.hidden) } }
-struct HardwareCalibrationView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Screen Target"), footer: Text("Select which physical display panels should draw the notch overlay.")) { HStack { Spacer(); GlassSegmentControl(selection: $model.displayMode).padding(.vertical, 8); Spacer() } }; Section(header: Text("Display Bezels"), footer: Text("Use this diagnostic tool to match the simulated bounds precisely to your hardware sensors.")) { HStack(spacing: 16) { Text("Resting Camouflage Width"); Slider(value: $model.baseNotchWidth, in: 120...260, step: 2); Text("\(Int(model.baseNotchWidth))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) }; HStack(spacing: 16) { Text("Resting Corner Radius"); Slider(value: $model.compactCornerRadius, in: 2...30, step: 1); Text("\(Int(model.compactCornerRadius))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) } } }.formStyle(.grouped)
+struct HardwareCalibrationView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Screen Target"), footer: Text("Select which physical display panels should draw the notch overlay.")) { HStack { Spacer(); GlassSegmentControl(selection: $model.displayMode).padding(.vertical, 8); Spacer() } }; Section(header: Text("Display Bezels"), footer: Text("Use this diagnostic tool to match the simulated bounds precisely to your hardware sensors.")) { HStack(spacing: 16) { Text("Resting Camouflage Width"); Slider(value: $model.baseNotchWidth, in: 150...280, step: 2); Text("\(Int(model.baseNotchWidth))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) }; HStack(spacing: 16) { Text("Resting Corner Radius"); Slider(value: $model.compactCornerRadius, in: 2...30, step: 1); Text("\(Int(model.compactCornerRadius))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) } } }.formStyle(.grouped)
         .scrollContentBackground(.hidden) } }
 struct GlassSegmentControl: View {
     @Binding var selection: ScreenDisplayMode
@@ -3843,11 +4080,21 @@ struct ControlButton: View {
         .buttonStyle(.plain)
     }
 }
+struct GitHubReleaseInfo: Identifiable {
+    let id: String
+    let tagName: String
+    let name: String
+    let body: String
+    let publishedAt: String
+}
+
 struct SoftwareUpdateView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var isChecking: Bool = false
     @State private var statusText: String? = nil
     @State private var statusIsError: Bool = false
+    @State private var releaseNotes: [GitHubReleaseInfo] = []
+    @State private var isLoadingNotes: Bool = false
     
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.2"
@@ -3919,6 +4166,69 @@ struct SoftwareUpdateView: View {
                 }
                 .padding(.vertical, 8)
             }
+
+            Section(header: Text("Release Notes (GitHub Releases)"), footer: Text("Release notes are automatically fetched from GitHub tags when new versions are published.")) {
+                if isLoadingNotes && releaseNotes.isEmpty {
+                    HStack {
+                        Spacer()
+                        ProgressView("Fetching latest release notes...")
+                            .controlSize(.small)
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                } else if releaseNotes.isEmpty {
+                    HStack {
+                        Text("No release notes loaded.")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Fetch Release Notes") {
+                            fetchReleaseNotes()
+                        }
+                    }
+                } else {
+                    ForEach(releaseNotes) { release in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Text(release.name.isEmpty ? release.tagName : release.name)
+                                    .font(.headline)
+                                
+                                Text("v\(release.tagName.replacingOccurrences(of: "v", with: ""))")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.18))
+                                    .foregroundStyle(.blue)
+                                    .clipShape(Capsule())
+
+                                if release.tagName.replacingOccurrences(of: "v", with: "") == appVersion {
+                                    Text("CURRENT")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green.opacity(0.2))
+                                        .foregroundStyle(.green)
+                                        .clipShape(Capsule())
+                                }
+
+                                Spacer()
+                                
+                                Text(formatPublishedDate(release.publishedAt))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if !release.body.isEmpty {
+                                Text(cleanReleaseBody(release.body))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .lineSpacing(3)
+                                    .padding(.vertical, 4)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
             
             Section(header: Text("Update Channel"), footer: Text("dyNotch is currently in active Beta stage development. Updates are delivered directly via GitHub Releases through Sparkle.")) {
                 HStack {
@@ -3931,6 +4241,63 @@ struct SoftwareUpdateView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onAppear {
+            fetchReleaseNotes()
+        }
+    }
+    
+    private func formatPublishedDate(_ isoDate: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: isoDate) {
+            let outFormatter = DateFormatter()
+            outFormatter.dateStyle = .medium
+            return outFormatter.string(from: date)
+        }
+        return isoDate
+    }
+
+    private func cleanReleaseBody(_ body: String) -> String {
+        // Strip out noisy raw asset links and clean up changelog headers for clean presentation
+        let lines = body.components(separatedBy: "\n")
+        let filtered = lines.filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !trimmed.hasPrefix("[dyNotch") && !trimmed.hasPrefix("[Dynamic_notch")
+        }
+        return filtered.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func fetchReleaseNotes() {
+        isLoadingNotes = true
+        guard let url = URL(string: "https://api.github.com/repos/Braham3030/Dynamic_notch/releases") else {
+            isLoadingNotes = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.setValue("dyNotch-App", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 8
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                self.isLoadingNotes = false
+                guard let data = data,
+                      let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                    return
+                }
+                
+                var notes: [GitHubReleaseInfo] = []
+                for item in jsonArray {
+                    let tag = item["tag_name"] as? String ?? ""
+                    let name = item["name"] as? String ?? ""
+                    let body = item["body"] as? String ?? ""
+                    let published = item["published_at"] as? String ?? ""
+                    let id = "\(tag)_\(published)"
+                    notes.append(GitHubReleaseInfo(id: id, tagName: tag, name: name, body: body, publishedAt: published))
+                }
+                self.releaseNotes = notes
+            }
+        }.resume()
     }
     
     private func checkForUpdates() {
@@ -3940,6 +4307,8 @@ struct SoftwareUpdateView: View {
         
         // Trigger Sparkle native update prompt
         model.updaterController?.checkForUpdates(nil)
+        
+        fetchReleaseNotes()
         
         // Also check GitHub API for immediate inline feedback
         guard let url = URL(string: "https://api.github.com/repos/Braham3030/Dynamic_notch/releases") else {
@@ -4205,6 +4574,107 @@ struct SystemControlsView: View {
     }
 }
 
+
+struct BatterySettingsView: View {
+    @ObservedObject var model = IslandModel.shared
+
+    var body: some View {
+        Form {
+            Section(header: Text("MacBook Battery Status"), footer: Text("Live power source metrics polled directly from macOS IOKit hardware subsystems.")) {
+                HStack(spacing: 16) {
+                    Image(systemName: model.isMacCharging || model.isMacPluggedIn ? "battery.100.bolt" : (model.macBatteryLevel <= 0.2 ? "battery.25" : "battery.100"))
+                        .font(.system(size: 38))
+                        .foregroundColor(model.isMacCharging || model.isMacPluggedIn ? .green : (model.macBatteryLevel <= model.batteryWarningLevel ? .red : (model.isMacLowPowerMode ? .yellow : .blue)))
+                        .frame(width: 48)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("\(Int(model.macBatteryLevel * 100))%")
+                                .font(.title2.bold())
+                                .monospacedDigit()
+                            
+                            if model.isMacCharging {
+                                Text("CHARGING")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.green.opacity(0.2))
+                                    .foregroundStyle(.green)
+                                    .clipShape(Capsule())
+                            } else if model.isMacPluggedIn {
+                                Text("POWER ADAPTER")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.2))
+                                    .foregroundStyle(.blue)
+                                    .clipShape(Capsule())
+                            } else {
+                                Text("BATTERY POWER")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .foregroundStyle(.secondary)
+                                    .clipShape(Capsule())
+                            }
+
+                            if model.isMacLowPowerMode {
+                                Text("LOW POWER MODE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.yellow.opacity(0.2))
+                                    .foregroundStyle(.yellow)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        
+                        Text(model.isMacCharging ? "Connected to AC power, battery is charging." : (model.isMacPluggedIn ? "Power adapter connected, battery charged." : "Running on internal battery."))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 6)
+            }
+
+            Section(header: Text("Live Activity & Notch Behaviour"), footer: Text("When charger is connected, dynamic notch temporarily displays the charging animation. If other live activities (like Apple Music or a call) are active, battery automatically yields priority.")) {
+                Toggle("Always Show Battery Status in Notch", isOn: $model.alwaysShowMacBatteryInNotch)
+                
+                HStack {
+                    Text("Simulate Charger Connection")
+                    Spacer()
+                    Button("Trigger Banner") {
+                        model.triggerMacBatteryBanner()
+                    }
+                }
+            }
+
+            Section(header: Text("Power Efficiency & Motion"), footer: Text("Reduces animation duration and complex spring physics when macOS Low Power Mode is engaged to conserve battery.")) {
+                Toggle("Reduce Motion in Low Power Mode", isOn: $model.batteryReduceMotionInLowPower)
+            }
+
+            Section(header: Text("Low Battery Warning"), footer: Text("Pops a subtle warning activity in the Dynamic Notch when the MacBook falls below this battery percentage.")) {
+                Toggle("Warn on Low Battery", isOn: $model.batteryLowWarningEnabled)
+                
+                if model.batteryLowWarningEnabled {
+                    HStack(spacing: 16) {
+                        Text("Warning Threshold")
+                        Slider(value: $model.batteryWarningLevel, in: 0.05...0.50, step: 0.05)
+                        Text("\(Int(model.batteryWarningLevel * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, alignment: .trailing)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+}
+
 struct LiveActivitiesView: View {
     @ObservedObject var model = IslandModel.shared
     
@@ -4241,6 +4711,25 @@ struct LiveActivitiesView: View {
                     Spacer()
                     Toggle("", isOn: $model.showMusic)
                         .labelsHidden()
+                }
+
+                if model.showMusic {
+                    HStack {
+                        Image(systemName: "waveform.path.ecg")
+                            .foregroundStyle(.purple)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Real-Time Song Audio Waveform")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(model.useRealAudioWaveform ? "Real FFT audio frequency analysis from playing song" : "Procedural fluid simulated Apple Music waveform")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $model.useRealAudioWaveform)
+                            .labelsHidden()
+                    }
+                    .padding(.leading, 12)
                 }
                 
                 HStack {
