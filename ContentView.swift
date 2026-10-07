@@ -339,6 +339,86 @@ enum AutoCloseBehavior: String, CaseIterable, Identifiable {
 }
 
 
+// MARK: - iOS-Style Live Motion Fluid Artwork Wallpaper Engine
+struct iOSLiveArtworkWallpaperView: View {
+    let artwork: NSImage?
+    let primaryColor: Color
+    let isPlaying: Bool
+    let width: CGFloat
+    let height: CGFloat
+    let intensity: Double
+    
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let t = isPlaying ? time : 0.0
+            
+            // Multi-frequency organic fluid wave displacement
+            let driftX1 = sin(t * 0.42) * 16.0
+            let driftY1 = cos(t * 0.32) * 10.0
+            let driftX2 = cos(t * 0.36 + 1.2) * 20.0
+            let driftY2 = sin(t * 0.48 + 0.8) * 12.0
+            let scalePulse = 1.0 + sin(t * 0.55) * 0.035
+            
+            ZStack(alignment: .leading) {
+                // Background deep ambient canvas
+                primaryColor
+                    .opacity(0.24 * intensity)
+                
+                // Base Artwork Layer (Fluid zoom & slow breathing motion)
+                if let art = artwork {
+                    Image(nsImage: art)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: max(100, width * 0.72), height: max(50, height * 1.2))
+                        .scaleEffect(scalePulse)
+                        .offset(x: driftX1 * 0.45 - 8, y: driftY1 * 0.45)
+                        .blur(radius: 20)
+                        .opacity(0.46 * intensity)
+                }
+                
+                // Fluid Orb 1: Primary chromatic flare
+                Circle()
+                    .fill(primaryColor)
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 32)
+                    .offset(x: -15 + driftX1, y: -8 + driftY1)
+                    .opacity(0.40 * intensity)
+                
+                // Fluid Orb 2: Ambient electric accent flare
+                Circle()
+                    .fill(Color(hue: 0.52, saturation: 0.75, brightness: 0.95))
+                    .frame(width: 110, height: 110)
+                    .blur(radius: 28)
+                    .offset(x: 55 + driftX2, y: 18 + driftY2)
+                    .opacity(0.24 * intensity)
+                
+                // Fluid Orb 3: Bottom edge liquid light wash
+                Ellipse()
+                    .fill(primaryColor.opacity(0.55))
+                    .frame(width: 180, height: 65)
+                    .blur(radius: 26)
+                    .offset(x: driftX2 * 0.6, y: height * 0.32)
+                    .opacity(0.32 * intensity)
+            }
+            .frame(width: max(80, width * 0.68), height: height)
+            .mask(
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.98),
+                        Color.black.opacity(0.80),
+                        Color.black.opacity(0.35),
+                        Color.clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .clipped()
+        }
+    }
+}
+
 struct IslandView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var hovered = false
@@ -558,14 +638,14 @@ struct IslandView: View {
                         }
                     }
                     
-                    // 2. Music Ambient Artwork Gradient Glow & Larger Live Wallpaper on Left Part of Notch
+                    // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper on Left Part of Notch
                     if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
                         ZStack(alignment: .leading) {
                             // Vibrant ambient artwork gradient glow across the notch
                             LinearGradient(
                                 colors: [
                                     model.artworkColor.opacity(0.38 * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity(0.14 * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity(0.12 * model.artworkGlowIntensity),
                                     Color.clear
                                 ],
                                 startPoint: .topLeading,
@@ -573,31 +653,19 @@ struct IslandView: View {
                             )
                             .frame(width: model.width, height: model.height)
                             
-                            // Larger Live Artwork Wallpaper covering the left portion of the Notch
-                            if let art = model.currentArtwork {
-                                Image(nsImage: art)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: model.width * 0.65, height: model.height)
-                                    .blur(radius: 20)
-                                    .opacity(0.36 * model.artworkGlowIntensity)
-                                    .mask(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.black.opacity(0.95),
-                                                Color.black.opacity(0.50),
-                                                Color.clear
-                                            ],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .clipped()
-                                    .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                                    .transition(.opacity)
-                            }
+                            // iOS Live Motion Artwork Wallpaper covering the left portion of the Notch
+                            iOSLiveArtworkWallpaperView(
+                                artwork: model.currentArtwork,
+                                primaryColor: model.artworkColor,
+                                isPlaying: model.isMusicPlaying,
+                                width: model.width,
+                                height: model.height,
+                                intensity: model.artworkGlowIntensity
+                            )
+                            .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                            .transition(.opacity)
                         }
-                        .animation(.spring(response: 0.5, dampingFraction: 0.78), value: model.artworkColor)
+                        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
                     
                     // 3. AirDrop File/Photo Overflow Ambient Gradient across the whole Notch!
