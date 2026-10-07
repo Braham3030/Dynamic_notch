@@ -69,22 +69,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    private var lastDragPasteboardCount: Int = -1
+    private var dragWatchTimer: Timer?
+
     private func setupMouseTracking() {
-        // Track mouse globally across all apps for smooth notch hover interactions
+        // Track mouse globally across all apps for smooth notch hover interactions & drag detection
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.handleMouseLocation(NSEvent.mouseLocation, eventType: event.type)
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            self?.handleMouseLocation(NSEvent.mouseLocation)
+            self?.handleMouseLocation(NSEvent.mouseLocation, eventType: event.type)
             return event
+        }
+        
+        // Fast periodic check on the drag pasteboard to detect drag start anywhere on macOS instantly!
+        dragWatchTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+            self?.checkActiveFileDrag()
         }
     }
     
-    private func handleMouseLocation(_ location: NSPoint) {
+    private func checkActiveFileDrag() {
+        let pboard = NSPasteboard(name: .drag)
+        let count = pboard.changeCount
+        let types = pboard.types ?? []
+        let hasFiles = types.contains(.fileURL) || types.contains(.URL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        let mouseButtons = NSEvent.pressedMouseButtons
+        let isDragging = (mouseButtons & 1) != 0 // Left mouse button currently held down
+        
+        let model = IslandModel.shared
+        if isDragging && hasFiles && count != 0 {
+            if !model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                        model.isAirDropTargeted = true
+                    }
+                }
+            }
+        } else if !isDragging {
+            if model.isAirDropTargeted && model.state != .expandedAirDrop {
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        model.isAirDropTargeted = false
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleMouseLocation(_ location: NSPoint, eventType: NSEvent.EventType? = nil) {
         let model = IslandModel.shared
         let width = model.width
         let height = model.height
+        
+        if eventType == .leftMouseDragged {
+            checkActiveFileDrag()
+        }
         
         for item in islandWindows {
             let screen = item.screen
