@@ -4772,6 +4772,7 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
 enum SettingsPane: String, CaseIterable, Identifiable {
     case appearance = "Appearance & Physics"
     case notchStyling = "Notch Styling"
+    case audioVisualisation = "Audio Visualisation"
     case background = "Window & Background"
     case display = "Hardware Calibration"
     case battery = "Battery & Power"
@@ -4785,6 +4786,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .appearance: return "sparkles"
         case .notchStyling: return "capsule.portrait.fill"
+        case .audioVisualisation: return "waveform.path.ecg"
         case .background: return "paintpalette.fill"
         case .display: return "display"
         case .battery: return "battery.100.bolt"
@@ -4801,6 +4803,8 @@ enum SettingsPane: String, CaseIterable, Identifiable {
             return ["Spring Physics", "Animation Curve", "Damping Fraction", "Compact Corner Radius"]
         case .notchStyling:
             return ["Liquid Glass Tone", "Light Dark Glass", "Music Artwork Ambient Glow", "Pulsate Glow with Rhythm", "Keep Notch Solid Black", "Obsidian Jet Black", "Neon Cyber Glow"]
+        case .audioVisualisation:
+            return ["Follow Real Track Audio", "Apple Classic Waveform", "Fluid Siri Waveform", "Full Window Screen Glow", "Artwork Rhythm Pulse", "Zero Microphone Overhead", "Equalizer", "Visualizer", "Sound Waves"]
         case .background:
             return ["Liquid Glass Window", "Glass Tint Tone", "Wallpaper Blur", "Custom Image Wallpaper", "Window Translucency"]
         case .display:
@@ -4808,7 +4812,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .battery:
             return ["Battery Depletion Time", "MacBook Runtime Remaining", "Low Power Mode Motion", "Low Battery Warnings", "Charging Banners"]
         case .liveActivities:
-            return ["Music Live Activity", "Apple Music Player", "Track-Synchronized Waveform", "Silky Waveform", "Phone & FaceTime Calls", "AirDrop Sharing", "AirPods Integration", "System Notifications", "Control Center Quick Toggles", "Reorder Stack Layout"]
+            return ["Music Live Activity", "Apple Music Player", "Phone & FaceTime Calls", "AirDrop Sharing", "AirPods Integration", "System Notifications", "Control Center Quick Toggles", "Reorder Stack Layout"]
         case .systemControls:
             return ["Wi-Fi Toggle", "Bluetooth Toggle", "Screen Brightness", "System Volume", "Noise Control"]
         case .softwareUpdate:
@@ -5915,6 +5919,8 @@ struct ContentView: View {
                             AnimationSettingsView()
                         case .notchStyling:
                             NotchStylingView()
+                        case .audioVisualisation:
+                            AudioVisualisationSettingsView(selectedPane: $selectedPane)
                         case .background:
                             BackgroundSettingsView(selectedPane: $selectedPane)
                         case .display:
