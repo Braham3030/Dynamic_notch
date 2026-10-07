@@ -309,8 +309,8 @@ struct IslandView: View {
                         if model.state == .expandedAirDrop {
                             airDropExpandedView
                         } else {
-                            HStack(alignment: .center, spacing: 6) {
-                                // Left: Main Content View
+                            ZStack(alignment: .center) {
+                                // Main Content View: Dead-Centered with physical notch & perfectly symmetrical margins
                                 Group {
                                     if model.state == .expandedMusic {
                                         musicView
@@ -321,10 +321,15 @@ struct IslandView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.leading, 20)
+                                .padding(.trailing, 46) // Balances the right-side switcher dock
                                 
-                                // Right: Compact Liquid Glass Vertical Switcher (Centered, Low Height)
-                                VerticalSwitcher(model: model, activeState: model.state)
-                                    .padding(.trailing, 10)
+                                // Right Side: Compact Liquid Glass Vertical Switcher
+                                HStack {
+                                    Spacer()
+                                    VerticalSwitcher(model: model, activeState: model.state)
+                                        .padding(.trailing, 8)
+                                }
                             }
                             .frame(maxHeight: .infinity, alignment: .center)
                         }
@@ -619,16 +624,16 @@ struct IslandView: View {
     }
 
     @ViewBuilder var musicView: some View {
-        VStack(spacing: 12) {
-            // Header with genuine iOS Dynamic Island margin & breathing room
+        VStack(spacing: 10) {
+            // Header with 100% symmetrical spacing relative to physical notch
             HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 48, height: 48)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 46, height: 46)
                     ZStack {
                         if let img = model.currentArtwork { 
-                            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         } else {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.opacity(0.3)).frame(width: 48, height: 48)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.opacity(0.3)).frame(width: 46, height: 46)
                             Image(systemName: "music.note").font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
                         }
                     }
@@ -835,9 +840,9 @@ extension IslandModel {
         if isAirDropTargeted { return 440 }
         if isExpanded {
             if state == .expandedAirDrop { return 440 }
-            if state == .expandedMusic { return 390 }
+            if state == .expandedMusic { return 420 } // Perfectly symmetrical 110px wings on left and right of physical notch
             if state == .expandedFood { return 360 }
-            return 380
+            return 420
         }
         if airPodsShowingCompact {
             return baseNotchWidth + 90
