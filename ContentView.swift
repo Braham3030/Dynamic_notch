@@ -2279,10 +2279,15 @@ class IslandModel: ObservableObject {
         if UserDefaults.standard.object(forKey: "saved_waveformTrackSynchronized") != nil {
             return UserDefaults.standard.bool(forKey: "saved_waveformTrackSynchronized")
         }
-        return true
+        return false
     }() {
         didSet {
             UserDefaults.standard.set(waveformTrackSynchronized, forKey: "saved_waveformTrackSynchronized")
+            if waveformTrackSynchronized && isMusicPlaying {
+                AudioAnalyzer.shared.startMonitoring()
+            } else if !waveformTrackSynchronized {
+                AudioAnalyzer.shared.stopMonitoring()
+            }
         }
     }
 
@@ -3112,46 +3117,46 @@ enum LiveActivityType: String, CaseIterable, Identifiable, Codable {
 
 struct MusicWaveform: View {
     @ObservedObject var model = IslandModel.shared
+    @ObservedObject var analyzer = AudioAnalyzer.shared
     var isPlaying: Bool
     var color: Color = .white
     
+    // Exact classic fluid Apple iOS Dynamic Island waveform parameters (Smooth Flow)
+    let frequencies: [Double] = [3.6, 5.4, 4.2, 6.2, 4.8]
+    let phases: [Double] = [0.0, 1.25, 2.5, 0.85, 1.95]
     let minHeight: CGFloat = 3.5
     let maxHeight: CGFloat = 16.5
     
     var body: some View {
         if isPlaying {
-            TimelineView(.animation) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                
-                // Track-derived beat dynamics
-                let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
-                let hash = Double(abs(trackKey.hashValue % 1000))
-                let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
-                let beatSpeed = (bpm / 60.0) * Double.pi * 2.0
-                let elapsed = max(0, min(2.0, Date().timeIntervalSince(model.lastPlaybackPollTime)))
-                let liveTrackPos = model.playbackPosition + elapsed
-                let currentBeat = liveTrackPos * beatSpeed
-                
-                // 5 Stationary vertical bouncing bars (Equalizer bands with NO horizontal sweep)
+            if model.waveformTrackSynchronized {
+                // Real Track Audio Reactive Waveform Mode (FFT / Spectral Rhythmic Equalizer)
                 HStack(spacing: 2.2) {
                     ForEach(0..<5, id: \.self) { i in
-                        let barSpeed = [3.8, 6.2, 4.9, 7.1, 5.4][i]
-                        let indPhase = [1.2, 3.7, 0.4, 2.9, 1.8][i] + (hash * 0.002)
-                        let bandWeights = [1.1, 1.45, 1.7, 1.35, 0.95][i]
-                        
-                        let beatKick = abs(sin(currentBeat * (i == 0 ? 1.0 : (i == 2 ? 1.5 : 2.0)) + indPhase))
-                        let naturalBounce = (sin(time * barSpeed + indPhase) + 1.0) * 0.42
-                        let jitter = cos(time * (barSpeed * 1.6) + indPhase) * 0.12
-                        
-                        let combined = max(0.15, min(1.0, (beatKick * 0.52 + naturalBounce * 0.36 + jitter * 0.12) * bandWeights * 0.85 + 0.15))
-                        let h = minHeight + CGFloat(combined) * (maxHeight - minHeight)
-                        
+                        let peak = analyzer.peaks.indices.contains(i) ? analyzer.peaks[i] : 0.2
+                        let h = minHeight + peak * (maxHeight - minHeight)
                         Capsule()
                             .fill(color)
                             .frame(width: 3.2, height: h)
+                            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.65), value: peak)
                     }
                 }
                 .frame(height: maxHeight, alignment: .center)
+            } else {
+                // Classic First Original Smooth Sine Waveform Animation (Loved by User)
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    HStack(spacing: 2.2) {
+                        ForEach(0..<5, id: \.self) { i in
+                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
+                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                            Capsule()
+                                .fill(color)
+                                .frame(width: 3.2, height: h)
+                        }
+                    }
+                    .frame(height: maxHeight, alignment: .center)
+                }
             }
         } else {
             HStack(spacing: 2.2) {
@@ -5863,7 +5868,7 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable Apple Music Module", isOn: $model.showMusic)
                 
-                Toggle("Track-Synchronized Audio Waveform", isOn: $model.waveformTrackSynchronized)
+                Toggle("Animate Waveform with Real Track Audio", isOn: $model.waveformTrackSynchronized)
                 
                 HStack {
                     Text("Interactive Notch State")
