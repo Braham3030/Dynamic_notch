@@ -3211,11 +3211,11 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
             
-            HStack(spacing: 0) {
-                // Minimizable Sidebar Navigation
-                VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
-                    // Top-level Circular Liquid Glass Toggle Button (Zero text up top!)
-                    HStack {
+            VStack(spacing: 0) {
+                // Expanded Topbar (macOS traffic lights, dyNotch title, menu toggle & active pane title)
+                HStack(spacing: 16) {
+                    // Left area: spacing for close/minimize/maximize buttons + Menu Toggle + dyNotch brand
+                    HStack(spacing: 12) {
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                                 model.isSidebarCollapsed.toggle()
@@ -3255,93 +3255,121 @@ struct ContentView: View {
                         .buttonStyle(.plain)
                         .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")
                         
-                        if !model.isSidebarCollapsed {
-                            Spacer()
+                        HStack(spacing: 6) {
+                            Text("dyNotch")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            
+                            Text("BETA")
+                                .font(.system(size: 9, weight: .heavy))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.25))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
                         }
                     }
-                    .padding(.horizontal, model.isSidebarCollapsed ? 8 : 16)
-                    .padding(.top, 36)
-                    .padding(.bottom, 8)
+                    .padding(.leading, 80) // Leaves generous space for macOS close/minimize/maximize traffic light controls
                     
-                    // Navigation Items
-                    ForEach(SettingsPane.allCases) { pane in
-                        let isSelected = selectedPane == pane
-                        Button {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                                selectedPane = pane
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: pane.icon)
-                                    .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-                                    .frame(width: 24, alignment: .center)
-                                
-                                if !model.isSidebarCollapsed {
-                                    Text(pane.rawValue)
-                                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                    Spacer()
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: model.isSidebarCollapsed ? .center : .leading)
-                            .padding(.vertical, 9)
-                            .padding(.horizontal, model.isSidebarCollapsed ? 6 : 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(isSelected ? Color.blue : (hoveredPane == pane ? (isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)) : Color.clear))
-                            )
-                            .foregroundStyle(isSelected ? Color.white : (isLightBg ? Color(red: 0.15, green: 0.15, blue: 0.22) : Color.white.opacity(0.9)))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(pane.rawValue)
-                        .onHover { hovering in
-                            if hovering { hoveredPane = pane } else if hoveredPane == pane { hoveredPane = nil }
-                        }
-                        .padding(.horizontal, model.isSidebarCollapsed ? 6 : 10)
-                    }
                     Spacer()
+                    
+                    // Center Topbar Header: Active Pane Title & Icon
+                    HStack(spacing: 8) {
+                        Image(systemName: selectedPane.icon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.blue)
+                        
+                        Text(selectedPane.rawValue)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                    }
+                    
+                    Spacer()
+                    
+                    // Right spacer matching left traffic light inset for centered symmetry
+                    Color.clear
+                        .frame(width: 80, height: 32)
                 }
-                .frame(width: model.isSidebarCollapsed ? 58 : 235, alignment: model.isSidebarCollapsed ? .center : .leading)
-                .frame(maxHeight: .infinity)
-                .background(isLightBg ? Color.black.opacity(0.06) : Color.black.opacity(0.28))
+                .frame(height: 52)
+                .background(isLightBg ? Color.black.opacity(0.04) : Color.black.opacity(0.22))
                 
                 Divider()
                     .opacity(0.25)
-                    .ignoresSafeArea()
                 
-                // Detail Content Area with High-Contrast Text
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text(selectedPane.rawValue)
-                            .font(.title2.bold())
-                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                            .shadow(color: isLightBg ? .clear : .black.opacity(0.3), radius: 2)
+                // Main Content Area: Sidebar + Detail Pane
+                HStack(spacing: 0) {
+                    // Minimizable Sidebar Navigation
+                    VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
+                        ForEach(SettingsPane.allCases) { pane in
+                            let isSelected = selectedPane == pane
+                            Button {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                                    selectedPane = pane
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: pane.icon)
+                                        .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                                        .frame(width: 24, alignment: .center)
+                                    
+                                    if !model.isSidebarCollapsed {
+                                        Text(pane.rawValue)
+                                            .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                        Spacer()
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: model.isSidebarCollapsed ? .center : .leading)
+                                .padding(.vertical, 9)
+                                .padding(.horizontal, model.isSidebarCollapsed ? 6 : 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(isSelected ? Color.blue : (hoveredPane == pane ? (isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)) : Color.clear))
+                                )
+                                .foregroundStyle(isSelected ? Color.white : (isLightBg ? Color(red: 0.15, green: 0.15, blue: 0.22) : Color.white.opacity(0.9)))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(pane.rawValue)
+                            .onHover { hovering in
+                                if hovering { hoveredPane = pane } else if hoveredPane == pane { hoveredPane = nil }
+                            }
+                            .padding(.horizontal, model.isSidebarCollapsed ? 6 : 10)
+                        }
                         Spacer()
                     }
-                    .padding(.horizontal, 28)
-                    .padding(.top, 40)
-                    .padding(.bottom, 12)
+                    .padding(.top, 14)
+                    .frame(width: model.isSidebarCollapsed ? 58 : 235, alignment: model.isSidebarCollapsed ? .center : .leading)
+                    .frame(maxHeight: .infinity)
+                    .background(isLightBg ? Color.black.opacity(0.06) : Color.black.opacity(0.28))
                     
-                    switch selectedPane {
-                    case .appearance:
-                        AnimationSettingsView()
-                    case .notchStyling:
-                        NotchStylingView()
-                    case .background:
-                        BackgroundSettingsView(selectedPane: $selectedPane)
-                    case .display:
-                        HardwareCalibrationView()
-                    case .liveActivities:
-                        LiveActivitiesView()
-                    case .systemControls:
-                        SystemControlsView()
-                    case .softwareUpdate:
-                        SoftwareUpdateView()
-                    case .about:
-                        AboutView()
+                    Divider()
+                        .opacity(0.25)
+                        .ignoresSafeArea()
+                    
+                    // Detail Content Area
+                    VStack(alignment: .leading, spacing: 0) {
+                        switch selectedPane {
+                        case .appearance:
+                            AnimationSettingsView()
+                        case .notchStyling:
+                            NotchStylingView()
+                        case .background:
+                            BackgroundSettingsView(selectedPane: $selectedPane)
+                        case .display:
+                            HardwareCalibrationView()
+                        case .liveActivities:
+                            LiveActivitiesView()
+                        case .systemControls:
+                            SystemControlsView()
+                        case .softwareUpdate:
+                            SoftwareUpdateView()
+                        case .about:
+                            AboutView()
+                        }
                     }
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(width: 840, height: 680)
