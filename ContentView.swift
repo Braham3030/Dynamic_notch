@@ -1,3 +1,24 @@
+
+enum CallStatus: String, Codable {
+    case incoming
+    case active
+    case ended
+}
+
+enum CallType: String, Codable {
+    case facetimeAudio = "FaceTime Audio"
+    case facetimeVideo = "FaceTime Video"
+    case cellularPhone = "iPhone Cellular"
+    
+    var icon: String {
+        switch self {
+        case .facetimeAudio: return "phone.fill"
+        case .facetimeVideo: return "video.fill"
+        case .cellularPhone: return "phone.arrow.up.right.fill"
+        }
+    }
+}
+
 import IOKit.ps
 import IOKit.pwr_mgt
 
@@ -807,66 +828,9 @@ struct IslandView: View {
                 }
             } else if model.state == .expandedPhone {
                 if model.showPhone {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 44, height: 44)
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("FaceTime Audio")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.6))
-                            Text("Tim Cook")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("02:14")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.green)
-                        }
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 12) {
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    model.state = .compact
-                                }
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.red)
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: "phone.down.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Button {
-                                // Mute action
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.white.opacity(0.18))
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: "mic.slash.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(width: 340, height: 64)
+                    DynamicNotchCallView(model: model)
                 } else {
-                    disabledFeatureNotice("Phone Access Disabled")
+                    disabledFeatureNotice("Phone & FaceTime Access Disabled")
                 }
             } else if model.state == .expandedNotifications {
                 if model.showNotifications {
@@ -2256,6 +2220,107 @@ class IslandModel: ObservableObject {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    // Live FaceTime & Phone Call System
+    @Published var callStatus: CallStatus = .ended
+    @Published var callType: CallType = .facetimeAudio
+    @Published var callerName: String = "Tim Cook"
+    @Published var callerSubtitle: String = "Incoming Call"
+    @Published var callDurationSeconds: Int = 0
+    @Published var isCallMuted: Bool = false
+    private var callTimer: Timer? = nil
+    private var faceTimeProcessCheckTimer: Timer? = nil
+
+    var callDurationFormatted: String {
+        let mins = callDurationSeconds / 60
+        let secs = callDurationSeconds % 60
+        return String(format: "%02d:%02d", mins, secs)
+    }
+
+    func startFaceTimeCallMonitoring() {
+        // 1. Listen for FaceTime launch / activation
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+               let bid = app.bundleIdentifier, bid.contains("facetime") {
+                self?.handleFaceTimeAppLaunched()
+            }
+        }
+        
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+               let bid = app.bundleIdentifier, bid.contains("facetime") {
+                self?.endCall()
+            }
+        }
+    }
+
+    func handleFaceTimeAppLaunched() {
+        if self.callStatus == .ended {
+            // Auto trigger incoming / active FaceTime session
+            self.triggerIncomingCall(name: "FaceTime Contact", type: .facetimeAudio)
+        }
+    }
+
+    func triggerIncomingCall(name: String = "Tim Cook", type: CallType = .facetimeAudio) {
+        self.callTimer?.invalidate()
+        self.callerName = name
+        self.callType = type
+        self.callerSubtitle = "Incoming \(type.rawValue)..."
+        self.callStatus = .incoming
+        self.callDurationSeconds = 0
+        self.isCallMuted = false
+        
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+            self.state = .expandedPhone
+        }
+    }
+
+    func answerCall() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            self.callStatus = .active
+            self.callerSubtitle = self.callType.rawValue
+        }
+        
+        callTimer?.invalidate()
+        callTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self, self.callStatus == .active else { return }
+            DispatchQueue.main.async {
+                self.callDurationSeconds += 1
+            }
+        }
+    }
+
+    func declineCall() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            self.callStatus = .ended
+            self.state = .compact
+        }
+        callTimer?.invalidate()
+        callTimer = nil
+    }
+
+    func toggleMuteCall() {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+            self.isCallMuted.toggle()
+        }
+    }
+
+    func endCall() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            self.callStatus = .ended
+            self.state = .compact
+        }
+        callTimer?.invalidate()
+        callTimer = nil
     }
 
     @Published var airPodsShowingCompact: Bool = false
@@ -6729,11 +6794,30 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable Phone & FaceTime Module", isOn: $model.showPhone)
                 
-                HStack {
-                    Text("Interactive Notch State")
-                    Spacer()
-                    Button(model.state == .expandedPhone ? "Terminate Simulation" : "Simulate Incoming Call") {
-                        model.toggleState(.expandedPhone)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Simulate Live Call in Notch")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        
+                        if model.state == .expandedPhone {
+                            Button("End Active Call") {
+                                model.endCall()
+                            }
+                            .foregroundColor(.red)
+                        } else {
+                            HStack(spacing: 8) {
+                                Button("FaceTime Audio") {
+                                    model.triggerIncomingCall(name: "Tim Cook", type: .facetimeAudio)
+                                }
+                                Button("FaceTime Video") {
+                                    model.triggerIncomingCall(name: "Craig Federighi", type: .facetimeVideo)
+                                }
+                                Button("Cellular Call") {
+                                    model.triggerIncomingCall(name: "Mom", type: .cellularPhone)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -8042,5 +8126,131 @@ struct BackgroundSettingsView: View {
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 24)
+    }
+}
+
+
+struct DynamicNotchCallView: View {
+    @ObservedObject var model: IslandModel
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            // Caller Avatar / Icon
+            ZStack {
+                Circle()
+                    .fill(model.callStatus == .incoming ? Color.green : Color(red: 0.18, green: 0.18, blue: 0.22))
+                    .frame(width: 44, height: 44)
+                    .shadow(color: model.callStatus == .incoming ? Color.green.opacity(0.4) : Color.black.opacity(0.3), radius: 6)
+                
+                Image(systemName: model.callType.icon)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(model.callStatus == .incoming ? .white : .green)
+                    .symbolEffect(.bounce, options: .repeating, value: model.callStatus == .incoming)
+            }
+            
+            // Caller Information
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.callerName)
+                    .font(.system(size: 14.5, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                if model.callStatus == .incoming {
+                    Text(model.callerSubtitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.green)
+                } else {
+                    HStack(spacing: 6) {
+                        Text(model.callDurationFormatted)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.green)
+                        
+                        Text("• " + model.callType.rawValue)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Interactive Call Controls
+            if model.callStatus == .incoming {
+                // Incoming Call: Decline (Red) and Accept (Green)
+                HStack(spacing: 14) {
+                    // Decline Call Button
+                    Button {
+                        model.declineCall()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 38, height: 38)
+                                .shadow(color: Color.red.opacity(0.4), radius: 4)
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Decline call")
+                    
+                    // Accept Call Button
+                    Button {
+                        model.answerCall()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 38, height: 38)
+                                .shadow(color: Color.green.opacity(0.4), radius: 4)
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Accept call in Dynamic Notch")
+                }
+            } else {
+                // Active Call: Mute and End Call
+                HStack(spacing: 12) {
+                    // Mute / Unmute Button
+                    Button {
+                        model.toggleMuteCall()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(model.isCallMuted ? Color.white : Color.white.opacity(0.16))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: model.isCallMuted ? "mic.slash.fill" : "mic.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(model.isCallMuted ? .black : .white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(model.isCallMuted ? "Unmute microphone" : "Mute microphone")
+                    
+                    // End Call Button
+                    Button {
+                        model.endCall()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 36, height: 36)
+                                .shadow(color: Color.red.opacity(0.4), radius: 4)
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("End call")
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(width: 350, height: 64)
     }
 }
