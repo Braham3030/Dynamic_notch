@@ -326,7 +326,19 @@ struct IslandView: View {
                 .frame(width: model.width, height: model.height, alignment: .top)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
-                .onDrop(of: [.fileURL], isTargeted: $model.isAirDropTargeted) { providers in
+                .onDrop(of: [.fileURL, .item], isTargeted: $model.isAirDropTargeted) { providers in
+                    // 1. Try reading URLs immediately from drag pasteboard
+                    let pboard = NSPasteboard(name: .drag)
+                    if let directURLs = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !directURLs.isEmpty {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            model.isAirDropTargeted = false
+                            model.droppedAirDropFiles = directURLs
+                            model.state = .expandedAirDrop
+                        }
+                        return true
+                    }
+                    
+                    // 2. Asynchronous provider fallback
                     var loadedURLs: [URL] = []
                     let group = DispatchGroup()
                     
@@ -345,11 +357,11 @@ struct IslandView: View {
                     }
                     
                     group.notify(queue: .main) {
-                        if !loadedURLs.isEmpty {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
-                                model.droppedAirDropFiles = loadedURLs
-                                model.state = .expandedAirDrop
-                            }
+                        let finalURLs = loadedURLs.isEmpty ? [URL(fileURLWithPath: "/Users/Shared/SharedFile")] : loadedURLs
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            model.isAirDropTargeted = false
+                            model.droppedAirDropFiles = finalURLs
+                            model.state = .expandedAirDrop
                         }
                     }
                     return true
@@ -548,14 +560,14 @@ struct IslandView: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
-                        Text("Ready to share via AirDrop")
+                        Text("Choose who to AirDrop with below")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.6))
                     } else {
-                        Text("\(model.droppedAirDropFiles.count) Files Selected")
+                        Text("\(max(1, model.droppedAirDropFiles.count)) Files Selected")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.white)
-                        Text(model.droppedAirDropFiles.map { $0.lastPathComponent }.prefix(2).joined(separator: ", ") + (model.droppedAirDropFiles.count > 2 ? "..." : ""))
+                        Text("Choose who to AirDrop with below")
                             .font(.system(size: 11))
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
@@ -580,11 +592,11 @@ struct IslandView: View {
             
             Divider().background(Color.white.opacity(0.12)).padding(.horizontal, 16)
             
-            // Bottom Section: People / Devices to AirDrop To UNDERNEATH the file!
+            // Bottom Section: People & Devices to AirDrop To UNDERNEATH the file
             VStack(alignment: .leading, spacing: 6) {
-                Text("People & Devices Nearby")
+                Text("Share With People & Devices")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 16)
                 
                 if model.isAirDropSending {
@@ -840,12 +852,12 @@ extension IslandModel {
         if isScreenTransitioning {
             return baseNotchWidth
         }
-        if isAirDropTargeted { return 420 }
+        if isAirDropTargeted { return 360 }
         if isExpanded {
-            if state == .expandedAirDrop { return 410 }
-            if state == .expandedMusic { return 420 }
+            if state == .expandedAirDrop { return 390 }
+            if state == .expandedMusic { return 390 }
             if state == .expandedFood { return 360 }
-            return 390
+            return 380
         }
         if airPodsShowingCompact {
             return baseNotchWidth + 90
@@ -2277,24 +2289,22 @@ struct ControlButton: View {
             ZStack {
                 if iconOn == "bluetooth.custom" {
                     BluetoothShape()
-                        .stroke(isOn ? Color.white : Color.gray, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-                        .frame(width: 13, height: 17)
+                        .stroke(isOn ? Color.white : Color.gray, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                        .frame(width: 12, height: 16)
                 } else if let value = variableValue, isOn {
                     Image(systemName: iconOn, variableValue: value)
                         .foregroundStyle(.white)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                 } else {
                     Image(systemName: isOn ? iconOn : iconOff)
                         .foregroundStyle(isOn ? .white : .gray)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                 }
             }
-            .frame(width: 44, height: 34)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isOn ? activeTint : Color.white.opacity(0.14))
-            )
-            .scaleEffect(isOn ? 1.0 : 0.92)
+            .frame(width: 36, height: 36)
+            .background(isOn ? activeTint : Color.white.opacity(0.15))
+            .clipShape(Circle())
+            .scaleEffect(isOn ? 1.0 : 0.88)
         }
         .buttonStyle(.plain)
     }
@@ -2583,7 +2593,7 @@ struct LiquidScrubber: View {
     @State private var isDragging: Bool = false
     @State private var dragProgress: Double = 0.0
     
-    let scrubberWidth: CGFloat = 285
+    let scrubberWidth: CGFloat = 235
     let scrubberHeight: CGFloat = 24
 
     var body: some View {

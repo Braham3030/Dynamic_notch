@@ -90,10 +90,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
         
-        // When drag is released, if not dropped into expandedAirDrop, collapse back
+        // Auto reset targeted state on mouse up only after a safety delay if not in expandedAirDrop
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { _ in
-            DispatchQueue.main.async {
-                if IslandModel.shared.isAirDropTargeted && IslandModel.shared.droppedAirDropFiles.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         IslandModel.shared.isAirDropTargeted = false
                     }
