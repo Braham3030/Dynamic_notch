@@ -7988,102 +7988,54 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable AirDrop Sharing Module", isOn: $model.showAirDrop)
                 
-                // Liquid Glass File Drag Open Delay Slider
-                VStack(alignment: .leading, spacing: 8) {
+                // Liquid Glass File Drag Open Delay Slider (1:1 identical with Volume/Brightness Liquid Glass CustomSlider)
+                VStack(alignment: .leading, spacing: 5) {
                     HStack {
-                        HStack(spacing: 6) {
-                            Image(systemName: "timer")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.cyan)
-                            Text("Drag-To-Open Notch Delay")
-                                .font(.system(size: 12.5, weight: .semibold))
-                        }
+                        Text("Drag-To-Open Delay")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                            .padding(.leading, 2)
+                        
                         Spacer()
+                        
                         Text(model.fileDragOpenDelay == 0 ? "Instant (0.0s)" : String(format: "%.1fs", model.fileDragOpenDelay))
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.cyan)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(Color.cyan.opacity(0.15))
-                            )
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(.trailing, 2)
                     }
                     
-                    // Liquid Glass Custom Slider Track with Spring Physics
-                    GeometryReader { geo in
-                        let sliderWidth = geo.size.width
-                        let percentage = CGFloat(model.fileDragOpenDelay / 10.0)
-                        let knobX = min(max(14, percentage * sliderWidth), sliderWidth - 14)
-                        
-                        ZStack(alignment: .leading) {
-                            // Frosted Liquid Glass Track
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(0.12))
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                                )
-                            
-                            // Glowing Cyan Progress Fill
-                            Capsule(style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.cyan.opacity(0.85), Color.blue.opacity(0.95)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(width: max(28, knobX + 14))
-                            
-                            // Liquid Glass Floating Knob
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 24, height: 24)
-                                .shadow(color: Color.cyan.opacity(0.6), radius: 6, y: 1)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.cyan, lineWidth: 2)
-                                )
-                                .offset(x: knobX - 12)
-                        }
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { val in
-                                    let newRatio = max(0, min(1, val.location.x / sliderWidth))
-                                    let roundedDelay = (Double(newRatio * 10.0) * 10.0).rounded() / 10.0
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
-                                        model.fileDragOpenDelay = roundedDelay
-                                    }
+                    CustomSlider(
+                        value: Binding(
+                            get: { model.fileDragOpenDelay / 10.0 },
+                            set: { newVal in
+                                let rounded = (newVal * 10.0 * 10.0).rounded() / 10.0
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                                    model.fileDragOpenDelay = rounded
                                 }
-                        )
-                    }
+                            }
+                        ),
+                        icon: "timer"
+                    )
+                    .frame(maxWidth: .infinity)
                     .frame(height: 28)
                     
                     HStack {
-                        Text("0s (Instant)")
-                            .font(.system(size: 10))
+                        Text("0s")
+                            .font(.system(size: 9))
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("5s")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("10s (Long Hold)")
-                            .font(.system(size: 10))
+                        Text("10s")
+                            .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
+                    .padding(.horizontal, 2)
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
-                        )
-                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 2)
                 
                 HStack {
                     Text("Interactive Notch State")
