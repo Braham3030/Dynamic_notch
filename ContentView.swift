@@ -257,7 +257,7 @@ struct IslandView: View {
                 )
 
                 if !model.isExpanded {
-                    if model.airPodsShowingCompact {
+                    if model.airPodsShowingCompact || model.airPodsConnected {
                         compactAirPodsActivity
                             .frame(width: model.width, height: model.physicalNotchHeight)
                             .transition(.opacity.combined(with: .scale(scale: 0.92)))
@@ -347,25 +347,17 @@ struct IslandView: View {
     }
     
     @ViewBuilder private var compactAirPodsActivity: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 0) {
+            // Left: Authentic 3D Flipping AirPods
             AirPods3DView()
                 .frame(width: 26, height: 26)
             
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.airPodsName)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text("Connected")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.green)
-            }
-            
             Spacer(minLength: 0)
             
+            // Right: Clean Circular Battery Ring
             CircularBatteryGauge(batteryLevel: model.airPodsBatteryLevel)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
     }
 
     @ViewBuilder private var compactMusicActivity: some View {
@@ -668,8 +660,8 @@ extension IslandModel {
             if state == .expandedFood { return 360 }
             return 380
         }
-        if airPodsShowingCompact {
-            return baseNotchWidth + 140
+        if airPodsShowingCompact || airPodsConnected {
+            return baseNotchWidth + 72
         }
         if isMusicPlaying {
             return baseNotchWidth + 96
@@ -1390,42 +1382,41 @@ class IslandModel: ObservableObject {
 
 
 struct AirPods3DView: View {
-    @State private var rotationY: Double = 0
-    @State private var floatY: CGFloat = 0
-    @State private var scaleEffect: CGFloat = 0.95
+    @State private var flipAngle: Double = 0
+    @State private var pulseScale: CGFloat = 1.0
     
     var body: some View {
-        ZStack {
-            // Left AirPod with authentic 3D spatial flip
+        HStack(spacing: 2) {
             Image(systemName: "airpodspro.left")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.white)
-                .offset(x: -5, y: floatY)
                 .rotation3DEffect(
-                    .degrees(rotationY),
-                    axis: (x: 0.1, y: 1.0, z: 0.0),
+                    .degrees(flipAngle),
+                    axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.35
+                    perspective: 0.3
                 )
             
-            // Right AirPod with subtle counter spatial offset
             Image(systemName: "airpodspro.right")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.white)
-                .offset(x: 5, y: -floatY)
                 .rotation3DEffect(
-                    .degrees(rotationY + 15),
-                    axis: (x: -0.1, y: 1.0, z: 0.0),
+                    .degrees(flipAngle),
+                    axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.35
+                    perspective: 0.3
                 )
         }
-        .scaleEffect(scaleEffect)
+        .scaleEffect(pulseScale)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
-                rotationY = 360
-                floatY = 1.5
-                scaleEffect = 1.05
+            // Initial dynamic entrance flip
+            withAnimation(.spring(response: 0.75, dampingFraction: 0.65)) {
+                flipAngle = 360
+            }
+            // Continuous subtle iPhone-style 3D flip cycle
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: false).delay(1.0)) {
+                flipAngle += 360
+                pulseScale = 1.04
             }
         }
     }
