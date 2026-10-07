@@ -2937,6 +2937,7 @@ class IslandModel: ObservableObject {
     // Track transition overrides
     @Published var isForward: Bool = true
     var lastManualSkipTime: Date = .distantPast
+    var lastPlayPauseToggleTime: Date = .distantPast
     
     @Published var animationCurve: AnimationCurve = .spring
     @Published var animationDuration: Double = 0.45 
@@ -3616,7 +3617,8 @@ class IslandModel: ObservableObject {
 
     func togglePlayPause() {
         let targetPlaying = !self.isMusicPlaying
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+        self.lastPlayPauseToggleTime = Date()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
             self.isMusicPlaying = targetPlaying
         }
         
@@ -3624,7 +3626,8 @@ class IslandModel: ObservableObject {
             let cmd = targetPlaying ? "play" : "pause"
             let script = "tell application \"Music\" to \(cmd)"
             _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
-            Thread.sleep(forTimeInterval: 0.15)
+            // Allow Apple Music daemon 0.35s to fully transition internal state
+            Thread.sleep(forTimeInterval: 0.35)
             self?.fetchCurrentMusicState()
         }
     }
@@ -3703,16 +3706,21 @@ class IslandModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notif in
+            guard let self = self else { return }
+            // Ignore asynchronous lagged notifications during immediate manual user interaction
+            if Date().timeIntervalSince(self.lastPlayPauseToggleTime) < 1.0 {
+                return
+            }
             if let state = notif.userInfo?["Player State"] as? String {
                 if state.lowercased() == "playing" {
-                    self?.fetchCurrentMusicState()
+                    self.fetchCurrentMusicState()
                 } else if state.lowercased() == "paused" || state.lowercased() == "stopped" {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        self?.isMusicPlaying = false
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        self.isMusicPlaying = false
                     }
                 }
             } else {
-                self?.fetchCurrentMusicState()
+                self.fetchCurrentMusicState()
             }
         }
         
@@ -3791,8 +3799,12 @@ class IslandModel: ObservableObject {
                 self.playbackPosition = tPosition
                 self.lastPlaybackPollTime = Date()
                 let isActuallyPlaying = (pState.lowercased() == "playing" || pState.lowercased() == "kpsp")
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                    self.isMusicPlaying = isActuallyPlaying
+                if Date().timeIntervalSince(self.lastPlayPauseToggleTime) > 0.8 {
+                    if self.isMusicPlaying != isActuallyPlaying {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            self.isMusicPlaying = isActuallyPlaying
+                        }
+                    }
                 }
                 
                 self.resolveSurroundingTrackNames(track: tTrack, artist: tArtist, album: tAlbum)
