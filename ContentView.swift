@@ -639,16 +639,16 @@ struct IslandView: View {
 
     @ViewBuilder var musicView: some View {
         VStack(spacing: 12) {
-            // Header
-            HStack(spacing: 0) {
+            // Header with genuine iOS Dynamic Island margin & breathing room
+            HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.clear).frame(width: 50, height: 50)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.clear).frame(width: 48, height: 48)
                     ZStack {
                         if let img = model.currentArtwork { 
-                            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 50, height: 50).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         } else {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.gray.opacity(0.3)).frame(width: 50, height: 50)
-                            Image(systemName: "music.note").font(.system(size: 24, weight: .semibold)).foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.gray.opacity(0.3)).frame(width: 48, height: 48)
+                            Image(systemName: "music.note").font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
                         }
                     }
                     .id(model.currentTrackTitle)
@@ -748,16 +748,15 @@ struct IslandView: View {
                 ZStack {
                     MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
                 }
-                .frame(width: 34, height: 24)
+                .frame(width: 32, height: 22)
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
-                .padding(.horizontal, 4)
                 .zIndex(1)
             }
+            .padding(.horizontal, 16)
             
             // Scrubber
             LiquidScrubber()
                 .padding(.top, 4)
-                .padding(.horizontal, 4)
                 .opacity(showsExpandedMusicDetails ? 1 : 0)
                 .offset(y: showsExpandedMusicDetails ? 0 : -52)
             
@@ -2593,7 +2592,7 @@ struct LiquidScrubber: View {
     @State private var isDragging: Bool = false
     @State private var dragProgress: Double = 0.0
     
-    let scrubberWidth: CGFloat = 235
+    let scrubberWidth: CGFloat = 220
     let scrubberHeight: CGFloat = 24
 
     var body: some View {
