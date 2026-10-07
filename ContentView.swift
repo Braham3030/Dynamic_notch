@@ -1042,10 +1042,8 @@ struct IslandView: View {
                 }
             }
             .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                    if model.isExpanded {
-                        model.state = .compact
-                    } else {
+                if !model.isExpanded {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         model.state = model.isMusicPlaying ? .expandedMusic : .expandedControls
                     }
                 }
@@ -4902,6 +4900,7 @@ struct RepeatablePlaybackButton: View {
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 44, height: 40)
+                .contentShape(Rectangle())
             
             Image(systemName: isSeeking ? (direction > 0 ? "forward.fill" : "backward.fill") : icon)
                 .font(.system(size: 22, weight: .semibold))
@@ -4940,6 +4939,7 @@ struct RepeatablePlaybackButton: View {
             .frame(width: 44, height: 40)
         }
         .frame(width: 44, height: 40)
+        .contentShape(Rectangle())
     }
 }
 
