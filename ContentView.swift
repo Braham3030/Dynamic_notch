@@ -2869,7 +2869,11 @@ class IslandModel: ObservableObject {
     @Published var playbackPosition: Double = 0.0
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
     @Published var hasLiveMotionWallpaper: Bool = false
-    @Published var isLiveWallpaperExpanded: Bool = false
+    @Published var isLiveWallpaperExpanded: Bool = UserDefaults.standard.bool(forKey: "isLiveWallpaperExpanded") {
+        didSet {
+            UserDefaults.standard.set(isLiveWallpaperExpanded, forKey: "isLiveWallpaperExpanded")
+        }
+    }
     @Published var liveMotionVideoURL: URL? = nil
     private var motionArtworkCache: [String: URL?] = [:]
     @Published var artworkColor: Color = .orange
@@ -3727,7 +3731,6 @@ class IslandModel: ObservableObject {
                     self.currentArtist = tArtist
                     
                     self.hasLiveMotionWallpaper = false
-                    self.isLiveWallpaperExpanded = false
                     self.liveMotionVideoURL = nil
                     
                     if let img = finalImage {
