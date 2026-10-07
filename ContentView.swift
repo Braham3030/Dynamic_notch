@@ -3440,11 +3440,10 @@ class IslandModel: ObservableObject {
         fastSeekTimer = nil
         if isFastSeeking {
             isFastSeeking = false
-            self.isMusicPlaying = true
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 _ = NSAppleScript(source: """
                 tell application "Music"
-                    if player state is paused or player state is stopped then
+                    if player state is not playing then
                         play
                     end if
                 end tell
@@ -3610,9 +3609,24 @@ class IslandModel: ObservableObject {
     }
 
     func togglePlayPause() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            _ = NSAppleScript(source: "tell application \"Music\" to playpause")?.executeAndReturnError(nil)
-            self.fetchCurrentMusicState()
+        let willPlay = !self.isMusicPlaying
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+            self.isMusicPlaying = willPlay
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let script = """
+            tell application "Music"
+                if player state is playing then
+                    pause
+                else
+                    play
+                end if
+            end tell
+            """
+            _ = NSAppleScript(source: script)?.executeAndReturnError(nil)
+            Thread.sleep(forTimeInterval: 0.12)
+            self?.fetchCurrentMusicState()
         }
     }
     
