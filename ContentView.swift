@@ -382,15 +382,14 @@ struct AVPlayerLoopingMotionView: NSViewRepresentable {
     }
 }
 
-// MARK: - iOS-Style Live Motion Fluid Artwork Wallpaper Engine
+// MARK: - iOS-Style Live Motion Fluid Artwork Wallpaper Engine (Only for Real Motion Art)
 struct iOSLiveArtworkWallpaperView: View {
-    let artwork: NSImage?
     let primaryColor: Color
     let isPlaying: Bool
     let width: CGFloat
     let height: CGFloat
     let intensity: Double
-    let motionVideoURL: URL?
+    let motionVideoURL: URL
     
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -398,10 +397,10 @@ struct iOSLiveArtworkWallpaperView: View {
             let t = isPlaying ? time : 0.0
             
             // Subtle, elegant micro-motion fitting the notch proportions cleanly
-            let driftX1 = sin(t * 0.40) * 10.0
-            let driftY1 = cos(t * 0.32) * 6.0
-            let driftX2 = cos(t * 0.38 + 1.2) * 14.0
-            let driftY2 = sin(t * 0.45 + 0.8) * 8.0
+            let driftX1 = sin(t * 0.40) * 8.0
+            let driftY1 = cos(t * 0.32) * 5.0
+            let driftX2 = cos(t * 0.38 + 1.2) * 12.0
+            let driftY2 = sin(t * 0.45 + 0.8) * 6.0
             let scalePulse = 1.02 + sin(t * 0.50) * 0.02
             
             ZStack(alignment: .leading) {
@@ -409,69 +408,33 @@ struct iOSLiveArtworkWallpaperView: View {
                 primaryColor
                     .opacity(0.35 * intensity)
                 
-                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available
-                if let videoURL = motionVideoURL {
-                    // Soft blurred video flow spanning across to the right
-                    AVPlayerLoopingMotionView(videoURL: videoURL)
-                        .frame(width: width, height: height)
-                        .scaleEffect(scalePulse * 1.06)
-                        .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
-                        .blur(radius: 24)
-                        .opacity(0.60 * intensity)
-                    
-                    // Sharp HD Video on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
-                    AVPlayerLoopingMotionView(videoURL: videoURL)
-                        .frame(width: max(140, width * 0.48), height: height)
-                        .scaleEffect(scalePulse)
-                        .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
-                        .opacity(0.95 * intensity)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black, location: 0.0),
-                                    .init(color: .black, location: 0.45),
-                                    .init(color: .black.opacity(0.7), location: 0.70),
-                                    .init(color: .black.opacity(0.2), location: 0.88),
-                                    .init(color: .clear, location: 1.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                // Soft blurred video flow spanning across to the right
+                AVPlayerLoopingMotionView(videoURL: motionVideoURL)
+                    .frame(width: width, height: height)
+                    .scaleEffect(scalePulse * 1.06)
+                    .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
+                    .blur(radius: 24)
+                    .opacity(0.60 * intensity)
+                
+                // Sharp HD Video on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
+                AVPlayerLoopingMotionView(videoURL: motionVideoURL)
+                    .frame(width: max(140, width * 0.48), height: height)
+                    .scaleEffect(scalePulse)
+                    .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
+                    .opacity(0.95 * intensity)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black, location: 0.0),
+                                .init(color: .black, location: 0.45),
+                                .init(color: .black.opacity(0.7), location: 0.70),
+                                .init(color: .black.opacity(0.2), location: 0.88),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                } else if let art = artwork {
-                    // 2. Base High-Res Artwork
-                    // Soft blurred artwork flow spanning across to the right
-                    Image(nsImage: art)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: width, height: height)
-                        .scaleEffect(scalePulse * 1.06)
-                        .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
-                        .blur(radius: 24)
-                        .opacity(0.60 * intensity)
-                    
-                    // Sharp HD Artwork on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
-                    Image(nsImage: art)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: max(140, width * 0.48), height: height)
-                        .scaleEffect(scalePulse)
-                        .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
-                        .opacity(0.95 * intensity)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black, location: 0.0),
-                                    .init(color: .black, location: 0.45),
-                                    .init(color: .black.opacity(0.7), location: 0.70),
-                                    .init(color: .black.opacity(0.2), location: 0.88),
-                                    .init(color: .clear, location: 1.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                }
+                    )
                 
                 // Fluid Orb 1: Primary chromatic dynamic flare blending the center
                 Circle()
@@ -727,7 +690,7 @@ struct IslandView: View {
                         }
                     }
                     
-                    // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper on Left Part of Notch
+                    // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper
                     // Explicitly only active when expanded — keeping compact small notch pitch black
                     if model.isExpanded && (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
                         ZStack(alignment: .leading) {
@@ -735,7 +698,7 @@ struct IslandView: View {
                             LinearGradient(
                                 colors: [
                                     model.artworkColor.opacity(0.48 * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity(0.24 * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity(0.20 * model.artworkGlowIntensity),
                                     Color.black.opacity(0.85)
                                 ],
                                 startPoint: .leading,
@@ -743,18 +706,19 @@ struct IslandView: View {
                             )
                             .frame(width: model.width, height: model.height)
                             
-                            // iOS Live Moving Fluid Artwork Wallpaper covering the whole left side
-                            iOSLiveArtworkWallpaperView(
-                                artwork: model.currentArtwork,
-                                primaryColor: model.artworkColor,
-                                isPlaying: model.isMusicPlaying,
-                                width: model.width,
-                                height: model.height,
-                                intensity: model.artworkGlowIntensity,
-                                motionVideoURL: model.liveMotionVideoURL
-                            )
-                            .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                            .transition(.opacity)
+                            // ONLY display live motion wallpaper when the track actually possesses an Apple Music live motion video asset
+                            if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
+                                iOSLiveArtworkWallpaperView(
+                                    primaryColor: model.artworkColor,
+                                    isPlaying: model.isMusicPlaying,
+                                    width: model.width,
+                                    height: model.height,
+                                    intensity: model.artworkGlowIntensity,
+                                    motionVideoURL: videoURL
+                                )
+                                .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                                .transition(.opacity)
+                            }
                         }
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
                     }
