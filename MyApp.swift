@@ -98,20 +98,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if win.ignoresMouseEvents {
                     win.ignoresMouseEvents = false
                 }
-                if model.autoExpandOnHover && !model.isHoverExpanded {
-                    DispatchQueue.main.async {
-                        model.isHoverExpanded = true
-                    }
-                }
             } else {
                 // Outside notch: Set ignoresMouseEvents = true so WindowServer passes 100% of clicks straight to Apple Music, Settings, Finder, etc.!
                 if !win.ignoresMouseEvents {
                     win.ignoresMouseEvents = true
-                }
-                if model.autoExpandOnHover && model.isHoverExpanded {
-                    DispatchQueue.main.async {
-                        model.isHoverExpanded = false
-                    }
                 }
             }
         }
