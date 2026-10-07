@@ -257,14 +257,20 @@ struct IslandView: View {
                 )
 
                 if !model.isExpanded {
-                    if model.airPodsShowingCompact || model.airPodsConnected {
+                    if model.airPodsShowingCompact {
                         compactAirPodsActivity
                             .frame(width: model.width, height: model.physicalNotchHeight)
-                            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.9).combined(with: .opacity),
+                                removal: .scale(scale: 0.9).combined(with: .opacity)
+                            ))
                     } else if model.isMusicPlaying {
                         compactMusicActivity
                             .frame(width: model.width, height: model.physicalNotchHeight)
-                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.9).combined(with: .opacity),
+                                removal: .scale(scale: 0.9).combined(with: .opacity)
+                            ))
                     }
                 }
                 
@@ -348,16 +354,17 @@ struct IslandView: View {
     
     @ViewBuilder private var compactAirPodsActivity: some View {
         HStack(spacing: 0) {
-            // Left: Authentic 3D Flipping AirPods
+            // Left ear: Authentic 3D Flipping AirPods
             AirPods3DView()
                 .frame(width: 26, height: 26)
             
             Spacer(minLength: 0)
             
-            // Right: Clean Circular Battery Ring
+            // Right ear: Clean Circular Battery Ring
             CircularBatteryGauge(batteryLevel: model.airPodsBatteryLevel)
+                .frame(width: 22, height: 22)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
     }
 
     @ViewBuilder private var compactMusicActivity: some View {
@@ -660,8 +667,8 @@ extension IslandModel {
             if state == .expandedFood { return 360 }
             return 380
         }
-        if airPodsConnected || airPodsShowingCompact {
-            return baseNotchWidth + 80
+        if airPodsShowingCompact {
+            return baseNotchWidth + 90
         }
         if isMusicPlaying {
             return baseNotchWidth + 96
@@ -1326,14 +1333,28 @@ class IslandModel: ObservableObject {
             
             DispatchQueue.main.async {
                 if let airpods = foundConnectedAirPods {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        self.airPodsName = airpods.name
-                        self.airPodsBatteryLevel = airpods.battery
+                    let wasConnected = self.airPodsConnected
+                    self.airPodsName = airpods.name
+                    self.airPodsBatteryLevel = airpods.battery
+                    
+                    if !wasConnected {
                         self.airPodsConnected = true
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                            self.airPodsShowingCompact = true
+                        }
+                        // Show the connected card for 5.5 seconds, then transition cleanly back to music / default notch
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) {
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
+                                self.airPodsShowingCompact = false
+                            }
+                        }
                     }
                 } else {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                        self.airPodsConnected = false
+                    if self.airPodsConnected {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                            self.airPodsConnected = false
+                            self.airPodsShowingCompact = false
+                        }
                     }
                 }
             }
@@ -1372,40 +1393,40 @@ class IslandModel: ObservableObject {
 
 
 struct AirPods3DView: View {
-    @State private var flipDegrees: Double = 0
-    @State private var floatBob: CGFloat = 0
+    @State private var flipAngle: Double = 0
+    @State private var floatOffset: CGFloat = 0
     
     var body: some View {
         HStack(spacing: 1.5) {
-            // Left AirPod with 3D Y-Axis Flip & Perspective
+            // Left AirPod
             Image(systemName: "airpodspro.left")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
-                .offset(y: floatBob)
+                .offset(y: floatOffset)
                 .rotation3DEffect(
-                    .degrees(flipDegrees),
+                    .degrees(flipAngle),
                     axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.25
+                    perspective: 0.35
                 )
             
-            // Right AirPod with subtle staggered 3D Flip & Perspective
+            // Right AirPod
             Image(systemName: "airpodspro.right")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
-                .offset(y: -floatBob)
+                .offset(y: -floatOffset)
                 .rotation3DEffect(
-                    .degrees(flipDegrees),
+                    .degrees(flipAngle + 20),
                     axis: (x: 0.0, y: 1.0, z: 0.0),
                     anchor: .center,
-                    perspective: 0.25
+                    perspective: 0.35
                 )
         }
-        .padding(.leading, 2)
         .onAppear {
-            withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: false)) {
-                flipDegrees = 360
-                floatBob = 1.0
+            // Smooth iPhone-style 3D flip rotation
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                flipAngle = 360
+                floatOffset = 1.2
             }
         }
     }
