@@ -1,8 +1,9 @@
 struct AirPlayOutputDevice: Identifiable, Hashable {
     let id: String
     let name: String
-    let isSelected: Bool
+    var isSelected: Bool
     let kind: String
+    var volume: Double = 0.8
     
     var iconName: String {
         let k = kind.lowercased()
@@ -3192,7 +3193,11 @@ class IslandModel: ObservableObject {
                         set dName to name of d
                         set dSel to selected of d
                         set dKind to kind of d as string
-                        set end of devList to (dName & "|||" & (dSel as string) & "|||" & dKind)
+                        set dVol to 80
+                        try
+                            set dVol to sound volume of d
+                        end try
+                        set end of devList to (dName & "|||" & (dSel as string) & "|||" & dKind & "|||" & (dVol as string))
                     end repeat
                 end try
                 return devList
@@ -3209,7 +3214,8 @@ class IslandModel: ObservableObject {
                                 let name = parts[0]
                                 let sel = parts[1].lowercased() == "true"
                                 let kind = parts[2]
-                                devices.append(AirPlayOutputDevice(id: name, name: name, isSelected: sel, kind: kind))
+                                let vol = (Double(parts.count >= 4 ? parts[3] : "80") ?? 80.0) / 100.0
+                                devices.append(AirPlayOutputDevice(id: name, name: name, isSelected: sel, kind: kind, volume: vol))
                             }
                         }
                     }
@@ -3223,27 +3229,45 @@ class IslandModel: ObservableObject {
         }
     }
     
+    func setAirPlayDeviceVolume(device: AirPlayOutputDevice, volume: Double) {
+        if let idx = self.airPlayDevices.firstIndex(where: { $0.id == device.id }) {
+            self.airPlayDevices[idx].volume = volume
+        }
+        let intVol = Int(round(volume * 100))
+        DispatchQueue.global(qos: .userInitiated).async {
+            let scriptSource = """
+            tell application "Music"
+                try
+                    set targetDev to first AirPlay device whose name is "\(device.name)"
+                    set sound volume of targetDev to \(intVol)
+                end try
+            end tell
+            """
+            _ = NSAppleScript(source: scriptSource)?.executeAndReturnError(nil)
+        }
+    }
+    
     func selectAirPlayDevice(_ device: AirPlayOutputDevice) {
         let isCurrentlySelected = device.isSelected
         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
             if isCurrentlySelected {
                 // Toggle off / Disconnect
                 var updated = self.airPlayDevices.map { dev in
-                    AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: (dev.id == device.id ? false : dev.isSelected), kind: dev.kind)
+                    AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: (dev.id == device.id ? false : dev.isSelected), kind: dev.kind, volume: dev.volume)
                 }
                 // If nothing is selected, select the default Computer speaker
                 if !updated.contains(where: { $0.isSelected }) {
                     if let compIdx = updated.firstIndex(where: { $0.kind.lowercased().contains("computer") || $0.name.lowercased().contains("mac") }) {
-                        updated[compIdx] = AirPlayOutputDevice(id: updated[compIdx].id, name: updated[compIdx].name, isSelected: true, kind: updated[compIdx].kind)
+                        updated[compIdx] = AirPlayOutputDevice(id: updated[compIdx].id, name: updated[compIdx].name, isSelected: true, kind: updated[compIdx].kind, volume: updated[compIdx].volume)
                     } else if !updated.isEmpty {
-                        updated[0] = AirPlayOutputDevice(id: updated[0].id, name: updated[0].name, isSelected: true, kind: updated[0].kind)
+                        updated[0] = AirPlayOutputDevice(id: updated[0].id, name: updated[0].name, isSelected: true, kind: updated[0].kind, volume: updated[0].volume)
                     }
                 }
                 self.airPlayDevices = updated
             } else {
                 // Connect
                 self.airPlayDevices = self.airPlayDevices.map {
-                    AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind)
+                    AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind, volume: $0.volume)
                 }
             }
         }
