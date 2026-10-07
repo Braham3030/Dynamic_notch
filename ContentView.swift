@@ -3890,12 +3890,15 @@ class IslandModel: ObservableObject {
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            // Vector 1: IOBluetoothDevice Private Selectors
+            // Hardware Vector: Direct IOBluetoothDevice private selectors across all paired Apple audio accessories
             if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
                 let selSetMode = Selector(("setListeningMode:"))
                 let selSetANC = Selector(("setANCMode:"))
                 let selSetNC = Selector(("setNoiseCancellationMode:"))
-                typealias SetModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Void
+                let selSetListenConfigs = Selector(("setListeningModeConfigs:"))
+                
+                typealias SetModeU8IMP = @convention(c) (AnyObject, Selector, UInt8) -> Void
+                typealias SetModeU32IMP = @convention(c) (AnyObject, Selector, UInt32) -> Void
                 typealias SetModeIntIMP = @convention(c) (AnyObject, Selector, Int32) -> Void
                 
                 for device in devices {
@@ -3903,9 +3906,10 @@ class IslandModel: ObservableObject {
                         let name = device.name ?? device.addressString ?? ""
                         let isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats") || device.deviceClassMajor == 4
                         if isAppleAudio {
+                            // Primary selector: setListeningMode: (takes UInt8 matching Apple Bluetooth spec: 1=Off, 2=Noise Cancellation, 3=Transparency, 4=Adaptive)
                             if device.responds(to: selSetMode) {
                                 let imp = device.method(for: selSetMode)
-                                let fn = unsafeBitCast(imp, to: SetModeIMP.self)
+                                let fn = unsafeBitCast(imp, to: SetModeU8IMP.self)
                                 fn(device, selSetMode, UInt8(mode))
                             }
                             if device.responds(to: selSetANC) {
@@ -3918,23 +3922,14 @@ class IslandModel: ObservableObject {
                                 let fn = unsafeBitCast(imp, to: SetModeIntIMP.self)
                                 fn(device, selSetNC, Int32(mode))
                             }
+                            if device.responds(to: selSetListenConfigs) {
+                                let imp = device.method(for: selSetListenConfigs)
+                                let fn = unsafeBitCast(imp, to: SetModeU32IMP.self)
+                                fn(device, selSetListenConfigs, UInt32(mode))
+                            }
                         }
                     }
                 }
-            }
-            
-            // Vector 2: AppleScript system events to Control Center Sound slider
-            let scriptSource = """
-            tell application "System Events"
-                tell process "ControlCenter"
-                    try
-                        -- Set listening mode via Control Center if available
-                    end try
-                end tell
-            end tell
-            """
-            if let script = NSAppleScript(source: scriptSource) {
-                script.executeAndReturnError(nil)
             }
         }
     }
@@ -8627,135 +8622,90 @@ struct AirPodsListeningModeSlider: View {
     @State private var dragX: CGFloat? = nil
     
     private func currentModeIndex() -> Int {
-        modes.firstIndex(of: model.listeningMode) ?? 1
+        modes.firstIndex(of: model.listeningMode) ?? 0
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("NOISE CONTROL")
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.45))
-                    .padding(.leading, 2)
+                HStack(spacing: 4) {
+                    Image(systemName: "airpodspro")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("NOISE CONTROL")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundColor(.white.opacity(0.6))
+                .padding(.leading, 2)
+                
                 Spacer()
+                
                 let idx = currentModeIndex()
                 Text(titles[idx])
-                    .font(.system(size: 9.5, weight: .bold))
-                    .foregroundColor(.blue)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.cyan)
                     .padding(.trailing, 2)
             }
             
-            VStack(spacing: 5) {
-                // Liquid Glass Capsule Track with Smooth Sliding & Dragging Pill
-                GeometryReader { geo in
-                    let totalWidth = geo.size.width
-                    let segmentWidth = totalWidth / 3.0
-                    let pillSize: CGFloat = 32
-                    let activeIndex = currentModeIndex()
-                    let standardPillCenter = (CGFloat(activeIndex) * segmentWidth) + (segmentWidth / 2.0)
-                    let pillCenterX = dragX ?? standardPillCenter
-                    let pillLeadingX = pillCenterX - (pillSize / 2.0)
-                    
-                    ZStack(alignment: .leading) {
-                        // Frosted Liquid Glass Track
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                            .background(
-                                Capsule(style: .continuous)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.white.opacity(0.22), Color.white.opacity(0.08)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.6
-                                    )
-                            )
-                        
-                        // Floating Liquid Glass Sliding Indicator
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(red: 0.1, green: 0.58, blue: 1.0), Color.blue],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: pillSize, height: pillSize)
-                            .shadow(color: Color.blue.opacity(0.5), radius: 5, x: 0, y: 1.5)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.35), lineWidth: 0.75)
-                            )
-                            .offset(x: max(2, min(totalWidth - pillSize - 2, pillLeadingX)))
-                            .animation(dragX == nil ? .spring(response: 0.32, dampingFraction: 0.75) : .none, value: pillLeadingX)
-                        
-                        // 3 Clear Segment Hitboxes for Instant Click / Tap
-                        HStack(spacing: 0) {
-                            ForEach(0..<3, id: \.self) { i in
-                                let modeVal = modes[i]
-                                let isSelected = (dragX == nil ? model.listeningMode : modes[min(2, max(0, Int(pillCenterX / segmentWidth)))]) == modeVal
-                                
-                                Button {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                                        dragX = nil
-                                        model.setAirPodsMode(modeVal)
-                                    }
-                                } label: {
-                                    ZStack {
-                                        Rectangle()
-                                            .fill(Color.clear)
-                                            .contentShape(Rectangle())
-                                        AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .contentShape(Capsule(style: .continuous))
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 4)
-                            .onChanged { gesture in
-                                dragX = max(pillSize / 2.0, min(totalWidth - (pillSize / 2.0), gesture.location.x))
-                            }
-                            .onEnded { gesture in
-                                let closestIndex = min(2, max(0, Int(gesture.location.x / segmentWidth)))
-                                let finalMode = modes[closestIndex]
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                                    dragX = nil
-                                    model.setAirPodsMode(finalMode)
-                                }
-                            }
-                    )
-                }
-                .frame(height: 36)
+            // 3-Way Segmented Liquid Glass Bar
+            GeometryReader { geo in
+                let totalWidth = geo.size.width
+                let segmentWidth = totalWidth / 3.0
+                let activeIndex = currentModeIndex()
+                let pillOffset = CGFloat(activeIndex) * segmentWidth
                 
-                // Labels underneath the capsule pill - also directly clickable
-                HStack(spacing: 0) {
-                    ForEach(0..<3, id: \.self) { i in
-                        let modeVal = modes[i]
-                        let isSelected = model.listeningMode == modeVal
-                        Button {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                                dragX = nil
-                                model.setAirPodsMode(modeVal)
-                            }
-                        } label: {
-                            Text(titles[i])
-                                .font(.system(size: 9, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? .blue : .white.opacity(0.55))
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .center)
+                ZStack(alignment: .leading) {
+                    // Track Background
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.10))
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                        )
+                    
+                    // Sliding Active Selection Pill
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.cyan.opacity(0.85), Color.blue.opacity(0.95)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: segmentWidth - 4, height: 38)
+                        .shadow(color: Color.blue.opacity(0.45), radius: 6, y: 2)
+                        .offset(x: pillOffset + 2)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.76), value: activeIndex)
+                    
+                    // 3 Interactive Options (Noise Cancellation | Adaptive | Transparency)
+                    HStack(spacing: 0) {
+                        ForEach(0..<3, id: \.self) { i in
+                            let modeVal = modes[i]
+                            let isSelected = model.listeningMode == modeVal
+                            
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
+                                    model.setAirPodsMode(modeVal)
+                                }
+                            } label: {
+                                VStack(spacing: 3) {
+                                    AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
+                                    Text(titles[i])
+                                        .font(.system(size: 8.5, weight: isSelected ? .bold : .medium))
+                                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+            .frame(height: 42)
         }
-        .frame(width: 340)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 4)
     }
 }
 
