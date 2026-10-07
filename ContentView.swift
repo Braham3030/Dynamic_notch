@@ -371,6 +371,66 @@ struct IslandView: View {
                                 )
                                 .shadow(color: Color.purple.opacity(0.5 * model.notchGlowIntensity), radius: 6)
                             )
+                        case .deepEmerald:
+                            ZStack {
+                                shape.fill(Color(red: 0.02, green: 0.08, blue: 0.04))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.1, green: 0.9, blue: 0.4).opacity(model.notchGlowIntensity), Color(red: 0.0, green: 0.6, blue: 0.3).opacity(model.notchGlowIntensity)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color(red: 0.1, green: 0.85, blue: 0.35).opacity(0.55 * model.notchGlowIntensity), radius: 6)
+                            )
+                        case .midnightIndigo:
+                            ZStack {
+                                shape.fill(Color(red: 0.04, green: 0.03, blue: 0.12))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.4, green: 0.3, blue: 1.0).opacity(model.notchGlowIntensity), Color(red: 0.2, green: 0.1, blue: 0.7).opacity(model.notchGlowIntensity)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color(red: 0.35, green: 0.25, blue: 0.95).opacity(0.55 * model.notchGlowIntensity), radius: 6)
+                            )
+                        case .cosmicCrimson:
+                            ZStack {
+                                shape.fill(Color(red: 0.10, green: 0.02, blue: 0.04))
+                            }
+                            .overlay(
+                                shape.stroke(
+                                    LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.2, blue: 0.4).opacity(model.notchGlowIntensity), Color(red: 0.8, green: 0.05, blue: 0.2).opacity(model.notchGlowIntensity)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                                .shadow(color: Color(red: 1.0, green: 0.15, blue: 0.35).opacity(0.55 * model.notchGlowIntensity), radius: 6)
+                            )
+                        case .frostedPure:
+                            ZStack {
+                                shape.fill(Color.white.opacity(0.22 * model.notchGlassOpacity))
+                                shape.fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.35 * model.notchGlassOpacity), Color.white.opacity(0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                            }
+                            .overlay(
+                                shape.stroke(Color.white.opacity(0.65 * model.notchGlassOpacity), lineWidth: 1.2)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, y: 3)
                         case .goldenTwilight:
                             ZStack {
                                 shape.fill(Color(red: 0.08, green: 0.04, blue: 0.02))
@@ -3462,10 +3522,14 @@ enum NotchTheme: String, CaseIterable, Identifiable {
     case classicBlack = "Classic Obsidian"
     case iosGlassCapsule = "iOS Smoked Glass"
     case liquidGlass = "Liquid Glass"
+    case deepEmerald = "Deep Emerald"
+    case midnightIndigo = "Midnight Indigo"
+    case cosmicCrimson = "Cosmic Crimson"
     case neonCyber = "Cyberpunk Neon"
     case titaniumFrost = "Titanium Slate"
     case auroraGlow = "Aurora Radiance"
     case goldenTwilight = "Golden Sunset"
+    case frostedPure = "Pure Frost Glass"
     
     var id: String { rawValue }
     
@@ -3474,10 +3538,14 @@ enum NotchTheme: String, CaseIterable, Identifiable {
         case .classicBlack: return "circle.fill"
         case .iosGlassCapsule: return "magnifyingglass.circle.fill"
         case .liquidGlass: return "drop.fill"
+        case .deepEmerald: return "leaf.fill"
+        case .midnightIndigo: return "moon.stars.fill"
+        case .cosmicCrimson: return "flame.fill"
         case .neonCyber: return "bolt.fill"
         case .titaniumFrost: return "square.fill"
         case .auroraGlow: return "sparkles"
         case .goldenTwilight: return "sun.horizon.fill"
+        case .frostedPure: return "snow"
         }
     }
     
@@ -3485,11 +3553,15 @@ enum NotchTheme: String, CaseIterable, Identifiable {
         switch self {
         case .classicBlack: return "Authentic Apple OLED Jet Black"
         case .iosGlassCapsule: return "iOS Siri smoked acrylic with glass bevel rim"
-        case .liquidGlass: return "Frosted glass with specular rim"
+        case .liquidGlass: return "Interactive frosted glass with tone controls"
+        case .deepEmerald: return "Lush forest velvet green glow"
+        case .midnightIndigo: return "Deep royal indigo midnight halo"
+        case .cosmicCrimson: return "Vibrant stellar ruby & crimson rim"
         case .neonCyber: return "Glowing neon cyan & magenta rim"
         case .titaniumFrost: return "Brushed dark titanium finish"
         case .auroraGlow: return "Celestial purple & emerald rim"
         case .goldenTwilight: return "Warm amber twilight reflection"
+        case .frostedPure: return "Ultra-clean crystal white frost"
         }
     }
 }
@@ -4029,6 +4101,14 @@ struct NotchCardView: View {
             Color(red: 0.18, green: 0.20, blue: 0.24)
         case .auroraGlow:
             LinearGradient(colors: [Color.purple.opacity(0.7), Color.teal.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .deepEmerald:
+            LinearGradient(colors: [Color(red: 0.1, green: 0.6, blue: 0.3), Color(red: 0.02, green: 0.15, blue: 0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .midnightIndigo:
+            LinearGradient(colors: [Color(red: 0.35, green: 0.25, blue: 0.9), Color(red: 0.05, green: 0.03, blue: 0.15)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .cosmicCrimson:
+            LinearGradient(colors: [Color(red: 0.9, green: 0.2, blue: 0.35), Color(red: 0.15, green: 0.02, blue: 0.05)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .frostedPure:
+            LinearGradient(colors: [Color.white.opacity(0.85), Color.white.opacity(0.4)], startPoint: .top, endPoint: .bottom)
         case .goldenTwilight:
             LinearGradient(colors: [Color.orange.opacity(0.7), Color.pink.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
@@ -4149,7 +4229,7 @@ struct NotchStylingView: View {
                 }
                 .padding(.horizontal, 28)
                 
-                // Notch Theme Gallery
+                // Notch Theme Gallery with INLINE Liquid Glass Tone Expansion!
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Select Notch Theme")
                         .font(.headline)
@@ -4168,10 +4248,44 @@ struct NotchStylingView: View {
                             }
                         }
                     }
+                    
+                    // INLINE EXPANSION: Liquid Glass Tone Slider opens directly underneath when Liquid Glass is selected!
+                    if model.notchTheme == .liquidGlass {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label("Liquid Glass Tone & Tint", systemImage: "drop.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                Spacer()
+                                Text(model.liquidGlassTone < 0.35 ? "Light Frost Glass" : (model.liquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.blue)
+                            }
+                            
+                            HStack(spacing: 12) {
+                                Text("Light Frost")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Slider(value: $model.liquidGlassTone, in: 0.0...1.0)
+                                Text("Dark Obsidian")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(14)
+                        .background(isLightBg ? Color.blue.opacity(0.08) : Color.blue.opacity(0.12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.blue.opacity(0.4), lineWidth: 1.2)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(.horizontal, 28)
                 
-                // Visual Effects, Liquid Glass Slider & Pulsating Glow Controls
+                // Visual Effects & Ambient Glow Controls
                 VStack(spacing: 12) {
                     // 1. Ambient Music Glow & Pulsating Option
                     VStack(spacing: 10) {
@@ -4235,34 +4349,6 @@ struct NotchStylingView: View {
                     .padding(14)
                     .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    
-                    // 2. Liquid Glass Tone Slider (Light Frost to Dark Obsidian)
-                    if model.notchTheme == .liquidGlass {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label("Liquid Glass Tone & Tint", systemImage: "drop.fill")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                                Spacer()
-                                Text(model.liquidGlassTone < 0.35 ? "Light Frost Glass" : (model.liquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.blue)
-                            }
-                            
-                            HStack(spacing: 12) {
-                                Text("Light")
-                                    .font(.system(size: 10.5, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                Slider(value: $model.liquidGlassTone, in: 0.0...1.0)
-                                Text("Dark")
-                                    .font(.system(size: 10.5, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(14)
-                        .background(isLightBg ? Color.black.opacity(0.05) : Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
                     
                     // 3. Liquid Glass Translucency
                     VStack(alignment: .leading, spacing: 6) {
@@ -4329,6 +4415,14 @@ struct NotchStylingView: View {
             return AnyShapeStyle(Color(red: 0.12, green: 0.13, blue: 0.16))
         case .auroraGlow:
             return AnyShapeStyle(Color(red: 0.04, green: 0.03, blue: 0.08))
+        case .deepEmerald:
+            return AnyShapeStyle(Color(red: 0.02, green: 0.08, blue: 0.04))
+        case .midnightIndigo:
+            return AnyShapeStyle(Color(red: 0.04, green: 0.03, blue: 0.12))
+        case .cosmicCrimson:
+            return AnyShapeStyle(Color(red: 0.10, green: 0.02, blue: 0.04))
+        case .frostedPure:
+            return AnyShapeStyle(Color.white.opacity(0.35))
         case .goldenTwilight:
             return AnyShapeStyle(Color(red: 0.08, green: 0.04, blue: 0.02))
         }
@@ -4358,6 +4452,14 @@ struct NotchStylingView: View {
             return AnyShapeStyle(Color.white.opacity(0.3))
         case .auroraGlow:
             return AnyShapeStyle(Color.purple)
+        case .deepEmerald:
+            return AnyShapeStyle(Color(red: 0.1, green: 0.9, blue: 0.4))
+        case .midnightIndigo:
+            return AnyShapeStyle(Color(red: 0.4, green: 0.3, blue: 1.0))
+        case .cosmicCrimson:
+            return AnyShapeStyle(Color(red: 1.0, green: 0.2, blue: 0.4))
+        case .frostedPure:
+            return AnyShapeStyle(Color.white.opacity(0.8))
         case .goldenTwilight:
             return AnyShapeStyle(Color.orange)
         }
@@ -7812,12 +7914,45 @@ struct BackgroundSettingsView: View {
                             if style == .customPicture && model.customWallpaperImage == nil {
                                 model.pickCustomWallpaper()
                             } else {
-                                withAnimation(.easeInOut(duration: 0.45)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                     model.settingsBackgroundStyle = style
                                 }
                             }
                         }
                     }
+                }
+                
+                // INLINE EXPANSION: Liquid Glass Tone Slider opens directly underneath when Liquid Glass is selected!
+                if model.settingsBackgroundStyle == .liquidGlass {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("Window Liquid Glass Tone & Tint", systemImage: "drop.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                            Spacer()
+                            Text(model.settingsLiquidGlassTone < 0.35 ? "Light Frost Glass" : (model.settingsLiquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.blue)
+                        }
+                        HStack(spacing: 12) {
+                            Text("Light Frost")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Slider(value: $model.settingsLiquidGlassTone, in: 0.0...1.0)
+                            Text("Dark Smoked")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(14)
+                    .background(isLightBg ? Color.blue.opacity(0.08) : Color.blue.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.blue.opacity(0.4), lineWidth: 1.2)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .padding(.top, 4)
                 }
             }
         }
@@ -7827,33 +7962,6 @@ struct BackgroundSettingsView: View {
     @ViewBuilder
     private var controlsSection: some View {
         VStack(spacing: 10) {
-            // Liquid Glass Tone Slider (Only when Liquid Glass is selected)
-            if model.settingsBackgroundStyle == .liquidGlass {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Label("Settings Window Liquid Glass Tone", systemImage: "drop.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                        Spacer()
-                        Text(model.settingsLiquidGlassTone < 0.35 ? "Light Frost Glass" : (model.settingsLiquidGlassTone > 0.65 ? "Dark Smoked Glass" : "Balanced Glass"))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.blue)
-                    }
-                    HStack(spacing: 12) {
-                        Text("Light")
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Slider(value: $model.settingsLiquidGlassTone, in: 0.0...1.0)
-                        Text("Dark")
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(12)
-                .background(isLightBg ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isLightBg ? Color.black.opacity(0.12) : Color.white.opacity(0.12), lineWidth: 1))
-                .cornerRadius(10)
-            }
             // Wallpaper Blur Slider
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
