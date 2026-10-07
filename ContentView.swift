@@ -9226,6 +9226,63 @@ struct LiquidGlassWiFiPicker: View {
 }
 
 
+struct AirPlayItemVolumeSlider: View {
+    @Binding var volume: Double
+    var onVolumeChanged: (Double) -> Void
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: volume < 0.05 ? "speaker.slash.fill" : (volume < 0.35 ? "speaker.wave.1.fill" : (volume < 0.7 ? "speaker.wave.2.fill" : "speaker.wave.3.fill")))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.cyan)
+                .frame(width: 16)
+            
+            GeometryReader { geo in
+                let trackWidth = max(10, geo.size.width)
+                let fillWidth = max(0, min(trackWidth, trackWidth * CGFloat(volume)))
+                
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(height: 6)
+                    
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.cyan, Color.blue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: fillWidth, height: 6)
+                    
+                    Circle()
+                        .fill(Color.white)
+                        .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
+                        .frame(width: 14, height: 14)
+                        .offset(x: max(0, min(trackWidth - 14, fillWidth - 7)))
+                }
+                .frame(height: geo.size.height)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { g in
+                            let fraction = max(0.0, min(1.0, Double(g.location.x / trackWidth)))
+                            volume = fraction
+                            onVolumeChanged(fraction)
+                        }
+                )
+            }
+            .frame(height: 18)
+            
+            Text("\(Int(round(volume * 100)))%")
+                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .foregroundColor(.cyan)
+                .frame(width: 34, alignment: .trailing)
+        }
+    }
+}
+
 struct AirPlayDevicePickerInMusicView: View {
     @ObservedObject var model: IslandModel
     
@@ -9271,50 +9328,71 @@ struct AirPlayDevicePickerInMusicView: View {
                         .padding(.vertical, 16)
                     } else {
                         ForEach(model.airPlayDevices) { dev in
-                            Button {
-                                model.selectAirPlayDevice(dev)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(dev.isSelected ? Color.cyan.opacity(0.32) : Color.white.opacity(0.10))
-                                            .frame(width: 34, height: 34)
-                                        Image(systemName: dev.iconName)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(dev.isSelected ? .cyan : .white)
+                            VStack(spacing: 0) {
+                                Button {
+                                    model.selectAirPlayDevice(dev)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(dev.isSelected ? Color.cyan.opacity(0.32) : Color.white.opacity(0.10))
+                                                .frame(width: 34, height: 34)
+                                            Image(systemName: dev.iconName)
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(dev.isSelected ? .cyan : .white)
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(dev.name)
+                                                .font(.system(size: 13.5, weight: dev.isSelected ? .bold : .semibold, design: .rounded))
+                                                .foregroundColor(dev.isSelected ? .cyan : .white)
+                                                .lineLimit(1)
+                                            Text(dev.kind.capitalized)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(.white.opacity(0.55))
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        if dev.isSelected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 17, weight: .bold))
+                                                .foregroundColor(.cyan)
+                                                .transition(.scale.combined(with: .opacity))
+                                        }
                                     }
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(dev.name)
-                                            .font(.system(size: 13.5, weight: dev.isSelected ? .bold : .semibold, design: .rounded))
-                                            .foregroundColor(dev.isSelected ? .cyan : .white)
-                                            .lineLimit(1)
-                                        Text(dev.kind.capitalized)
-                                            .font(.system(size: 11, weight: .medium))
-                                            .foregroundColor(.white.opacity(0.55))
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    if dev.isSelected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 17, weight: .bold))
-                                            .foregroundColor(.cyan)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(dev.isSelected ? Color.cyan.opacity(0.20) : Color.white.opacity(0.08))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .stroke(dev.isSelected ? Color.cyan.opacity(0.45) : Color.white.opacity(0.10), lineWidth: 1)
-                                        )
-                                )
+                                .buttonStyle(.plain)
+                                
+                                // Dedicated Volume Slider for Selected / Active AirPlay Device
+                                if dev.isSelected {
+                                    AirPlayItemVolumeSlider(
+                                        volume: Binding(
+                                            get: { dev.volume },
+                                            set: { newVol in
+                                                model.setAirPlayDeviceVolume(device: dev, volume: newVol)
+                                            }
+                                        ),
+                                        onVolumeChanged: { newVol in
+                                            model.setAirPlayDeviceVolume(device: dev, volume: newVol)
+                                        }
+                                    )
+                                    .padding(.horizontal, 12)
+                                    .padding(.bottom, 8)
+                                    .padding(.top, 2)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(dev.isSelected ? Color.cyan.opacity(0.20) : Color.white.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(dev.isSelected ? Color.cyan.opacity(0.45) : Color.white.opacity(0.10), lineWidth: 1)
+                                    )
+                            )
                         }
                     }
                 }

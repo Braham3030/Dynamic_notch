@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseMonitorGlobal: Any?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let icon = NSImage(named: "AppIcon") ?? NSImage(contentsOfFile: Bundle.main.path(forResource: "AppIcon", ofType: "icns") ?? "") {
+            NSApplication.shared.applicationIconImage = icon
+        }
         // Initialize Sparkle OTA updater
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         IslandModel.shared.updaterController = updaterController
