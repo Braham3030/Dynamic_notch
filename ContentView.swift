@@ -397,88 +397,107 @@ struct iOSLiveArtworkWallpaperView: View {
             let time = timeline.date.timeIntervalSinceReferenceDate
             let t = isPlaying ? time : 0.0
             
-            // Multi-frequency organic fluid wave displacement for active live motion
-            let driftX1 = sin(t * 0.45) * 16.0
-            let driftY1 = cos(t * 0.35) * 10.0
-            let driftX2 = cos(t * 0.40 + 1.2) * 22.0
-            let driftY2 = sin(t * 0.50 + 0.8) * 14.0
-            let scalePulse = 1.03 + sin(t * 0.55) * 0.04
+            // Subtle, elegant micro-motion fitting the notch proportions cleanly
+            let driftX1 = sin(t * 0.40) * 10.0
+            let driftY1 = cos(t * 0.32) * 6.0
+            let driftX2 = cos(t * 0.38 + 1.2) * 14.0
+            let driftY2 = sin(t * 0.45 + 0.8) * 8.0
+            let scalePulse = 1.02 + sin(t * 0.50) * 0.02
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
                     .opacity(0.35 * intensity)
                 
-                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available (100% SHARP HD on left!)
+                // 1. Apple Music HLS/MP4 Motion Art Video Asset if available
                 if let videoURL = motionVideoURL {
-                    // Crisp HD Video on Left
+                    // Soft blurred video flow spanning across to the right
                     AVPlayerLoopingMotionView(videoURL: videoURL)
-                        .frame(width: max(160, width * 0.55), height: max(85, height * 1.25))
-                        .scaleEffect(scalePulse)
-                        .offset(x: driftX1 * 0.4 - 10, y: driftY1 * 0.4)
-                        .opacity(0.95 * intensity)
+                        .frame(width: width, height: height)
+                        .scaleEffect(scalePulse * 1.06)
+                        .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
+                        .blur(radius: 24)
+                        .opacity(0.60 * intensity)
                     
-                    // Blurred video glow flowing softly toward the right
+                    // Sharp HD Video on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
                     AVPlayerLoopingMotionView(videoURL: videoURL)
-                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.45))
-                        .scaleEffect(scalePulse * 1.05)
-                        .offset(x: 40 + driftX2 * 0.6, y: driftY2 * 0.5)
-                        .blur(radius: 26)
-                        .opacity(0.65 * intensity)
+                        .frame(width: max(140, width * 0.48), height: height)
+                        .scaleEffect(scalePulse)
+                        .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
+                        .opacity(0.95 * intensity)
+                        .mask(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0.0),
+                                    .init(color: .black, location: 0.45),
+                                    .init(color: .black.opacity(0.7), location: 0.70),
+                                    .init(color: .black.opacity(0.2), location: 0.88),
+                                    .init(color: .clear, location: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                 } else if let art = artwork {
-                    // 2. Base High-Res Live Artwork (100% SHARP HD on Left!)
+                    // 2. Base High-Res Artwork
+                    // Soft blurred artwork flow spanning across to the right
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(160, width * 0.55), height: max(85, height * 1.25))
-                        .scaleEffect(scalePulse)
-                        .offset(x: driftX1 * 0.4 - 10, y: driftY1 * 0.4)
-                        .opacity(0.95 * intensity)
+                        .frame(width: width, height: height)
+                        .scaleEffect(scalePulse * 1.06)
+                        .offset(x: 20 + driftX2 * 0.5, y: driftY2 * 0.5)
+                        .blur(radius: 24)
+                        .opacity(0.60 * intensity)
                     
-                    // Blurred artwork flow extending seamlessly into the right side
+                    // Sharp HD Artwork on Left (Masked with ultra-smooth linear alpha fade so there is ZERO hard line)
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(180, width * 0.85), height: max(85, height * 1.45))
-                        .scaleEffect(scalePulse * 1.05)
-                        .offset(x: 40 + driftX2 * 0.6, y: driftY2 * 0.5)
-                        .blur(radius: 26)
-                        .opacity(0.65 * intensity)
+                        .frame(width: max(140, width * 0.48), height: height)
+                        .scaleEffect(scalePulse)
+                        .offset(x: driftX1 * 0.3 - 6, y: driftY1 * 0.3)
+                        .opacity(0.95 * intensity)
+                        .mask(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0.0),
+                                    .init(color: .black, location: 0.45),
+                                    .init(color: .black.opacity(0.7), location: 0.70),
+                                    .init(color: .black.opacity(0.2), location: 0.88),
+                                    .init(color: .clear, location: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                 }
                 
-                // Fluid Orb 1: Primary chromatic dynamic flare flowing to the center-right
+                // Fluid Orb 1: Primary chromatic dynamic flare blending the center
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 170, height: 170)
-                    .blur(radius: 34)
-                    .offset(x: 60 + driftX1, y: -10 + driftY1)
-                    .opacity(0.48 * intensity)
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 32)
+                    .offset(x: width * 0.25 + driftX1, y: -8 + driftY1)
+                    .opacity(0.42 * intensity)
                 
-                // Fluid Orb 2: Ambient electric accent flare on the right
+                // Fluid Orb 2: Ambient electric accent flare flowing to the right edge
                 Circle()
                     .fill(Color(hue: 0.52, saturation: 0.80, brightness: 0.98))
-                    .frame(width: 140, height: 140)
-                    .blur(radius: 30)
-                    .offset(x: 140 + driftX2, y: 15 + driftY2)
-                    .opacity(0.30 * intensity)
-                
-                // Fluid Orb 3: Liquid light wave wash across the bottom
-                Ellipse()
-                    .fill(primaryColor.opacity(0.70))
-                    .frame(width: 240, height: 85)
+                    .frame(width: 120, height: 120)
                     .blur(radius: 28)
-                    .offset(x: 50 + driftX2 * 0.7, y: height * 0.28)
-                    .opacity(0.42 * intensity)
+                    .offset(x: width * 0.55 + driftX2, y: 12 + driftY2)
+                    .opacity(0.26 * intensity)
             }
-            .frame(width: max(150, width * 0.85), height: height)
+            .frame(width: width, height: height)
             .mask(
                 LinearGradient(
-                    colors: [
-                        Color.black.opacity(1.0),
-                        Color.black.opacity(1.0),
-                        Color.black.opacity(0.85),
-                        Color.black.opacity(0.35),
-                        Color.clear
+                    stops: [
+                        .init(color: .black, location: 0.0),
+                        .init(color: .black, location: 0.65),
+                        .init(color: .black.opacity(0.6), location: 0.85),
+                        .init(color: .black.opacity(0.2), location: 0.95),
+                        .init(color: .clear, location: 1.0)
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
