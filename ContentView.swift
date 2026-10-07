@@ -2983,6 +2983,7 @@ class IslandModel: ObservableObject {
     @Published var isForward: Bool = true
     var lastManualSkipTime: Date = .distantPast
     var lastPlayPauseToggleTime: Date = .distantPast
+    var wasLiveWallpaperExpandedBeforePause: Bool = false
     
     @Published var animationCurve: AnimationCurve = .spring
     @Published var animationDuration: Double = 0.45 
@@ -3663,11 +3664,19 @@ class IslandModel: ObservableObject {
     func togglePlayPause() {
         let targetPlaying = !self.isMusicPlaying
         self.lastPlayPauseToggleTime = Date()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
+        
+        if !targetPlaying {
+            // Remember whether user had full live wallpaper open before pausing
+            self.wasLiveWallpaperExpandedBeforePause = self.isLiveWallpaperExpanded
+        }
+        
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
             self.isMusicPlaying = targetPlaying
-            if !targetPlaying {
-                // Instantly collapse full wallpaper into cardview and keep it as cardview when paused
-                self.isLiveWallpaperExpanded = false
+            if targetPlaying {
+                // When resuming, restore full-bleed live wallpaper if it was active before pause!
+                if self.wasLiveWallpaperExpandedBeforePause && self.hasLiveMotionWallpaper {
+                    self.isLiveWallpaperExpanded = true
+                }
             }
         }
         
@@ -3764,9 +3773,9 @@ class IslandModel: ObservableObject {
                 if state.lowercased() == "playing" {
                     self.fetchCurrentMusicState()
                 } else if state.lowercased() == "paused" || state.lowercased() == "stopped" {
+                    self.wasLiveWallpaperExpandedBeforePause = self.isLiveWallpaperExpanded
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                         self.isMusicPlaying = false
-                        self.isLiveWallpaperExpanded = false
                     }
                 }
             } else {
@@ -3869,6 +3878,7 @@ class IslandModel: ObservableObject {
                     
                     self.hasLiveMotionWallpaper = false
                     self.liveMotionVideoURL = nil
+                    self.wasLiveWallpaperExpandedBeforePause = false
                     
                     if let img = finalImage {
                         self.currentArtwork = img
