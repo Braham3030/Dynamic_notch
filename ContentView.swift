@@ -3728,6 +3728,7 @@ struct NotchStylingView: View {
                             }
                             Spacer()
                             Toggle("", isOn: $model.notchCompactAlwaysBlack)
+                                .toggleStyle(.switch)
                                 .labelsHidden()
                         }
                     }
@@ -5362,6 +5363,7 @@ struct AboutView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
     }
 }
 struct SystemControlsView: View {
@@ -5583,6 +5585,7 @@ struct BatterySettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
     }
 }
 
@@ -7029,6 +7032,7 @@ struct BackgroundSettingsView: View {
             }
             .padding(.top, 6)
         }
+        .toggleStyle(.switch)
     }
     
     @ViewBuilder
