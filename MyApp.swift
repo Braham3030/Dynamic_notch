@@ -68,15 +68,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupMouseTracking() {
         // Track mouse globally across all apps (Apple Music, Finder, Settings, etc.)
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            // When user drags a file anywhere, detect and expand notch drop-zone generously
+            // ONLY open AirDrop in the notch when the user is actively dragging REAL files or photos!
             if event.type == .leftMouseDragged {
                 let pboard = NSPasteboard(name: .drag)
-                let hasFiles = (pboard.types?.contains(.fileURL) == true) || (pboard.types?.contains(NSPasteboard.PasteboardType("public.file-url")) == true)
-                if hasFiles {
-                    DispatchQueue.main.async {
-                        if !IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                IslandModel.shared.isAirDropTargeted = true
+                if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+                    let hasRealFilesOrPhotos = urls.contains { url in
+                        let ext = url.pathExtension.lowercased()
+                        let isPhotoOrFile = url.isFileURL || !ext.isEmpty || FileManager.default.fileExists(atPath: url.path)
+                        return isPhotoOrFile
+                    }
+                    if hasRealFilesOrPhotos {
+                        DispatchQueue.main.async {
+                            if !IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    IslandModel.shared.isAirDropTargeted = true
+                                }
                             }
                         }
                     }

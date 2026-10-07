@@ -855,14 +855,14 @@ extension IslandModel {
     
     var height: CGFloat {
         if isAirDropTargeted && state != .expandedAirDrop {
-            return physicalNotchHeight + 145 // Much bigger height for comfortable dragging
+            return physicalNotchHeight + 145 // Big comfortable height for dragging files
         }
         if isExpanded {
-            if state == .expandedAirDrop { return 255 } // Generously taller to show file preview and devices without crowding
+            if state == .expandedAirDrop { return 290 } // Extra height for BIG file/photo preview and devices underneath
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
-                return 195 // Space for WiFi/BT + Sliders + Wide iOS Liquid Glass AirPods Mode Switcher
+                return (listeningMode == 4) ? 265 : 215 // Extra room for Adaptive Noise Canceling / Transparency Slider!
             }
             return 130
         }
@@ -1512,7 +1512,9 @@ class IslandModel: ObservableObject {
         }
     }
 
-    @Published var listeningMode: Int = 2
+    @Published var listeningMode: Int = 2 // 2: Noise Cancellation, 1: Off, 4: Adaptive, 3: Transparency
+    @Published var adaptiveBalance: Double = 0.5 // 0.0: More Noise Cancellation <---> 1.0: More Transparency
+    
     func setAirPodsMode(_ mode: Int) {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             self.listeningMode = mode
@@ -1522,16 +1524,23 @@ class IslandModel: ObservableObject {
             let sel1 = Selector("setListeningMode:")
             let sel2 = Selector("setNoiseCancellationMode:")
             let sel3 = Selector("setListeningMode:error:")
-            typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Bool
+            
+            typealias SetListeningModeIMP32 = @convention(c) (AnyObject, Selector, UInt32) -> Bool
+            typealias SetListeningModeIMP8 = @convention(c) (AnyObject, Selector, UInt8) -> Bool
+            
             for device in devices where device.isConnected() {
                 if device.responds(to: sel1) {
                     let imp = device.method(for: sel1)
-                    let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
-                    _ = fn(device, sel1, UInt8(mode))
+                    let fn32 = unsafeBitCast(imp, to: SetListeningModeIMP32.self)
+                    _ = fn32(device, sel1, UInt32(mode))
+                    let fn8 = unsafeBitCast(imp, to: SetListeningModeIMP8.self)
+                    _ = fn8(device, sel1, UInt8(mode))
                 } else if device.responds(to: sel2) {
                     let imp = device.method(for: sel2)
-                    let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
-                    _ = fn(device, sel2, UInt8(mode))
+                    let fn32 = unsafeBitCast(imp, to: SetListeningModeIMP32.self)
+                    _ = fn32(device, sel2, UInt32(mode))
+                    let fn8 = unsafeBitCast(imp, to: SetListeningModeIMP8.self)
+                    _ = fn8(device, sel2, UInt8(mode))
                 }
             }
         }
@@ -2679,57 +2688,62 @@ struct AirDropFilePreviewCard: View {
     }
     
     var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail / Icon Preview
+        HStack(spacing: 14) {
+            // BIGGER Image / File Preview
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color.white.opacity(0.12))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 72, height: 72)
                 
                 if let thumb = thumbnailImage {
                     Image(nsImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 } else {
                     Image(systemName: files.count > 1 ? "doc.on.doc.fill" : "doc.fill")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 32, weight: .semibold))
                         .foregroundColor(.cyan)
                 }
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 1.2)
             )
+            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
             
-            // File Information
-            VStack(alignment: .leading, spacing: 3) {
+            // File Information Details
+            VStack(alignment: .leading, spacing: 4) {
                 if files.count == 1, let first = firstURL {
                     Text(first.lastPathComponent)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     
                     HStack(spacing: 6) {
                         if !fileSizeString.isEmpty {
                             Text(fileSizeString)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.white.opacity(0.6))
                         }
                         Text("• Ready to AirDrop")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.cyan.opacity(0.9))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.cyan.opacity(0.95))
                     }
                 } else {
                     Text("\(max(1, files.count)) Files Selected")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
                     
                     Text(files.map { $0.lastPathComponent }.prefix(2).joined(separator: ", ") + (files.count > 2 ? "..." : ""))
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.6))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.65))
                         .lineLimit(1)
+                    
+                    Text("Ready to share with nearby devices")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.cyan.opacity(0.95))
                 }
             }
             
