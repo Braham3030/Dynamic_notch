@@ -978,7 +978,7 @@ class IslandModel: ObservableObject {
     @Published var customC1: CGPoint = CGPoint(x: 0.42, y: 0.0)
     @Published var customC2: CGPoint = CGPoint(x: 0.58, y: 1.0)
     
-    @Published var physicalNotchHeight: CGFloat = 34 
+    @Published var physicalNotchHeight: CGFloat = 32 
     @Published var baseNotchWidth: CGFloat = 200 
     @Published var displayMode: ScreenDisplayMode = .both
     @Published var settingsBackgroundStyle: SettingsBackgroundStyle = .liquidGlass
@@ -996,6 +996,7 @@ class IslandModel: ObservableObject {
         startWifiMonitoring()
         startMusicMonitoring()
         startScreenTransitionMonitoring()
+        startAirPodsMonitoring()
     }
 
     func startScreenTransitionMonitoring() {
@@ -1276,6 +1277,86 @@ class IslandModel: ObservableObject {
     private func refreshBluetoothState() {
         isBluetoothOn = IOBluetoothHostController.default().powerState == kBluetoothHCIPowerStateON
     }
+    
+    private var airPodsMonitorTimer: Timer?
+    
+    func startAirPodsMonitoring() {
+        checkRealAirPodsStatus()
+        airPodsMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.checkRealAirPodsStatus()
+        }
+    }
+    
+    func checkRealAirPodsStatus() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
+            
+            var foundConnectedAirPods: (name: String, battery: Double)? = nil
+            
+            for device in devices {
+                let name = device.nameOrAddress ?? ""
+                let isAirPods = name.localizedCaseInsensitiveContains("AirPods")
+                if isAirPods && device.isConnected() {
+                    var leftBat: Double = -1
+                    var rightBat: Double = -1
+                    var singleBat: Double = -1
+                    
+                    let selSingle = Selector(("batteryPercentSingle"))
+                    let selLeft = Selector(("batteryPercentLeft"))
+                    let selRight = Selector(("batteryPercentRight"))
+                    
+                    typealias BatIMP = @convention(c) (AnyObject, Selector) -> UInt8
+                    
+                    if device.responds(to: selLeft) {
+                        let imp = device.method(for: selLeft)
+                        let fn = unsafeBitCast(imp, to: BatIMP.self)
+                        let val = fn(device, selLeft)
+                        if val > 0 && val <= 100 { leftBat = Double(val) / 100.0 }
+                    }
+                    if device.responds(to: selRight) {
+                        let imp = device.method(for: selRight)
+                        let fn = unsafeBitCast(imp, to: BatIMP.self)
+                        let val = fn(device, selRight)
+                        if val > 0 && val <= 100 { rightBat = Double(val) / 100.0 }
+                    }
+                    if device.responds(to: selSingle) {
+                        let imp = device.method(for: selSingle)
+                        let fn = unsafeBitCast(imp, to: BatIMP.self)
+                        let val = fn(device, selSingle)
+                        if val > 0 && val <= 100 { singleBat = Double(val) / 100.0 }
+                    }
+                    
+                    var bestBattery: Double = 0.80
+                    if singleBat > 0 {
+                        bestBattery = singleBat
+                    } else if leftBat > 0 || rightBat > 0 {
+                        bestBattery = max(leftBat > 0 ? leftBat : 0, rightBat > 0 ? rightBat : 0)
+                    }
+                    
+                    foundConnectedAirPods = (name: name, battery: bestBattery)
+                    break
+                }
+            }
+            
+            DispatchQueue.main.async {
+                if let airpods = foundConnectedAirPods {
+                    if !self.airPodsConnected {
+                        self.airPodsName = airpods.name
+                        self.airPodsBatteryLevel = airpods.battery
+                        self.airPodsConnected = true
+                    } else {
+                        self.airPodsName = airpods.name
+                        self.airPodsBatteryLevel = airpods.battery
+                    }
+                } else {
+                    if self.airPodsConnected {
+                        self.airPodsConnected = false
+                    }
+                }
+            }
+        }
+    }
 
     private func updateWifiStrength() {
         guard let interface = CWWiFiClient.shared().interface() else {
@@ -1309,22 +1390,44 @@ class IslandModel: ObservableObject {
 
 
 struct AirPods3DView: View {
-    @State private var rotationAngle: Double = 0
+    @State private var rotationY: Double = 0
+    @State private var floatY: CGFloat = 0
+    @State private var scaleEffect: CGFloat = 0.95
     
     var body: some View {
-        Image(systemName: "airpodspro")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundColor(.white)
-            .rotation3DEffect(
-                .degrees(rotationAngle),
-                axis: (x: 0.0, y: 1.0, z: 0.15),
-                perspective: 0.4
-            )
-            .onAppear {
-                withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
-                    rotationAngle = 360
-                }
+        ZStack {
+            // Left AirPod with authentic 3D spatial flip
+            Image(systemName: "airpodspro.left")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .offset(x: -5, y: floatY)
+                .rotation3DEffect(
+                    .degrees(rotationY),
+                    axis: (x: 0.1, y: 1.0, z: 0.0),
+                    anchor: .center,
+                    perspective: 0.35
+                )
+            
+            // Right AirPod with subtle counter spatial offset
+            Image(systemName: "airpodspro.right")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .offset(x: 5, y: -floatY)
+                .rotation3DEffect(
+                    .degrees(rotationY + 15),
+                    axis: (x: -0.1, y: 1.0, z: 0.0),
+                    anchor: .center,
+                    perspective: 0.35
+                )
+        }
+        .scaleEffect(scaleEffect)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                rotationY = 360
+                floatY = 1.5
+                scaleEffect = 1.05
             }
+        }
     }
 }
 
@@ -1333,21 +1436,26 @@ struct CircularBatteryGauge: View {
     
     var body: some View {
         ZStack {
+            // Track circle
             Circle()
-                .stroke(Color.white.opacity(0.2), lineWidth: 2.5)
+                .stroke(Color.white.opacity(0.22), lineWidth: 3.0)
+            
+            // Active Progress circle (No percentage text!)
             Circle()
-                .trim(from: 0, to: CGFloat(batteryLevel))
+                .trim(from: 0, to: CGFloat(max(0.02, min(1.0, batteryLevel))))
                 .stroke(
                     batteryLevel > 0.2 ? Color.green : Color.red,
-                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 3.0, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: batteryLevel)
             
-            Text("\(Int(batteryLevel * 100))%")
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+            // Mini center power dot
+            Circle()
+                .fill(batteryLevel > 0.2 ? Color.green.opacity(0.9) : Color.red.opacity(0.9))
+                .frame(width: 4, height: 4)
         }
-        .frame(width: 24, height: 24)
+        .frame(width: 18, height: 18)
     }
 }
 
