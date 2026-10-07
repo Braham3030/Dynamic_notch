@@ -700,29 +700,42 @@ struct IslandView: View {
                             controlsView
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else {
-                            ZStack(alignment: .top) {
-                                // Main Content View: Anchored cleanly with exact symmetrical margins
-                                Group {
-                                    if model.state == .expandedMusic {
-                                        musicView
-                                    } else if model.state == .expandedFood {
-                                        foodView
-                                    } else if model.state == .expandedAirDrop {
-                                        airDropExpandedView
-                                    } else {
-                                        controlsView
+                            VStack(spacing: 0) {
+                                // 1. Standard Upper Section (Strictly fixed geometry whether AirPlay is open or not)
+                                ZStack(alignment: .center) {
+                                    Group {
+                                        if model.state == .expandedMusic {
+                                            musicView
+                                        } else if model.state == .expandedFood {
+                                            foodView
+                                        } else if model.state == .expandedAirDrop {
+                                            airDropExpandedView
+                                        } else {
+                                            controlsView
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.leading, 18)
+                                    .padding(.trailing, 48)
+                                    
+                                    // Right Side: Compact Liquid Glass Vertical Switcher centered strictly at standard position
+                                    HStack(spacing: 0) {
+                                        Spacer(minLength: 0)
+                                        VerticalSwitcher(model: model, activeState: model.state)
+                                            .padding(.trailing, 10)
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                                .padding(.leading, 18)
-                                .padding(.trailing, 48) // Fixed exact balance for the right-side switcher dock across all tabs
+                                .frame(width: model.width, height: (model.state == .expandedMusic ? 215 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 270 : 205)))))
                                 
-                                // Right Side: Compact Liquid Glass Vertical Switcher anchored strictly at standard top place
-                                HStack(spacing: 0) {
-                                    Spacer(minLength: 0)
-                                    VerticalSwitcher(model: model, activeState: model.state)
-                                        .padding(.trailing, 10)
-                                        .padding(.top, (model.state == .expandedFood ? 18 : 78))
+                                // 2. AirPlay Device Drawer Below (Full Notch Width without moving anything above)
+                                if model.state == .expandedMusic && model.isShowingAirPlayInMusic {
+                                    AirPlayDevicePickerInMusicView(model: model)
+                                        .frame(width: model.width - 24)
+                                        .padding(.bottom, 10)
+                                        .transition(.asymmetric(
+                                            insertion: .opacity.combined(with: .offset(y: 8)),
+                                            removal: .opacity.combined(with: .offset(y: 4))
+                                        ))
                                 }
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1636,17 +1649,6 @@ struct IslandView: View {
             .opacity(showsExpandedMusicDetails ? 1 : 0)
             .offset(y: showsExpandedMusicDetails ? 0 : -36)
             .allowsHitTesting(showsExpandedMusicDetails)
-            
-            // Interactive AirPlay Device Routing Underneath the Music Tab (Full Notch Width)
-            if model.isShowingAirPlayInMusic {
-                AirPlayDevicePickerInMusicView(model: model)
-                    .frame(width: model.width - 24)
-                    .offset(x: 15)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .offset(y: 8)),
-                        removal: .opacity.combined(with: .offset(y: 4))
-                    ))
-            }
         }
         .padding(14)
     }
