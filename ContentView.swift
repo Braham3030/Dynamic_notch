@@ -3752,8 +3752,121 @@ struct ControlButton: View {
         .buttonStyle(.plain)
     }
 }
-struct AboutView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section { VStack(spacing: 16) { Image(systemName: "capsule.portrait.fill").font(.system(size: 64)).rotationEffect(.degrees(90)); VStack(spacing: 4) { Text("Dynamic Island for Mac").font(.title.bold()); Text("Version 1.1").font(.subheadline).foregroundStyle(.secondary) }; Text("Brings the fluid Apple iOS Dynamic Island straight into your macOS menu bar.").font(.body).multilineTextAlignment(.center).padding(.horizontal); Button(action: { model.updaterController?.checkForUpdates(nil) }) { Text("Check for Updates...").padding(.horizontal, 8) }.buttonStyle(.borderedProminent).tint(.blue).padding(.top, 8) }.frame(maxWidth: .infinity).padding(.vertical, 24) } }.formStyle(.grouped)
-        .scrollContentBackground(.hidden) } }
+struct AboutView: View {
+    @ObservedObject var model = IslandModel.shared
+    @State private var isChecking: Bool = false
+    @State private var statusText: String? = nil
+    @State private var statusIsError: Bool = false
+    
+    var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1"
+    }
+    
+    var buildVersion: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 16) {
+                    Image(systemName: "capsule.portrait.fill")
+                        .font(.system(size: 64))
+                        .rotationEffect(.degrees(90))
+                        .foregroundStyle(.primary)
+                    
+                    VStack(spacing: 4) {
+                        Text("Dynamic Island for Mac")
+                            .font(.title2.bold())
+                        Text("Version \(appVersion) (Build \(buildVersion))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    Text("Brings the fluid Apple iOS Dynamic Island straight into your macOS menu bar.")
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    VStack(spacing: 10) {
+                        Button(action: checkForUpdates) {
+                            HStack(spacing: 8) {
+                                if isChecking {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(isChecking ? "Checking GitHub Releases..." : "Check for Updates...")
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(isChecking)
+                        
+                        if let status = statusText {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundStyle(statusIsError ? .red : .secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+    
+    private func checkForUpdates() {
+        isChecking = true
+        statusText = "Checking github.com/Braham3030/Dynamic_notch for latest tags..."
+        statusIsError = false
+        
+        // Trigger Sparkle native update prompt
+        model.updaterController?.checkForUpdates(nil)
+        
+        // Also check GitHub API for immediate inline feedback
+        guard let url = URL(string: "https://api.github.com/repos/Braham3030/Dynamic_notch/releases/latest") else {
+            isChecking = false
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 10
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                isChecking = false
+                if let error = error {
+                    statusText = "Sparkle update check initiated. (GitHub query error: \(error.localizedDescription))"
+                    return
+                }
+                
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tagName = json["tag_name"] as? String else {
+                    statusText = "Sparkle update check initiated. Checking feed..."
+                    return
+                }
+                
+                let cleanTag = tagName.replacingOccurrences(of: "v", with: "")
+                if cleanTag == appVersion {
+                    statusText = "You are running the latest version (\(tagName))!"
+                } else {
+                    statusText = "Found new release on GitHub: \(tagName)! Triggering Sparkle update..."
+                }
+            }
+        }.resume()
+    }
+}
 struct SystemControlsView: View {
     @ObservedObject var model = IslandModel.shared
     

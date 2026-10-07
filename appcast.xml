@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>Dynamic Island Changelog</title>
+        <description>Most recent updates for the Mac Dynamic Island App</description>
+        <language>en</language>
+        
+        <item>
+            <title>Version 0.0.2</title>
+            <description>
+                <![CDATA[
+                <ul>
+                    <li>Apple-style artwork glow and smooth notch transitions.</li>
+                    <li>AirPods hardware controls (Noise Cancellation, Transparency, Adaptive).</li>
+                    <li>Hardware brightness and volume sliders with instantaneous responsiveness.</li>
+                    <li>Sparkle OTA updates with live feedback in Settings.</li>
+                    <li>Performance optimizations and bug fixes.</li>
+                </ul>
+                ]]>
+            </description>
+            <pubDate>Wed, 07 Oct 2026 12:00:00 +0000</pubDate>
+            <sparkle:edSignature>0L5sg8vWkmBxzZyssQnRpZmVhdEOpJDq+3IN2w0eoctWWNSlF2dCtuMPlHg2tK1Kka4LbLHvFXe/6H+PruO+CA==</sparkle:edSignature>
+            <enclosure url="https://github.com/user-attachments/files/33151851/dyNotch.zip"
+                       sparkle:version="0.0.2"
+                       sparkle:shortVersionString="0.0.2"
+                       length="3608986"
+                       type="application/octet-stream" />
+        </item>
+
+        <item>
+            <title>Version 0.0.1 (Initial Release)</title>
+            <description>
+                <![CDATA[
+                <ul>
+                    <li>Initial release with Dynamic Island for macOS.</li>
+                </ul>
+                ]]>
+            </description>
+            <pubDate>Mon, 05 Oct 2026 12:00:00 +0000</pubDate>
+            <sparkle:edSignature>kzWwiscnfzFWWU/FJeABu9WI6vwm9fgu21U3tO/X0bVvrit8GlAFNp58xKj4YnKsxwBU7pRRFDS1hpWX7JSICA==</sparkle:edSignature>
+            <enclosure url="https://github.com/user-attachments/files/33063575/Dynamic_notch-1.1.zip"
+                       sparkle:version="0.0.1"
+                       sparkle:shortVersionString="0.0.1"
+                       length="2887524"
+                       type="application/octet-stream" />
+        </item>
+    </channel>
+</rss>
