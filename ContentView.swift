@@ -1072,6 +1072,24 @@ struct SwitcherMenu: View {
 }
 
 
+class AirDropShareDelegate: NSObject, NSSharingServiceDelegate {
+    static let shared = AirDropShareDelegate()
+    var onComplete: (() -> Void)?
+    var onError: ((Error) -> Void)?
+    
+    func sharingService(_ sharingService: NSSharingService, didShareItems items: [Any]) {
+        DispatchQueue.main.async {
+            self.onComplete?()
+        }
+    }
+    
+    func sharingService(_ sharingService: NSSharingService, didFailToShareItems items: [Any], error: Error) {
+        DispatchQueue.main.async {
+            self.onError?(error)
+        }
+    }
+}
+
 class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDelegate, NetServiceDelegate {
     static let shared = AirDropDiscoveryService()
     
@@ -1403,31 +1421,54 @@ class IslandModel: ObservableObject {
         guard !droppedAirDropFiles.isEmpty else { return }
         airDropTargetPerson = person
         isAirDropSending = true
-        airDropProgress = 0.0
+        airDropProgress = 0.1
         
-        // Complete AirDrop entirely in the Notch with animated progress & zero external popups
-        Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { timer in
-            DispatchQueue.main.async {
-                if self.airDropProgress < 1.0 {
-                    self.airDropProgress += 0.04
-                } else {
-                    timer.invalidate()
-                    self.airDropProgress = 1.0
-                    
+        let filesToSend = self.droppedAirDropFiles
+        
+        // 1. Perform actual native macOS AirDrop file transfer
+        DispatchQueue.main.async {
+            if let service = NSSharingService(named: .sendViaAirDrop) {
+                AirDropShareDelegate.shared.onComplete = { [weak self] in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        self.isAirDropSending = false
-                        self.airDropSentSuccess = true
+                        self?.airDropProgress = 1.0
+                        self?.isAirDropSending = false
+                        self?.airDropSentSuccess = true
                     }
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.airDropSentSuccess = false
-                            self.droppedAirDropFiles = []
-                            self.airDropTargetPerson = nil
-                            self.airDropProgress = 0.0
-                            self.state = .compact
+                            self?.airDropSentSuccess = false
+                            self?.droppedAirDropFiles = []
+                            self?.airDropTargetPerson = nil
+                            self?.airDropProgress = 0.0
+                            self?.state = .compact
                         }
                     }
+                }
+                
+                AirDropShareDelegate.shared.onError = { [weak self] _ in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        self?.isAirDropSending = false
+                        self?.airDropTargetPerson = nil
+                    }
+                }
+                
+                service.delegate = AirDropShareDelegate.shared
+                if service.canPerform(withItems: filesToSend) {
+                    service.perform(withItems: filesToSend)
+                }
+            }
+        }
+        
+        // 2. Smooth Notch progress animation
+        Timer.scheduledTimer(withTimeInterval: 0.045, repeats: true) { timer in
+            DispatchQueue.main.async {
+                if self.isAirDropSending {
+                    if self.airDropProgress < 0.92 {
+                        self.airDropProgress += 0.035
+                    }
+                } else {
+                    timer.invalidate()
                 }
             }
         }
