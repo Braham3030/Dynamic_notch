@@ -730,7 +730,7 @@ struct IslandView: View {
                 .offset(y: showsExpandedMusicDetails ? 0 : -72)
                 .allowsHitTesting(showsExpandedMusicDetails)
                 
-                Spacer(minLength: 0)
+                Spacer(minLength: 12)
                 ZStack {
                     MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
                 }
@@ -738,7 +738,7 @@ struct IslandView: View {
                 .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
                 .zIndex(1)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             
             // Scrubber
             LiquidScrubber()
@@ -848,17 +848,17 @@ extension IslandModel {
             return baseNotchWidth + 90
         }
         if isMusicPlaying {
-            return baseNotchWidth + 96
+            return baseNotchWidth + 108
         }
         return baseNotchWidth
     }
     
     var height: CGFloat {
         if isAirDropTargeted && state != .expandedAirDrop {
-            return physicalNotchHeight + 115 // Large and deep drop area so user never touches top screen triggers
+            return physicalNotchHeight + 145 // Much bigger height for comfortable dragging
         }
         if isExpanded {
-            if state == .expandedAirDrop { return 225 }
+            if state == .expandedAirDrop { return 255 } // Generously taller to show file preview and devices without crowding
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls && airPodsConnected && showAirPodsLocalization {
