@@ -151,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingView.autoresizingMask = [.width, .height]
         
         let width: CGFloat = 680
-        let height: CGFloat = 420
+        let height: CGFloat = 500
         
         let originX = screen.frame.midX - (width / 2.0)
         let originY = screen.frame.maxY - height

@@ -725,7 +725,7 @@ struct IslandView: View {
                                             .padding(.trailing, 10)
                                     }
                                 }
-                                .frame(width: model.width, height: (model.state == .expandedMusic ? 215 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 270 : 205)))))
+                                .frame(width: model.width, height: (model.state == .expandedMusic ? 215 : (model.state == .expandedFood ? 85 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 245 : 165) : (model.airPodsConnected ? 295 : 230)))))
                                 
                                 // 2. AirPlay Device Drawer Below (Full Notch Width without moving anything above)
                                 if model.state == .expandedMusic && model.isShowingAirPlayInMusic {
@@ -1708,12 +1708,12 @@ extension IslandModel {
         if isExpanded {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 245 : 165
-            case .expandedMusic: return isShowingAirPlayInMusic ? 375 : 215
+            case .expandedMusic: return isShowingAirPlayInMusic ? 435 : 215
             case .expandedFood: return 85
             case .expandedPhone: return 92
             case .expandedNotifications: return 88
             case .expandedAirPods: return 110
-            case .expandedControls: return airPodsConnected ? 270 : 205
+            case .expandedControls: return airPodsConnected ? 295 : 230
             case .compact: return physicalNotchHeight
             }
         }
@@ -9215,7 +9215,7 @@ struct AirPlayDevicePickerInMusicView: View {
                 }
                 .padding(.horizontal, 2)
             }
-            .frame(maxHeight: 122)
+            .frame(maxHeight: 185)
         }
         .padding(10)
         .background(
