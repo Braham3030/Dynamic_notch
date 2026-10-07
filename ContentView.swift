@@ -5533,6 +5533,81 @@ struct GitHubReleaseInfo: Identifiable {
     let publishedAt: String
 }
 
+struct dyNotchAppIconView: View {
+    var size: CGFloat = 52
+    
+    var body: some View {
+        let cornerRadius = size * 0.22
+        let pillWidth = size * 0.56
+        let pillHeight = size * 0.22
+        
+        ZStack {
+            // Edge-to-edge vibrant orange-sunset gradient
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.58, blue: 0.20),
+                            Color(red: 1.0, green: 0.32, blue: 0.24),
+                            Color(red: 0.95, green: 0.18, blue: 0.45)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            
+            // Specular Glass Sheen
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.35), Color.clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+            
+            // Frosted Glass Rim
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.4), lineWidth: max(1.0, size * 0.02))
+            
+            // Center Wider Notch Pill (Dynamic Island shape)
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(Color(red: 0.03, green: 0.03, blue: 0.05))
+                    .frame(width: pillWidth, height: pillHeight)
+                    .shadow(color: Color.black.opacity(0.55), radius: size * 0.04, y: size * 0.02)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(0.25), lineWidth: max(0.8, size * 0.015))
+                    )
+                
+                // Sensor & Camera Lens Optics
+                HStack(spacing: 0) {
+                    Circle()
+                        .fill(Color(red: 0.08, green: 0.08, blue: 0.12))
+                        .frame(width: pillHeight * 0.32, height: pillHeight * 0.32)
+                        .padding(.leading, pillWidth * 0.14)
+                    
+                    Spacer()
+                    
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.05, green: 0.08, blue: 0.18))
+                            .frame(width: pillHeight * 0.44, height: pillHeight * 0.44)
+                        Circle()
+                            .fill(Color(red: 0.15, green: 0.35, blue: 0.70).opacity(0.85))
+                            .frame(width: pillHeight * 0.22, height: pillHeight * 0.22)
+                    }
+                    .padding(.trailing, pillWidth * 0.14)
+                }
+                .frame(width: pillWidth, height: pillHeight)
+            }
+        }
+        .frame(width: size, height: size)
+        .shadow(color: Color.black.opacity(0.22), radius: size * 0.1, y: size * 0.05)
+    }
+}
+
 struct SoftwareUpdateView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var isChecking: Bool = false
@@ -5564,16 +5639,7 @@ struct SoftwareUpdateView: View {
             Section(header: Text("Software Updates"), footer: Text("dyNotch checks GitHub Releases for new features and optimizations without modal popups.")) {
                 VStack(spacing: 16) {
                     HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 50, height: 50)
-                                .shadow(color: Color.blue.opacity(0.35), radius: 6)
-                            
-                            Image(systemName: isUpdateFinished ? "checkmark" : (hasUpdateAvailable ? "arrow.down.circle.fill" : "sparkles"))
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.white)
-                        }
+                        dyNotchAppIconView(size: 52)
                         
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 8) {
@@ -5915,19 +5981,7 @@ struct AboutView: View {
         Form {
             Section {
                 VStack(spacing: 18) {
-                    if let appIcon = NSApplication.shared.applicationIconImage {
-                        Image(nsImage: appIcon)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
-                    } else {
-                        Image(systemName: "capsule.portrait.fill")
-                            .font(.system(size: 64))
-                            .rotationEffect(.degrees(90))
-                            .foregroundStyle(.primary)
-                    }
+                    dyNotchAppIconView(size: 84)
                     
                     VStack(spacing: 6) {
                         HStack(spacing: 8) {
