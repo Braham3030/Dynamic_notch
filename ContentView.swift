@@ -545,8 +545,8 @@ struct IslandView: View {
                 }
             } else {
                 if model.showControlCenter {
-                    VStack(spacing: 9) {
-                        // 1. Top Row: WiFi & Bluetooth Cards with Titles & Connected Networks
+                    VStack(spacing: 8) {
+                        // 1. Top Row: WiFi & Bluetooth Cards with Titles & Live Status
                         HStack(spacing: 8) {
                             ConnectivityCard(
                                 title: "Wi-Fi",
@@ -560,47 +560,47 @@ struct IslandView: View {
                             
                             ConnectivityCard(
                                 title: "Bluetooth",
-                                subtitle: model.isBluetoothOn ? (model.airPodsConnected ? model.airPodsName : "On") : "Off",
+                                subtitle: model.isBluetoothOn ? "On" : "Off",
                                 icon: "bluetooth.custom",
                                 isOn: model.isBluetoothOn,
                                 activeTint: .blue,
                                 action: model.toggleBluetooth
                             )
                         }
-                        .frame(width: 335)
+                        .frame(width: 340)
                         
                         // 2. Middle Row: Brightness Slider with Title
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("BRIGHTNESS")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.45))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Brightness")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
                                 .padding(.leading, 2)
                             
                             CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in 
                                 model.applySystemBrightness(forcedValue: val) 
                             }
-                            .frame(width: 335, height: 28)
+                            .frame(width: 340, height: 28)
                         }
-                        .frame(width: 335)
+                        .frame(width: 340)
                         
                         // 3. Middle Row: Volume Slider with Title
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("VOLUME")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.45))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Volume")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
                                 .padding(.leading, 2)
                             
                             CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in 
                                 model.applySystemVolume(forcedValue: val) 
                             }
-                            .frame(width: 335, height: 28)
+                            .frame(width: 340, height: 28)
                         }
-                        .frame(width: 335)
+                        .frame(width: 340)
                         
                         // 4. Bottom Row: AirPods Noise Control Slider
                         if model.airPodsConnected && model.showAirPodsLocalization {
                             AirPodsListeningModeSlider(model: model)
-                                .frame(width: 335)
+                                .frame(width: 340)
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         }
                     }
@@ -1026,9 +1026,9 @@ extension IslandModel {
             if state == .expandedFood { return 85 }
             if state == .expandedControls {
                 if airPodsConnected && showAirPodsLocalization {
-                    return 275
+                    return 270
                 }
-                return 195
+                return 190
             }
         }
         return physicalNotchHeight
@@ -3381,7 +3381,7 @@ struct AirPodsListeningModeSlider: View {
                 }
             }
         }
-        .frame(width: 335)
+        .frame(width: 340)
     }
 }
 
