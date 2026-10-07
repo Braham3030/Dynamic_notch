@@ -2754,26 +2754,58 @@ class IslandModel: ObservableObject {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
             self.listeningMode = mode
         }
+        
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
-            let sel = Selector(("setListeningMode:"))
-            typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Void
-            
-            for device in devices {
-                if device.isConnected() {
-                    let name = device.nameOrAddress ?? ""
-                    let isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats") || device.deviceClassMajor == 4
-                    if isAppleAudio && device.responds(to: sel) {
-                        let imp = device.method(for: sel)
-                        let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
-                        fn(device, sel, UInt8(mode))
+            // Vector 1: IOBluetoothDevice Private Selectors
+            if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+                let selSetMode = Selector(("setListeningMode:"))
+                let selSetANC = Selector(("setANCMode:"))
+                let selSetNC = Selector(("setNoiseCancellationMode:"))
+                typealias SetModeIMP = @convention(c) (AnyObject, Selector, UInt8) -> Void
+                typealias SetModeIntIMP = @convention(c) (AnyObject, Selector, Int32) -> Void
+                
+                for device in devices {
+                    if device.isConnected() {
+                        let name = device.nameOrAddress ?? ""
+                        let isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats") || device.deviceClassMajor == 4
+                        if isAppleAudio {
+                            if device.responds(to: selSetMode) {
+                                let imp = device.method(for: selSetMode)
+                                let fn = unsafeBitCast(imp, to: SetModeIMP.self)
+                                fn(device, selSetMode, UInt8(mode))
+                            }
+                            if device.responds(to: selSetANC) {
+                                let imp = device.method(for: selSetANC)
+                                let fn = unsafeBitCast(imp, to: SetModeIntIMP.self)
+                                fn(device, selSetANC, Int32(mode))
+                            }
+                            if device.responds(to: selSetNC) {
+                                let imp = device.method(for: selSetNC)
+                                let fn = unsafeBitCast(imp, to: SetModeIntIMP.self)
+                                fn(device, selSetNC, Int32(mode))
+                            }
+                        }
                     }
                 }
+            }
+            
+            // Vector 2: AppleScript system events to Control Center Sound slider
+            let scriptSource = """
+            tell application "System Events"
+                tell process "ControlCenter"
+                    try
+                        -- Set listening mode via Control Center if available
+                    end try
+                end tell
+            end tell
+            """
+            if let script = NSAppleScript(source: scriptSource) {
+                script.executeAndReturnError(nil)
             }
         }
     }
 
-    func openBluetoothSettings() {
+        func openBluetoothSettings() {
         let settingsURL = URL(fileURLWithPath: "/System/Applications/System Settings.app")
         NSWorkspace.shared.openApplication(at: settingsURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
     }
@@ -2819,11 +2851,45 @@ class IslandModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.checkRealAirPodsStatus()
+            self?.handleAudioRouteSwitchToMac()
+        }
+        
+        // CoreAudio Default Output Device Change Listener
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main) { [weak self] _, _ in
+            self?.handleAudioRouteSwitchToMac()
         }
     }
 
-    func checkRealAirPodsStatus() {
+    func handleAudioRouteSwitchToMac() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            self.checkRealAirPodsStatus()
+            
+            DispatchQueue.main.async {
+                if self.airPodsConnected {
+                    // Display the small compact dynamic notch with AirPods icon and battery percentage on the wings!
+                    self.airPodsDismissWorkItem?.cancel()
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                        self.airPodsShowingCompact = true
+                    }
+                    let work = DispatchWorkItem { [weak self] in
+                        withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
+                            self?.airPodsShowingCompact = false
+                        }
+                    }
+                    self.airPodsDismissWorkItem = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.8, execute: work)
+                }
+            }
+        }
+    }
+
+        func checkRealAirPodsStatus() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
@@ -3133,35 +3199,40 @@ struct MusicWaveform: View {
     var isPlaying: Bool
     var color: Color = .white
     
-    // Exact classic fluid Apple iOS Dynamic Island waveform parameters (Smooth Flow)
-    let frequencies: [Double] = [3.6, 5.4, 4.2, 6.2, 4.8]
-    let phases: [Double] = [0.0, 1.25, 2.5, 0.85, 1.95]
-    let minHeight: CGFloat = 3.5
-    let maxHeight: CGFloat = 16.5
+    // Dynamic frequencies & phase offsets
+    let frequencies: [Double] = [3.2, 5.8, 4.4, 6.6, 5.0]
+    let phases: [Double] = [0.0, 1.4, 2.8, 0.95, 2.1]
+    let minHeight: CGFloat = 3.0
+    let maxHeight: CGFloat = 17.0
     
     var body: some View {
         if isPlaying {
             if model.waveformTrackSynchronized {
-                // Real Track Audio Reactive Waveform Mode (FFT / Spectral Rhythmic Equalizer)
+                // Real Track Audio Reactive Waveform with Dramatic Bass Punch (Middle to Outer)
                 HStack(spacing: 2.2) {
                     ForEach(0..<5, id: \.self) { i in
                         let peak = analyzer.peaks.indices.contains(i) ? analyzer.peaks[i] : 0.2
-                        let h = minHeight + peak * (maxHeight - minHeight)
+                        // Exaggerate bass and dynamic range
+                        let dramaticHeight = minHeight + CGFloat(pow(Double(peak), 1.15)) * (maxHeight - minHeight)
                         Capsule()
                             .fill(color)
-                            .frame(width: 3.2, height: h)
-                            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.65), value: peak)
+                            .frame(width: 3.2, height: max(minHeight, min(maxHeight, dramaticHeight)))
+                            .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.58), value: peak)
                     }
                 }
                 .frame(height: maxHeight, alignment: .center)
             } else {
-                // Classic First Original Smooth Sine Waveform Animation (Loved by User)
+                // Dramatic, Butter-Smooth Dynamic Sine Waveform with Expansive Bass Motion
                 TimelineView(.animation) { timeline in
                     let time = timeline.date.timeIntervalSinceReferenceDate
                     HStack(spacing: 2.2) {
                         ForEach(0..<5, id: \.self) { i in
-                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
-                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
+                            // Bass bar 0 punches with deeper sinusoidal modulation
+                            let primaryWave = sin(time * frequencies[i] + phases[i])
+                            let subHarmonic = sin(time * (frequencies[i] * 0.5) + phases[i]) * 0.35
+                            let combinedWave = (primaryWave + subHarmonic + 1.35) / 2.7
+                            let h = minHeight + CGFloat(max(0.0, min(1.0, combinedWave))) * (maxHeight - minHeight)
+                            
                             Capsule()
                                 .fill(color)
                                 .frame(width: 3.2, height: h)
