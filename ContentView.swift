@@ -3224,21 +3224,57 @@ class IslandModel: ObservableObject {
     }
     
     func selectAirPlayDevice(_ device: AirPlayOutputDevice) {
+        let isCurrentlySelected = device.isSelected
         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-            self.airPlayDevices = self.airPlayDevices.map {
-                AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind)
+            if isCurrentlySelected {
+                // Toggle off / Disconnect
+                var updated = self.airPlayDevices.map { dev in
+                    AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: (dev.id == device.id ? false : dev.isSelected), kind: dev.kind)
+                }
+                // If nothing is selected, select the default Computer speaker
+                if !updated.contains(where: { $0.isSelected }) {
+                    if let compIdx = updated.firstIndex(where: { $0.kind.lowercased().contains("computer") || $0.name.lowercased().contains("mac") }) {
+                        updated[compIdx] = AirPlayOutputDevice(id: updated[compIdx].id, name: updated[compIdx].name, isSelected: true, kind: updated[compIdx].kind)
+                    } else if !updated.isEmpty {
+                        updated[0] = AirPlayOutputDevice(id: updated[0].id, name: updated[0].name, isSelected: true, kind: updated[0].kind)
+                    }
+                }
+                self.airPlayDevices = updated
+            } else {
+                // Connect
+                self.airPlayDevices = self.airPlayDevices.map {
+                    AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind)
+                }
             }
         }
+        
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let shouldDisconnect = isCurrentlySelected
             let scriptSource = """
             tell application "Music"
                 try
                     set allDevs to every AirPlay device
                     repeat with d in allDevs
                         if name of d is "\(device.name)" then
-                            set selected of d to true
+                            if \(shouldDisconnect ? "true" : "false") then
+                                set selected of d to false
+                            else
+                                set selected of d to true
+                            end if
                         end if
                     end repeat
+                    -- If no output device is selected after disconnecting, fallback to Mac Computer speakers
+                    set anySelected to false
+                    repeat with d in allDevs
+                        if selected of d is true then
+                            set anySelected to true
+                        end if
+                    end repeat
+                    if anySelected is false then
+                        try
+                            set selected of (first AirPlay device whose kind is computer) to true
+                        end try
+                    end if
                 end try
             end tell
             """
