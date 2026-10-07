@@ -2538,28 +2538,38 @@ struct CustomSlider: View {
         return icon
     }
     
-    let sliderWidth: CGFloat = 140
-    let sliderHeight: CGFloat = 24
-    
     var body: some View { 
-        ZStack(alignment: .leading) { 
-            Capsule().fill(Color.white.opacity(0.15))
-            Capsule().fill(Color.white).frame(width: max(24, sliderWidth * CGFloat(value)))
-            Image(systemName: dynamicIcon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(value > 0.15 ? .black : .white)
-                .contentTransition(.symbolEffect(.replace))
-                .padding(.leading, 8) 
-        }
-        .frame(width: sliderWidth, height: sliderHeight)
-        .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 0).onChanged { drag in 
-            let newValue = min(max(0, drag.location.x / sliderWidth), 1)
-            if abs(value - newValue) > 0.01 {
-                value = newValue
-                action?(newValue)
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            
+            ZStack(alignment: .leading) { 
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.15))
+                
+                Capsule(style: .continuous)
+                    .fill(Color.white)
+                    .frame(width: max(28, w * CGFloat(max(0, min(1, value)))))
+                
+                Image(systemName: dynamicIcon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(value > 0.12 ? .black : .white)
+                    .contentTransition(.symbolEffect(.replace))
+                    .padding(.leading, 9) 
             }
-        }) 
+            .frame(width: w, height: h)
+            .contentShape(Capsule(style: .continuous))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in 
+                        let fraction = min(max(0.0, Double(gesture.location.x / w)), 1.0)
+                        if abs(value - fraction) > 0.005 {
+                            value = fraction
+                            action?(fraction)
+                        }
+                    }
+            )
+        }
     } 
 }
 
