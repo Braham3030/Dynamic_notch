@@ -7988,68 +7988,24 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable AirDrop Sharing Module", isOn: $model.showAirDrop)
                 
-                // Settings Liquid Glass Slider Matching Image Design (Electric Blue track + White Pill Knob + Dotted Scale)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        HStack(spacing: 6) {
-                            Image(systemName: "timer")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(red: 0.0, green: 0.58, blue: 1.0))
-                            Text("Drag-To-Open Save File Notch Delay")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        
-                        Spacer()
-                        
-                        Text(model.fileDragOpenDelay == 0 ? "Instant (0.0s)" : String(format: "%.1fs", model.fileDragOpenDelay))
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color(red: 0.0, green: 0.62, blue: 1.0))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(Color(red: 0.0, green: 0.58, blue: 1.0).opacity(0.18))
-                                    .overlay(
-                                        Capsule(style: .continuous)
-                                            .stroke(Color(red: 0.0, green: 0.58, blue: 1.0).opacity(0.35), lineWidth: 0.5)
-                                    )
-                            )
-                    }
+                // 1:1 Exact Liquid Glass Slider Matching macOS Settings Layout
+                HStack(spacing: 16) {
+                    Text("Drag-To-Open Delay")
+                        .font(.system(size: 13, weight: .regular))
                     
                     SettingsLiquidGlassSlider(
                         value: $model.fileDragOpenDelay,
                         range: 0.0...10.0,
                         step: 0.5,
-                        totalDots: 36
+                        totalDots: 11
                     )
-                    .padding(.vertical, 4)
                     
-                    HStack {
-                        Text("0s (Instant)")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundColor(.white.opacity(0.45))
-                        Spacer()
-                        Text("5s")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundColor(.white.opacity(0.45))
-                        Spacer()
-                        Text("10s (Long Drag)")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundColor(.white.opacity(0.45))
-                    }
-                    .padding(.horizontal, 4)
+                    Text(model.fileDragOpenDelay == 0 ? "0.0s" : String(format: "%.1fs", model.fileDragOpenDelay))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
-                        )
-                )
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 
                 HStack {
                     Text("Interactive Notch State")
@@ -8778,10 +8734,10 @@ struct AirPodsListeningModeSlider: View {
 }
 
 struct SettingsLiquidGlassSlider: View {
-    @Binding var value: Double // Range: 0.0 to 10.0
+    @Binding var value: Double
     var range: ClosedRange<Double> = 0.0...10.0
     var step: Double = 0.5
-    var totalDots: Int = 36
+    var totalDots: Int = 11 // Exact spaced tick dots like native slider
     
     @State private var isDragging: Bool = false
     
@@ -8792,112 +8748,98 @@ struct SettingsLiquidGlassSlider: View {
     }
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 5) {
             GeometryReader { geo in
                 let trackWidth = geo.size.width
-                let trackHeight: CGFloat = 8
-                let standardKnobWidth: CGFloat = 34
-                let standardKnobHeight: CGFloat = 20
-                let liquidKnobWidth: CGFloat = 46
-                let liquidKnobHeight: CGFloat = 26
-                
-                let currentKnobWidth = isDragging ? liquidKnobWidth : standardKnobWidth
-                let currentKnobHeight = isDragging ? liquidKnobHeight : standardKnobHeight
-                
+                let trackHeight: CGFloat = 6.5
+                let knobWidth: CGFloat = 26
+                let knobHeight: CGFloat = 20
                 let progress = CGFloat(normalizedProgress)
-                let knobX = min(max(currentKnobWidth / 2.0, progress * trackWidth), trackWidth - (currentKnobWidth / 2.0))
+                let knobX = min(max(knobWidth / 2.0, progress * trackWidth), trackWidth - (knobWidth / 2.0))
                 
                 ZStack(alignment: .leading) {
-                    // 1. Frosted Liquid Glass Track Background
+                    // 1. Dark Frosted Translucent Track (Matching screenshot)
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.18))
+                        .fill(Color.white.opacity(0.14))
                         .overlay(
                             Capsule(style: .continuous)
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.08)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.75
-                                )
+                                .stroke(Color.black.opacity(0.35), lineWidth: 0.5)
                         )
                         .frame(height: trackHeight)
-                        .padding(.vertical, (standardKnobHeight - trackHeight) / 2.0)
+                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
                     
-                    // 2. Vivid Electric Blue Progress Track
+                    // 2. Vivid Blue Progress Track
                     Capsule(style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [Color(red: 0.0, green: 0.50, blue: 1.0), Color(red: 0.0, green: 0.62, blue: 1.0)],
+                                colors: [Color(red: 0.0, green: 0.48, blue: 1.0), Color(red: 0.1, green: 0.58, blue: 1.0)],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
                         .frame(width: max(trackHeight, knobX), height: trackHeight)
-                        .padding(.vertical, (standardKnobHeight - trackHeight) / 2.0)
+                        .padding(.vertical, (knobHeight - trackHeight) / 2.0)
                     
-                    // 3. Dynamic Liquid Glass Floating Knob (Morphs into glowing liquid glass capsule on drag)
+                    // 3. Exact 1:1 macOS Liquid Glass Knob (Translucent glass with dark rim & specular reflection)
                     ZStack {
-                        if isDragging {
-                            // Ultra-frosted Liquid Glass Active State
-                            Capsule(style: .continuous)
-                                .fill(Color.white.opacity(0.30))
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [Color.white.opacity(0.55), Color.white.opacity(0.15)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .blur(radius: 0.5)
+                        // Glass Body
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(white: 0.35).opacity(0.55),
+                                        Color(white: 0.15).opacity(0.70)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
                                 )
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [Color.white, Color(red: 0.0, green: 0.60, blue: 1.0).opacity(0.8)],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 1.2
-                                        )
-                                )
-                                .shadow(color: Color(red: 0.0, green: 0.55, blue: 1.0).opacity(0.65), radius: 10, x: 0, y: 2)
-                                .shadow(color: Color.white.opacity(0.4), radius: 4, x: 0, y: 0)
-                        } else {
-                            // Pristine Solid White Resting Capsule
-                            Capsule(style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.white, Color(white: 0.94)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .stroke(Color.white.opacity(0.9), lineWidth: 0.75)
-                                )
-                                .shadow(color: Color.black.opacity(0.35), radius: 4, x: 0, y: 2)
-                                .shadow(color: Color(red: 0.0, green: 0.5, blue: 1.0).opacity(0.25), radius: 6, x: 0, y: 0)
-                        }
+                            )
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.white.opacity(0.15))
+                                    .blur(radius: 1)
+                            )
+                        
+                        // Dark Metallic Outer Rim
+                        Capsule(style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.black.opacity(0.85), Color.black.opacity(0.65)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1.2
+                            )
+                        
+                        // Inner Glass Specular Edge Highlight
+                        Capsule(style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.45), Color.white.opacity(0.05)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.8
+                            )
+                            .padding(0.8)
+                        
+                        // Center Indicator Tick Line on Knob
+                        Rectangle()
+                            .fill(Color.white.opacity(0.40))
+                            .frame(width: 1, height: 4.5)
+                            .offset(y: 4)
                     }
-                    .frame(width: currentKnobWidth, height: currentKnobHeight)
-                    .offset(x: knobX - (currentKnobWidth / 2.0), y: (standardKnobHeight - currentKnobHeight) / 2.0)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.65, blendDuration: 0.15), value: isDragging)
+                    .frame(width: isDragging ? knobWidth + 4 : knobWidth, height: isDragging ? knobHeight + 2 : knobHeight)
+                    .shadow(color: Color.black.opacity(0.55), radius: isDragging ? 5 : 3, x: 0, y: 1.5)
+                    .scaleEffect(isDragging ? 1.05 : 1.0)
+                    .offset(x: knobX - ((isDragging ? knobWidth + 4 : knobWidth) / 2.0))
+                    .animation(.spring(response: 0.28, dampingFraction: 0.70), value: isDragging)
                 }
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { gesture in
-                            if !isDragging {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                                    isDragging = true
-                                }
-                            }
+                            if !isDragging { isDragging = true }
                             let fraction = max(0.0, min(1.0, Double(gesture.location.x / trackWidth)))
                             let span = range.upperBound - range.lowerBound
                             let rawVal = range.lowerBound + (fraction * span)
@@ -8908,27 +8850,22 @@ struct SettingsLiquidGlassSlider: View {
                             }
                         }
                         .onEnded { _ in
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                                isDragging = false
-                            }
+                            isDragging = false
                         }
                 )
             }
-            .frame(height: 26)
+            .frame(height: 20)
             
-            // 4. Dot Grid Scale Underneath Matching Design Image
+            // 4. Subtle Tick Dots Row Spaced Underneath (1:1 with macOS slider)
             HStack(spacing: 0) {
                 ForEach(0..<totalDots, id: \.self) { dotIdx in
-                    let dotProgress = Double(dotIdx) / Double(totalDots - 1)
-                    let isPassed = dotProgress <= normalizedProgress
                     Circle()
-                        .fill(isPassed ? (isDragging ? Color(red: 0.0, green: 0.60, blue: 1.0) : Color.white.opacity(0.70)) : Color.white.opacity(0.22))
-                        .frame(width: 3, height: 3)
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: 2.2, height: 2.2)
                         .frame(maxWidth: .infinity)
-                        .animation(.easeInOut(duration: 0.15), value: isDragging)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 4)
         }
     }
 }
