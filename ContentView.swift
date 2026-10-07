@@ -492,6 +492,10 @@ struct IslandView: View {
                     } else if model.isExpanded {
                         if model.state == .expandedAirDrop {
                             airDropExpandedView
+                        } else if model.state == .expandedPhone || model.state == .expandedNotifications {
+                            // Dedicated full-width layout without menu switcher to avoid crowding/clipping
+                            controlsView
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else {
                             ZStack(alignment: .center) {
                                 // Main Content View: Dead-Centered with physical notch & perfectly symmetrical margins
@@ -1304,21 +1308,21 @@ extension IslandModel {
             case .expandedAirDrop: return 440
             case .expandedMusic: return 420
             case .expandedFood: return 360
-            case .expandedPhone: return 390
-            case .expandedNotifications: return 390
+            case .expandedPhone: return 420
+            case .expandedNotifications: return 420
             case .expandedAirPods: return 390
             case .expandedControls: return 420
             case .compact: return baseNotchWidth
             }
         }
         if airPodsShowingCompact {
-            return baseNotchWidth + 90
-        }
-        if isMusicPlaying {
             return baseNotchWidth + 108
         }
+        if isMusicPlaying {
+            return baseNotchWidth + 120
+        }
         if macBatteryShowingCompact || alwaysShowMacBatteryInNotch {
-            return baseNotchWidth + 84
+            return baseNotchWidth + 96
         }
         return baseNotchWidth
     }
@@ -1332,7 +1336,7 @@ extension IslandModel {
             case .expandedAirDrop: return 290
             case .expandedMusic: return 215
             case .expandedFood: return 85
-            case .expandedPhone: return 88
+            case .expandedPhone: return 92
             case .expandedNotifications: return 88
             case .expandedAirPods: return 88
             case .expandedControls: return airPodsConnected ? 270 : 205
@@ -2985,49 +2989,33 @@ struct MusicWaveform: View {
     var isPlaying: Bool
     var color: Color = .white
     
+    // Exact fluid Apple iOS Dynamic Island waveform parameters
+    let frequencies: [Double] = [3.6, 5.4, 4.2, 6.2, 4.8]
+    let phases: [Double] = [0.0, 1.25, 2.5, 0.85, 1.95]
     let minHeight: CGFloat = 3.5
-    let maxHeight: CGFloat = 17.5
+    let maxHeight: CGFloat = 16.5
     
     var body: some View {
         if isPlaying {
             TimelineView(.animation) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
-                let hash = Double(abs(trackKey.hashValue % 1000))
-                
-                // Track rhythm & real-time interpolation
-                let bpm = 120.0 + Double(abs(trackKey.hashValue % 30) - 15)
-                let elapsedSincePoll = model.isMusicPlaying ? max(0, min(2.0, Date().timeIntervalSince(model.lastPlaybackPollTime))) : 0.0
-                let liveTrackPos = model.playbackPosition + elapsedSincePoll
-                let beatPhase = liveTrackPos * (bpm / 60.0) * Double.pi * 2.0
-                
-                HStack(spacing: 2.4) {
+                HStack(spacing: 2.2) {
                     ForEach(0..<5, id: \.self) { i in
-                        let bandMultipliers = [1.0, 1.4, 1.7, 1.3, 0.9][i]
-                        let phaseOffset = [0.0, 1.1, 2.3, 3.6, 4.9][i] + (hash * 0.004)
-                        let speed = [5.2, 7.8, 10.4, 8.1, 12.0][i]
-                        
-                        // Dynamic rhythmic pulse tied to real-time track progression
-                        let kickPulse = pow(max(0.0, sin(beatPhase + phaseOffset)), 2.0)
-                        let ambientFlow = (sin(time * speed + phaseOffset) + 1.0) * 0.35
-                        let microJitter = cos(time * (speed * 1.5) + phaseOffset) * 0.15
-                        
-                        let combined = max(0.12, min(1.0, (kickPulse * 0.55 + ambientFlow * 0.35 + microJitter * 0.10) * bandMultipliers * 0.85 + 0.15))
-                        let h = minHeight + CGFloat(combined) * (maxHeight - minHeight)
-                        
+                        let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
+                        let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
                         Capsule()
                             .fill(color)
-                            .frame(width: 3.0, height: h)
+                            .frame(width: 3.2, height: h)
                     }
                 }
                 .frame(height: maxHeight, alignment: .center)
             }
         } else {
-            HStack(spacing: 2.4) {
+            HStack(spacing: 2.2) {
                 ForEach(0..<5, id: \.self) { _ in
                     Capsule()
                         .fill(color.opacity(0.6))
-                        .frame(width: 3.0, height: minHeight)
+                        .frame(width: 3.2, height: minHeight)
                 }
             }
             .frame(height: maxHeight, alignment: .center)
@@ -5636,10 +5624,6 @@ struct LiveActivitiesView: View {
                 
                 Toggle("Enable Apple Music Module", isOn: $model.showMusic)
                 
-                if model.showMusic {
-                    Toggle("Track-Based Song Audio Waveform (Mic-Free)", isOn: $model.useRealAudioWaveform)
-                }
-                
                 HStack {
                     Text("Interactive Notch State")
                     Spacer()
@@ -5659,22 +5643,22 @@ struct LiveActivitiesView: View {
                         ZStack {
                             Circle()
                                 .fill(Color.green)
-                                .frame(width: 42, height: 42)
+                                .frame(width: 44, height: 44)
                                 .shadow(color: Color.green.opacity(0.4), radius: 6)
                             Image(systemName: "phone.fill")
-                                .font(.system(size: 18))
+                                .font(.system(size: 20))
                                 .foregroundColor(.white)
                         }
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text("FaceTime Audio")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.6))
                             Text("Tim Cook")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(.white)
                             Text("02:14")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                                 .foregroundColor(.green)
                         }
                         
@@ -5684,18 +5668,18 @@ struct LiveActivitiesView: View {
                             ZStack {
                                 Circle()
                                     .fill(Color.red)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 38, height: 38)
                                 Image(systemName: "phone.down.fill")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 15))
                                     .foregroundColor(.white)
                             }
                             
                             ZStack {
                                 Circle()
                                     .fill(Color.white.opacity(0.18))
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 38, height: 38)
                                 Image(systemName: "mic.slash.fill")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 15))
                                     .foregroundColor(.white)
                             }
                         }
@@ -5752,7 +5736,7 @@ struct LiveActivitiesView: View {
                             }
                             .frame(height: 5)
                             
-                            Text("Receiving 3 items from Brahamjeet's iPhone...")
+                            Text("Receiving 3 items from Brahamjeet\'s iPhone...")
                                 .font(.system(size: 10))
                                 .foregroundColor(.white.opacity(0.6))
                         }
@@ -5776,45 +5760,34 @@ struct LiveActivitiesView: View {
         case .airpods:
             Section(
                 header: Text("AirPods Integration"),
-                footer: Text("Presents real-time AirPods Pro connection status, left/right battery percentages, and listening mode.")
+                footer: Text("Presents real-time compact Dynamic Notch view with AirPods Pro glyph and dual battery indicators.")
             ) {
-                AuthenticNotchPreviewFrame(height: 95) {
-                    HStack(spacing: 14) {
+                // Exact Small Notch View Replica
+                AuthenticNotchPreviewFrame(height: 72) {
+                    HStack(spacing: 0) {
                         Image(systemName: "airpodspro")
-                            .font(.system(size: 24))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
+                            .frame(width: 24, height: 24)
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("AirPods Pro")
-                                .font(.system(size: 13, weight: .bold))
+                        Spacer(minLength: 0)
+                        
+                        Text("AirPods Pro")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.6))
+                        
+                        Spacer(minLength: 0)
+                        
+                        HStack(spacing: 6) {
+                            Text("98%")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
-                            Text("Connected • Noise Cancellation")
-                                .font(.system(size: 10))
-                                .foregroundColor(.cyan)
-                        }
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 10) {
-                            HStack(spacing: 4) {
-                                Text("L 98%")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.85))
-                                Image(systemName: "battery.100")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.green)
-                            }
-                            HStack(spacing: 4) {
-                                Text("R 100%")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.85))
-                                Image(systemName: "battery.100")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.green)
-                            }
+                            CircularBatteryGauge(batteryLevel: 0.98)
+                                .frame(width: 18, height: 18)
                         }
                     }
-                    .padding(.top, 4)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 6)
                 }
                 .padding(.vertical, 4)
                 
@@ -5835,29 +5808,29 @@ struct LiveActivitiesView: View {
                 footer: Text("Pops out the dynamic notch to display sleek floating alert cards for messages and alerts.")
             ) {
                 AuthenticNotchPreviewFrame(height: 98) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.green)
-                                .frame(width: 38, height: 38)
-                                .shadow(color: Color.green.opacity(0.3), radius: 5)
+                                .fill(LinearGradient(colors: [Color.green, Color(red: 0.1, green: 0.8, blue: 0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 42, height: 42)
+                                .shadow(color: Color.green.opacity(0.35), radius: 6)
                             Image(systemName: "message.fill")
-                                .font(.system(size: 18))
+                                .font(.system(size: 20))
                                 .foregroundColor(.white)
                         }
                         
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text("Messages • Sarah Jenkins")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.system(size: 12, weight: .bold))
                                     .foregroundColor(.white)
                                 Spacer()
                                 Text("now")
-                                    .font(.system(size: 9.5))
+                                    .font(.system(size: 10))
                                     .foregroundColor(.white.opacity(0.55))
                             }
                             Text("Are we still meeting at 3 PM today?")
-                                .font(.system(size: 12))
+                                .font(.system(size: 12.5))
                                 .foregroundColor(.white.opacity(0.9))
                                 .lineLimit(1)
                         }
@@ -5886,68 +5859,100 @@ struct LiveActivitiesView: View {
                 header: Text("Control Center Quick Toggles"),
                 footer: Text("Quick access cards for Wi-Fi, Bluetooth, Screen Brightness, and System Audio Volume.")
             ) {
-                AuthenticNotchPreviewFrame(height: 105) {
+                AuthenticNotchPreviewFrame(height: 195) {
                     VStack(spacing: 8) {
-                        HStack(spacing: 8) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "wifi")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text("Wi-Fi • Connected")
-                                    .font(.system(size: 10.5, weight: .semibold))
-                                    .foregroundColor(.white)
+                        // Top Row: Dual Connectivity Cards
+                        HStack(spacing: 12) {
+                            // Wi-Fi Card
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 32, height: 32)
+                                    Image(systemName: "wifi")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Wi-Fi")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Text("Home Network")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white.opacity(0.6))
+                                }
+                                Spacer()
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(Color.blue)
-                            .clipShape(Capsule())
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             
-                            HStack(spacing: 6) {
-                                Image(systemName: "bolt.horizontal.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text("Bluetooth • On")
-                                    .font(.system(size: 10.5, weight: .semibold))
-                                    .foregroundColor(.white)
+                            // Bluetooth Card
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 32, height: 32)
+                                    BluetoothShape()
+                                        .stroke(Color.white, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                                        .frame(width: 10, height: 14)
+                                }
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Bluetooth")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Text("Connected")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white.opacity(0.6))
+                                }
+                                Spacer()
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(Color.blue)
-                            .clipShape(Capsule())
-                            
-                            Spacer()
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         
-                        HStack(spacing: 12) {
-                            HStack(spacing: 6) {
+                        // Brightness
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Brightness")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.18))
+                                    .frame(height: 26)
+                                Capsule()
+                                    .fill(Color.white)
+                                    .frame(width: 240, height: 26)
                                 Image(systemName: "sun.max.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.6))
-                                Capsule()
-                                    .fill(Color.white.opacity(0.2))
-                                    .overlay(
-                                        GeometryReader { g in
-                                            Capsule().fill(Color.white).frame(width: g.size.width * 0.7)
-                                        }
-                                    )
-                                    .frame(height: 6)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.black)
+                                    .padding(.leading, 10)
                             }
-                            
-                            HStack(spacing: 6) {
-                                Image(systemName: "speaker.wave.3.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.6))
-                                Capsule()
-                                    .fill(Color.white.opacity(0.2))
-                                    .overlay(
-                                        GeometryReader { g in
-                                            Capsule().fill(Color.white).frame(width: g.size.width * 0.6)
-                                        }
-                                    )
-                                    .frame(height: 6)
-                            }
+                            .clipShape(Capsule())
                         }
-                        .padding(.horizontal, 4)
+                        
+                        // Volume
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Volume")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.18))
+                                    .frame(height: 26)
+                                Capsule()
+                                    .fill(Color.white)
+                                    .frame(width: 200, height: 26)
+                                Image(systemName: "speaker.wave.3.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.black)
+                                    .padding(.leading, 10)
+                            }
+                            .clipShape(Capsule())
+                        }
                     }
                     .padding(.top, 4)
                 }
