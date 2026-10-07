@@ -3898,7 +3898,7 @@ struct SoftwareUpdateView: View {
         model.updaterController?.checkForUpdates(nil)
         
         // Also check GitHub API for immediate inline feedback
-        guard let url = URL(string: "https://api.github.com/repos/Braham3030/Dynamic_notch/releases/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/Braham3030/Dynamic_notch/releases") else {
             isChecking = false
             return
         }
@@ -3911,22 +3911,23 @@ struct SoftwareUpdateView: View {
             DispatchQueue.main.async {
                 isChecking = false
                 if let error = error {
-                    statusText = "Sparkle update check initiated. (GitHub query: \(error.localizedDescription))"
+                    statusText = "Update check initiated. (Query info: \(error.localizedDescription))"
                     return
                 }
                 
                 guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tagName = json["tag_name"] as? String else {
-                    statusText = "Sparkle update check initiated. Checking feed..."
+                      let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                      let firstRelease = jsonArray.first,
+                      let tagName = firstRelease["tag_name"] as? String else {
+                    statusText = "Update check initiated with Sparkle feed."
                     return
                 }
                 
                 let cleanTag = tagName.replacingOccurrences(of: "v", with: "")
                 if cleanTag == appVersion {
-                    statusText = "You are running the latest beta release (\(tagName))!"
+                    statusText = "You are up to date! Running \(tagName) (Beta)."
                 } else {
-                    statusText = "Found new release on GitHub: \(tagName)! Triggering Sparkle update..."
+                    statusText = "New release found: \(tagName)! Triggering Sparkle update..."
                 }
             }
         }.resume()
