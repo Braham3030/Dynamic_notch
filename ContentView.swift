@@ -906,6 +906,15 @@ struct IslandView: View {
                 }
             }
             .frame(width: model.width, height: model.height, alignment: .top)
+            .contentShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius,
+                    bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius,
+                    topTrailingRadius: 0,
+                    style: .continuous
+                )
+            )
             .animation(model.currentAnimation, value: model.width)
             .animation(model.currentAnimation, value: model.height)
             .animation(model.currentAnimation, value: model.state)

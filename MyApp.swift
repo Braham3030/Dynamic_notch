@@ -90,12 +90,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let screen = item.screen
             let win = item.window
             
-            // Calculate active notch rect on this screen in macOS screen coordinates
-            // Include extra right margin when expanded so the popout switcher is never blocked by ignoresMouseEvents
+            // Calculate strict active notch rect on this screen in macOS screen coordinates
             let extraRight: CGFloat = model.isExpanded ? 90 : 0
             let notchX = screen.frame.midX - (width / 2.0)
             let notchY = screen.frame.maxY - height
-            let activeRect = NSRect(x: notchX - 10, y: notchY - 10, width: width + 20 + extraRight, height: height + 20)
+            // When compact: strictly match notch boundary with 0 vertical overhang below the notch
+            let activeRect: NSRect
+            if model.isExpanded {
+                activeRect = NSRect(x: notchX - 6, y: notchY - 6, width: width + 12 + extraRight, height: height + 6)
+            } else {
+                activeRect = NSRect(x: notchX, y: notchY, width: width, height: height)
+            }
             
             let isInside = activeRect.contains(location)
             
