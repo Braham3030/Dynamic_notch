@@ -8742,20 +8742,19 @@ struct LiquidScrubber: View {
         let remaining = Int(model.trackDuration) - elapsed
         let currentTrackWidth = max(0, CGFloat(safeProgress) * scrubberWidth)
         let progressTint = model.artworkColor
-        let trackHeight: CGFloat = isDragging ? 9.0 : 4.5
-        let containerHeight: CGFloat = isDragging ? 28 : 20
+        let trackHeight: CGFloat = isDragging ? 8.0 : 4.5
         
-        HStack(spacing: 10) {
-            // Left (Elapsed) - Larger & Bolder
-            Text(formatTime(elapsed))
-                .font(.system(size: 12.0, weight: .bold, design: .monospaced))
-                .foregroundColor(isDragging ? .white : .white.opacity(0.85))
-                .frame(width: 36, alignment: .trailing)
-                .scaleEffect(isDragging ? 1.06 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
+        HStack(spacing: 8) {
+            // Left (Elapsed) - Fixed bounding box so it NEVER shifts adjacent elements
+            ZStack(alignment: .trailing) {
+                Text(formatTime(elapsed))
+                    .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(isDragging ? .white : .white.opacity(0.80))
+            }
+            .frame(width: 36, height: 20, alignment: .trailing)
             
             ZStack(alignment: .leading) {
-                // 1. Translucent Liquid Glass Background Groove Track (Expands in height on drag)
+                // 1. Translucent Liquid Glass Background Groove Track
                 Capsule()
                     .fill(Color.white.opacity(isDragging ? 0.20 : 0.12))
                     .frame(width: scrubberWidth, height: trackHeight)
@@ -8765,7 +8764,7 @@ struct LiquidScrubber: View {
                     )
                     .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
-                // 2. Liquid Glass Active Progress Track matching Waveform Color (Expands in height on drag)
+                // 2. Liquid Glass Active Progress Track matching Waveform Color
                 Capsule()
                     .fill(
                         LinearGradient(
@@ -8775,17 +8774,17 @@ struct LiquidScrubber: View {
                         )
                     )
                     .frame(width: currentTrackWidth, height: trackHeight)
-                    .shadow(color: progressTint.opacity(isDragging ? 0.65 : 0.40), radius: isDragging ? 5 : 2.5, x: 0, y: 0)
+                    .shadow(color: progressTint.opacity(isDragging ? 0.65 : 0.40), radius: isDragging ? 4 : 2, x: 0, y: 0)
                     .animation(!isDragging ? .spring(response: 0.25, dampingFraction: 1.0) : .none, value: safeProgress)
                     .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isDragging)
                     
-                // 3. Ultra Liquid Glass Slider Knob with Expanded Touch Target & High-Contrast Halo
+                // 3. Ultra Liquid Glass Slider Knob with Expanded Touch Target & Specular Halo
                 ZStack {
                     // Ambient halo glow behind knob
                     Capsule()
-                        .fill(progressTint.opacity(isDragging ? 0.60 : 0.25))
-                        .frame(width: isDragging ? 32 : 14, height: isDragging ? 24 : 14)
-                        .blur(radius: isDragging ? 6 : 2.5)
+                        .fill(progressTint.opacity(isDragging ? 0.55 : 0.25))
+                        .frame(width: isDragging ? 28 : 14, height: isDragging ? 20 : 14)
+                        .blur(radius: isDragging ? 5 : 2.5)
                     
                     // Liquid Glass Translucent Base
                     Capsule()
@@ -8799,7 +8798,7 @@ struct LiquidScrubber: View {
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: isDragging ? 26 : 11, height: isDragging ? 18 : 11)
+                        .frame(width: isDragging ? 22 : 11, height: isDragging ? 16 : 11)
                         // Specular Light Refraction Border
                         .overlay(
                             Capsule()
@@ -8813,21 +8812,21 @@ struct LiquidScrubber: View {
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: isDragging ? 1.4 : 1.0
+                                    lineWidth: isDragging ? 1.3 : 1.0
                                 )
                         )
                         // Inner Liquid Glass Glow Pill
                         .overlay(
                             Capsule()
                                 .fill(progressTint.opacity(isDragging ? 0.45 : 0.20))
-                                .frame(width: isDragging ? 10 : 4, height: isDragging ? 7 : 4)
+                                .frame(width: isDragging ? 9 : 4, height: isDragging ? 6 : 4)
                         )
-                        .shadow(color: Color.black.opacity(0.40), radius: isDragging ? 6 : 2.5, x: 0, y: 2)
+                        .shadow(color: Color.black.opacity(0.38), radius: isDragging ? 5 : 2.5, x: 0, y: 1.5)
                 }
-                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 13 : 5.5)), scrubberWidth - (isDragging ? 26 : 11)))
+                .offset(x: min(max(0, currentTrackWidth - (isDragging ? 11 : 5.5)), scrubberWidth - (isDragging ? 22 : 11)))
                 .animation(.spring(response: 0.28, dampingFraction: 0.65), value: isDragging)
             }
-            .frame(width: scrubberWidth, height: containerHeight, alignment: .center)
+            .frame(width: scrubberWidth, height: 20, alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -8853,14 +8852,15 @@ struct LiquidScrubber: View {
                     }
             )
             
-            // Right (Remaining) - Larger & Bolder
-            Text("-" + formatTime(remaining))
-                .font(.system(size: 12.0, weight: .bold, design: .monospaced))
-                .foregroundColor(isDragging ? .white : .white.opacity(0.85))
-                .frame(width: 44, alignment: .leading)
-                .scaleEffect(isDragging ? 1.06 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
+            // Right (Remaining) - Fixed bounding box so it NEVER shifts adjacent elements
+            ZStack(alignment: .leading) {
+                Text("-" + formatTime(remaining))
+                    .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(isDragging ? .white : .white.opacity(0.80))
+            }
+            .frame(width: 42, height: 20, alignment: .leading)
         }
+        .frame(height: 20)
     }
     
     func formatTime(_ totalSeconds: Int) -> String {
