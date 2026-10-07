@@ -1,14 +1,28 @@
+struct LyricsWord: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let startTime: TimeInterval
+    let endTime: TimeInterval
+}
+
 
 // MARK: - Apple Music Authentic Real-Time Synchronized Lyrics & Karaoke Sing Engine
 struct AppleMusicLyricsView: View {
     @ObservedObject var model: IslandModel
     
     var body: some View {
-        VStack(spacing: 8) {
-            headerRow
-            mainLyricsArea
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 8) {
+                headerRow
+                lyricsScrollView
+            }
+            .padding(.vertical, 8)
+            
+            // Bottom-Right Apple Music Sing (Karaoke) Control: Icon at bottom, Thick Vertical Slider expanding above it!
+            karaokeSingFloatingControl
+                .padding(.trailing, 14)
+                .padding(.bottom, 12)
         }
-        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(Color.black.opacity(0.55))
@@ -29,37 +43,14 @@ struct AppleMusicLyricsView: View {
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
-            
             Spacer()
-            
-            // Apple Music Sing / Karaoke Microphone Button
-            Button(action: {
-                model.toggleKaraoke()
-            }) {
-                HStack(spacing: 5) {
-                    Image(systemName: model.isKaraokeActive ? "mic.fill" : "mic.slash.fill")
-                        .font(.system(size: 12, weight: .bold))
-                    Text(model.isKaraokeActive ? "Sing Active" : "Karaoke")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(model.isKaraokeActive ? model.artworkColor : Color.white.opacity(0.14))
-                )
-                .foregroundColor(model.isKaraokeActive ? .black : .white)
-                .shadow(color: model.isKaraokeActive ? model.artworkColor.opacity(0.6) : Color.clear, radius: 6)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
     }
     
-    private var mainLyricsArea: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            // Real-Time Scrolling Synchronized Lyrics Canvas
+    private var lyricsScrollView: some View {
+        Group {
             if model.isFetchingLyrics {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -72,24 +63,28 @@ struct AppleMusicLyricsView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 18) {
                             let currentSec = model.playbackPosition
                             ForEach(Array(model.currentTrackLyrics.indices), id: \.self) { (idx: Int) in
                                 let line = model.currentTrackLyrics[idx]
-                                let isCurrent = isLineActive(index: idx, currentSec: currentSec)
+                                let isCurrent = currentSec >= line.startTime && currentSec < line.endTime
                                 
                                 Button(action: {
                                     model.seekToPosition(line.startTime)
                                 }) {
-                                    Text(line.text)
-                                        .font(.system(size: isCurrent ? 19 : 15, weight: isCurrent ? .bold : .semibold, design: .rounded))
-                                        .foregroundColor(isCurrent ? .white : Color.white.opacity(0.38))
-                                        .blur(radius: isCurrent ? 0 : 0.3)
-                                        .scaleEffect(isCurrent ? 1.05 : 1.0, anchor: .leading)
-                                        .shadow(color: isCurrent ? model.artworkColor.opacity(0.75) : Color.clear, radius: isCurrent ? 10 : 0)
-                                        .multilineTextAlignment(.leading)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .padding(.vertical, 2)
+                                    if !line.words.isEmpty {
+                                        // Precise Apple-style word-by-word flow
+                                        WrappingHStack(words: line.words, currentSec: currentSec, isCurrentLine: isCurrent, artworkColor: model.artworkColor)
+                                    } else {
+                                        Text(line.text)
+                                            .font(.system(size: isCurrent ? 20 : 16, weight: isCurrent ? .bold : .semibold, design: .rounded))
+                                            .foregroundColor(isCurrent ? .white : Color.white.opacity(0.35))
+                                            .blur(radius: isCurrent ? 0 : 0.3)
+                                            .scaleEffect(isCurrent ? 1.04 : 1.0, anchor: .leading)
+                                            .shadow(color: isCurrent ? model.artworkColor.opacity(0.80) : Color.clear, radius: isCurrent ? 12 : 0)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
                                 .buttonStyle(.plain)
                                 .id(line.id)
@@ -97,10 +92,14 @@ struct AppleMusicLyricsView: View {
                             }
                         }
                         .padding(.horizontal, 16)
+                        .padding(.trailing, model.isKaraokeActive ? 54 : 16)
                         .padding(.vertical, 10)
                     }
                     .onChange(of: model.playbackPosition) { newPos in
-                        let activeIndex = model.currentTrackLyrics.indices.first { isLineActive(index: $0, currentSec: newPos) }
+                        let activeIndex = model.currentTrackLyrics.indices.first {
+                            let l = model.currentTrackLyrics[$0]
+                            return newPos >= l.startTime && newPos < l.endTime
+                        }
                         if let idx = activeIndex {
                             withAnimation(.spring(response: 0.40, dampingFraction: 0.80)) {
                                 proxy.scrollTo(model.currentTrackLyrics[idx].id, anchor: .center)
@@ -109,25 +108,28 @@ struct AppleMusicLyricsView: View {
                     }
                 }
             }
-            
-            // Vertical Vocal Slider on Bottom Right for Karaoke Mode
+        }
+        .frame(height: 250)
+    }
+    
+    // Bottom-Right Apple Music Sing (Karaoke) Control
+    private var karaokeSingFloatingControl: some View {
+        VStack(spacing: 8) {
+            // Thick Vertical Liquid Glass Slider positioned directly ABOVE the karaoke icon
             if model.isKaraokeActive {
-                VStack(spacing: 6) {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(model.artworkColor)
-                    
-                    // Vertical Liquid Glass Vocal Slider
+                VStack(spacing: 4) {
                     GeometryReader { geo in
                         let totalH = geo.size.height
                         let fillH = totalH * CGFloat(1.0 - model.karaokeVocalLevel)
                         
                         ZStack(alignment: .bottom) {
-                            Capsule()
-                                .fill(Color.white.opacity(0.18))
-                                .frame(width: 8, height: totalH)
+                            // Thick outer pill groove
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.white.opacity(0.20))
+                                .frame(width: 28, height: totalH)
                             
-                            Capsule()
+                            // Glowing liquid vocal fill inside thick slider
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [model.artworkColor, Color.white],
@@ -135,8 +137,14 @@ struct AppleMusicLyricsView: View {
                                         endPoint: .bottom
                                     )
                                 )
-                                .frame(width: 8, height: fillH)
-                                .shadow(color: model.artworkColor.opacity(0.5), radius: 3)
+                                .frame(width: 28, height: fillH)
+                                .shadow(color: model.artworkColor.opacity(0.8), radius: 6)
+                            
+                            // Vocal icon inside slider
+                            Image(systemName: "music.mic")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(fillH > 24 ? .black.opacity(0.7) : .white.opacity(0.8))
+                                .padding(.bottom, 6)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
@@ -148,42 +156,109 @@ struct AppleMusicLyricsView: View {
                                 }
                         )
                     }
-                    .frame(width: 24, height: 115)
-                    
-                    Image(systemName: "music.note")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white.opacity(0.6))
-                    
-                    Text("Vocals")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 32, height: 110)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 4)
+                .padding(4)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.black.opacity(0.65))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1.0)
+                        )
                 )
-                .padding(.trailing, 10)
-                .padding(.bottom, 6)
-                .transition(.scale.combined(with: .opacity))
+                .shadow(color: Color.black.opacity(0.5), radius: 8, y: 4)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .bottom)),
+                    removal: .opacity.combined(with: .scale(scale: 0.85, anchor: .bottom))
+                ))
             }
+            
+            // Icon-Only Apple Music Sing Karaoke Button at bottom right
+            Button(action: {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
+                    model.toggleKaraoke()
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(model.isKaraokeActive ? model.artworkColor : Color.white.opacity(0.18))
+                        .frame(width: 38, height: 38)
+                    
+                    Image(systemName: model.isKaraokeActive ? "mic.fill" : "mic.and.signal.meter")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(model.isKaraokeActive ? .black : .white)
+                }
+                .shadow(color: model.isKaraokeActive ? model.artworkColor.opacity(0.75) : Color.clear, radius: 8)
+            }
+            .buttonStyle(.plain)
         }
-        .frame(height: 250)
-    }
-    
-    private func isLineActive(index: Int, currentSec: Double) -> Bool {
-        guard index < model.currentTrackLyrics.count else { return false }
-        let currentLineStart = model.currentTrackLyrics[index].startTime
-        let nextLineStart = (index + 1 < model.currentTrackLyrics.count) ? model.currentTrackLyrics[index + 1].startTime : (model.trackDuration > 0 ? model.trackDuration : currentLineStart + 8.0)
-        return currentSec >= currentLineStart && currentSec < nextLineStart
     }
 }
+
+// MARK: - Word-by-Word Flowing Text View for Apple Music Lyrics
+struct WrappingHStack: View {
+    let words: [LyricsWord]
+    let currentSec: Double
+    let isCurrentLine: Bool
+    let artworkColor: Color
+    
+    var body: some View {
+        // Flow layout for words with individual dynamic illumination
+        var width = CGFloat.zero
+        var height = CGFloat.zero
+        
+        return GeometryReader { g in
+            ZStack(alignment: .topLeading) {
+                ForEach(words) { word in
+                    let isWordActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
+                    let hasWordPassed = isCurrentLine && currentSec >= word.endTime
+                    
+                    Text(word.text + " ")
+                        .font(.system(size: isCurrentLine ? 20 : 16, weight: isCurrentLine ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(
+                            isWordActive ? Color.white : (
+                                (hasWordPassed || isCurrentLine) ? Color.white.opacity(0.92) : Color.white.opacity(0.35)
+                            )
+                        )
+                        .blur(radius: isWordActive ? 0 : (isCurrentLine ? 0.1 : 0.3))
+                        .scaleEffect(isWordActive ? 1.08 : 1.0, anchor: .leading)
+                        .shadow(color: isWordActive ? artworkColor.opacity(0.95) : (isCurrentLine ? artworkColor.opacity(0.4) : Color.clear), radius: isWordActive ? 12 : 0)
+                        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isWordActive)
+                        .alignmentGuide(.leading, computeValue: { d in
+                            if (abs(width - d.width) > g.size.width) {
+                                width = 0
+                                height -= d.height + 4
+                            }
+                            let result = width
+                            if word.id == words.last?.id {
+                                width = 0
+                            } else {
+                                width -= d.width
+                            }
+                            return result
+                        })
+                        .alignmentGuide(.top, computeValue: { _ in
+                            let result = height
+                            if word.id == words.last?.id {
+                                height = 0
+                            }
+                            return result
+                        })
+                }
+            }
+        }
+        .frame(minHeight: 28)
+    }
+}
+
 
 struct LyricsLine: Identifiable, Equatable {
     let id = UUID()
     let startTime: TimeInterval
+    let endTime: TimeInterval
     let text: String
+    var words: [LyricsWord] = []
 }
 
 import AVKit
@@ -3871,7 +3946,7 @@ class IslandModel: ObservableObject {
                 fetchedLRC = queryLRC(cleanTrack: cleanTitle, cleanArtist: artistName)
             }
             
-            var parsed: [LyricsLine] = []
+            var rawLines: [(time: Double, text: String)] = []
             if let lrcText = fetchedLRC, !lrcText.isEmpty {
                 let lines = lrcText.components(separatedBy: .newlines)
                 for line in lines {
@@ -3885,14 +3960,14 @@ class IslandModel: ObservableObject {
                         if timeParts.count == 2, let mins = Double(timeParts[0]), let secs = Double(timeParts[1]) {
                             let totalSecs = (mins * 60.0) + secs
                             if !textStr.isEmpty {
-                                parsed.append(LyricsLine(startTime: totalSecs, text: textStr))
+                                rawLines.append((time: totalSecs, text: textStr))
                             }
                         }
                     }
                 }
             }
             
-            if parsed.isEmpty {
+            if rawLines.isEmpty {
                 var nativeLyrics = ""
                 let scriptSource = """
                 tell application "Music"
@@ -3908,21 +3983,40 @@ class IslandModel: ObservableObject {
                     let lines = nativeLyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
                     let interval = trackDur / Double(max(1, lines.count))
                     for (i, l) in lines.enumerated() {
-                        parsed.append(LyricsLine(startTime: Double(i) * interval, text: l.trimmingCharacters(in: .whitespaces)))
+                        rawLines.append((time: Double(i) * interval, text: l.trimmingCharacters(in: .whitespaces)))
                     }
                 }
             }
             
-            if parsed.isEmpty {
-                parsed = [
-                    LyricsLine(startTime: 0.0, text: "♪ Listening to \(trackName) ♪"),
-                    LyricsLine(startTime: max(2.0, trackDur * 0.08), text: trackName),
-                    LyricsLine(startTime: max(5.0, trackDur * 0.20), text: "by \(artistName)"),
-                    LyricsLine(startTime: max(8.0, trackDur * 0.40), text: "Sing along with Apple Music Sing"),
-                    LyricsLine(startTime: max(12.0, trackDur * 0.60), text: "♪ Instrumentals & Vocals synced ♪"),
-                    LyricsLine(startTime: max(16.0, trackDur * 0.80), text: "♪ \(artistName) ♪"),
-                    LyricsLine(startTime: max(20.0, trackDur * 0.95), text: "♪ Outro ♪")
+            if rawLines.isEmpty {
+                rawLines = [
+                    (time: 0.0, text: "♪ Listening to \(trackName) ♪"),
+                    (time: max(2.0, trackDur * 0.08), text: trackName),
+                    (time: max(5.0, trackDur * 0.20), text: "by \(artistName)"),
+                    (time: max(8.0, trackDur * 0.40), text: "Sing along with Apple Music Sing"),
+                    (time: max(12.0, trackDur * 0.60), text: "♪ Instrumentals & Vocals synced ♪"),
+                    (time: max(16.0, trackDur * 0.80), text: "♪ \(artistName) ♪"),
+                    (time: max(20.0, trackDur * 0.95), text: "♪ Outro ♪")
                 ]
+            }
+            
+            // Build detailed word-by-word line model
+            var parsed: [LyricsLine] = []
+            for (idx, r) in rawLines.enumerated() {
+                let nextStart = (idx + 1 < rawLines.count) ? rawLines[idx + 1].time : (trackDur > 0 ? trackDur : r.time + 8.0)
+                let lineDuration = max(0.8, nextStart - r.time)
+                
+                let wordTokens = r.text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                var words: [LyricsWord] = []
+                if !wordTokens.isEmpty {
+                    let perWordTime = lineDuration / Double(wordTokens.count)
+                    for (wIdx, w) in wordTokens.enumerated() {
+                        let wStart = r.time + (Double(wIdx) * perWordTime)
+                        let wEnd = wStart + perWordTime
+                        words.append(LyricsWord(text: w, startTime: wStart, endTime: wEnd))
+                    }
+                }
+                parsed.append(LyricsLine(startTime: r.time, endTime: nextStart, text: r.text, words: words))
             }
             
             DispatchQueue.main.async {
