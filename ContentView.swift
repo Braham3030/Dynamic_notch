@@ -569,13 +569,7 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 2. AirDrop Row: Working Liquid Glass Slider
-                        if model.showAirDrop {
-                            AirDropReceivingModeSlider(model: model)
-                                .frame(width: 340)
-                        }
-                        
-                        // 3. Middle Row: Brightness Slider with Title
+                        // 2. Middle Row: Brightness Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Brightness")
                                 .font(.system(size: 10, weight: .semibold))
@@ -589,7 +583,7 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 4. Middle Row: Volume Slider with Title
+                        // 3. Middle Row: Volume Slider with Title
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Volume")
                                 .font(.system(size: 10, weight: .semibold))
@@ -603,12 +597,9 @@ struct IslandView: View {
                         }
                         .frame(width: 340)
                         
-                        // 5. Bottom Row: AirPods Noise Control Slider
-                        if model.airPodsConnected && model.showAirPodsLocalization {
-                            AirPodsListeningModeSlider(model: model)
-                                .frame(width: 340)
-                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                        }
+                        // 4. Bottom Row: AirPods Noise Control Liquid Glass Slider
+                        AirPodsListeningModeSlider(model: model)
+                            .frame(width: 340)
                     }
                 } else {
                     disabledFeatureNotice("Control Center Quick Toggles Disabled")
@@ -1031,11 +1022,7 @@ extension IslandModel {
             if state == .expandedMusic { return 215 }
             if state == .expandedFood { return 85 }
             if state == .expandedControls {
-                let baseHeight: CGFloat = showAirDrop ? 255 : 190
-                if airPodsConnected && showAirPodsLocalization {
-                    return baseHeight + 75
-                }
-                return baseHeight
+                return 270
             }
         }
         return physicalNotchHeight
@@ -1993,26 +1980,17 @@ class IslandModel: ObservableObject {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             guard let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
-            let sel1 = Selector("setListeningMode:")
-            let sel2 = Selector("setNoiseCancellationMode:")
-            let sel3 = Selector("setListeningMode:error:")
+            let sel = Selector("setListeningMode:")
+            typealias SetListeningModeIMP = @convention(c) (AnyObject, Selector, UInt32) -> Bool
             
-            typealias SetListeningModeIMP32 = @convention(c) (AnyObject, Selector, UInt32) -> Bool
-            typealias SetListeningModeIMP8 = @convention(c) (AnyObject, Selector, UInt8) -> Bool
-            
-            for device in devices where device.isConnected() {
-                if device.responds(to: sel1) {
-                    let imp = device.method(for: sel1)
-                    let fn32 = unsafeBitCast(imp, to: SetListeningModeIMP32.self)
-                    _ = fn32(device, sel1, UInt32(mode))
-                    let fn8 = unsafeBitCast(imp, to: SetListeningModeIMP8.self)
-                    _ = fn8(device, sel1, UInt8(mode))
-                } else if device.responds(to: sel2) {
-                    let imp = device.method(for: sel2)
-                    let fn32 = unsafeBitCast(imp, to: SetListeningModeIMP32.self)
-                    _ = fn32(device, sel2, UInt32(mode))
-                    let fn8 = unsafeBitCast(imp, to: SetListeningModeIMP8.self)
-                    _ = fn8(device, sel2, UInt8(mode))
+            for device in devices {
+                let name = device.nameOrAddress ?? ""
+                if name.contains("AirPods") || device.deviceClassMajor == 4 {
+                    if device.responds(to: sel) {
+                        let imp = device.method(for: sel)
+                        let fn = unsafeBitCast(imp, to: SetListeningModeIMP.self)
+                        _ = fn(device, sel, UInt32(mode))
+                    }
                 }
             }
         }
@@ -3533,18 +3511,31 @@ struct AirPodsListeningModeSlider: View {
     let titles = ["Noise Cancellation", "Off", "Transparency"]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("NOISE CONTROL")
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundColor(.white.opacity(0.45))
-                .padding(.leading, 2)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("NOISE CONTROL")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.leading, 2)
+                Spacer()
+                if let idx = modes.firstIndex(of: model.listeningMode) {
+                    Text(titles[idx])
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundColor(.blue)
+                        .padding(.trailing, 2)
+                }
+            }
             
-            VStack(spacing: 6) {
-                // Capsule Pill Track (NO outer card background, pure Dynamic Notch style)
+            VStack(spacing: 5) {
+                // Liquid Glass Capsule Track
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule(style: .continuous)
                             .fill(Color.white.opacity(0.12))
+                            .background(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
                         
                         HStack(spacing: 0) {
                             ForEach(0..<3, id: \.self) { i in
@@ -3559,9 +3550,15 @@ struct AirPodsListeningModeSlider: View {
                                     ZStack {
                                         if isSelected {
                                             Circle()
-                                                .fill(Color.blue)
+                                                .fill(
+                                                    LinearGradient(
+                                                        colors: [Color(red: 0.1, green: 0.55, blue: 1.0), Color.blue],
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                )
                                                 .frame(width: 32, height: 32)
-                                                .shadow(color: Color.blue.opacity(0.4), radius: 4, x: 0, y: 1)
+                                                .shadow(color: Color.blue.opacity(0.45), radius: 5, x: 0, y: 1)
                                         }
                                         AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
                                     }
