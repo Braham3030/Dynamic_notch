@@ -700,8 +700,8 @@ struct IslandView: View {
                             controlsView
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         } else {
-                            ZStack(alignment: .center) {
-                                // Main Content View: Dead-Centered with physical notch & perfectly symmetrical margins
+                            ZStack(alignment: .top) {
+                                // Main Content View: Anchored cleanly with exact symmetrical margins
                                 Group {
                                     if model.state == .expandedMusic {
                                         musicView
@@ -713,18 +713,19 @@ struct IslandView: View {
                                         controlsView
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .center)
+                                .frame(maxWidth: .infinity, alignment: .top)
                                 .padding(.leading, 18)
                                 .padding(.trailing, 48) // Fixed exact balance for the right-side switcher dock across all tabs
                                 
-                                // Right Side: Compact Liquid Glass Vertical Switcher anchored with exact right margin matching Music tab
+                                // Right Side: Compact Liquid Glass Vertical Switcher anchored strictly at standard top place
                                 HStack(spacing: 0) {
                                     Spacer(minLength: 0)
                                     VerticalSwitcher(model: model, activeState: model.state)
                                         .padding(.trailing, 10)
+                                        .padding(.top, (model.state == .expandedFood ? 18 : 78))
                                 }
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         }
                     }
                 }
@@ -1703,7 +1704,7 @@ extension IslandModel {
         if isExpanded {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 245 : 165
-            case .expandedMusic: return isShowingAirPlayInMusic ? 345 : 215
+            case .expandedMusic: return isShowingAirPlayInMusic ? 375 : 215
             case .expandedFood: return 85
             case .expandedPhone: return 92
             case .expandedNotifications: return 88
@@ -9117,15 +9118,15 @@ struct AirPlayDevicePickerInMusicView: View {
     @ObservedObject var model: IslandModel
     
     var body: some View {
-        VStack(spacing: 6) {
-            // Header
+        VStack(spacing: 8) {
+            // Header with Apple styling
             HStack {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "airplayaudio")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.cyan)
                     Text("Speakers & Audio Output")
-                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                 }
                 Spacer()
@@ -9135,62 +9136,70 @@ struct AirPlayDevicePickerInMusicView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.up.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.65))
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             .padding(.top, 2)
             
-            // Device list
+            // Large Device Selection Cards
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 4) {
+                VStack(spacing: 6) {
                     if model.airPlayDevices.isEmpty {
-                        HStack {
+                        HStack(spacing: 8) {
                             ProgressView()
-                                .scaleEffect(0.6)
-                            Text("Detecting AirPlay devices...")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.6))
+                                .scaleEffect(0.7)
+                            Text("Detecting audio outputs...")
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 16)
                     } else {
                         ForEach(model.airPlayDevices) { dev in
                             Button {
                                 model.selectAirPlayDevice(dev)
                             } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: dev.iconName)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(dev.isSelected ? .cyan : .white.opacity(0.8))
-                                        .frame(width: 18)
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(dev.isSelected ? Color.cyan.opacity(0.32) : Color.white.opacity(0.10))
+                                            .frame(width: 34, height: 34)
+                                        Image(systemName: dev.iconName)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(dev.isSelected ? .cyan : .white)
+                                    }
                                     
-                                    VStack(alignment: .leading, spacing: 1) {
+                                    VStack(alignment: .leading, spacing: 2) {
                                         Text(dev.name)
-                                            .font(.system(size: 12, weight: dev.isSelected ? .bold : .medium))
+                                            .font(.system(size: 13.5, weight: dev.isSelected ? .bold : .semibold, design: .rounded))
                                             .foregroundColor(dev.isSelected ? .cyan : .white)
                                             .lineLimit(1)
                                         Text(dev.kind.capitalized)
-                                            .font(.system(size: 9.5, weight: .medium))
-                                            .foregroundColor(.white.opacity(0.45))
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.55))
                                     }
                                     
                                     Spacer()
                                     
                                     if dev.isSelected {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 11, weight: .bold))
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 17, weight: .bold))
                                             .foregroundColor(.cyan)
                                             .transition(.scale.combined(with: .opacity))
                                     }
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(dev.isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.06))
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(dev.isSelected ? Color.cyan.opacity(0.20) : Color.white.opacity(0.08))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(dev.isSelected ? Color.cyan.opacity(0.45) : Color.white.opacity(0.10), lineWidth: 1)
+                                        )
                                 )
                             }
                             .buttonStyle(.plain)
@@ -9199,17 +9208,17 @@ struct AirPlayDevicePickerInMusicView: View {
                 }
                 .padding(.horizontal, 2)
             }
-            .frame(maxHeight: 88)
+            .frame(maxHeight: 122)
         }
-        .padding(8)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.08))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 0.7)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
                 )
         )
-        .padding(.top, 2)
+        .padding(.top, 4)
     }
 }
