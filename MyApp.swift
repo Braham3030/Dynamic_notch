@@ -176,9 +176,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func createIslandWindow(for screen: NSScreen) -> NSWindow {
         let islandView = IslandView(model: IslandModel.shared)
-        let hostingController = NSHostingController(rootView: islandView)
-        hostingController.view.wantsLayer = true
-        hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+        let hostingView = NSHostingView(rootView: islandView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.autoresizingMask = [.width, .height]
         
         let width: CGFloat = 680
         let height: CGFloat = 280
@@ -192,7 +193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        win.contentViewController = hostingController
+        win.contentView = hostingView
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false

@@ -178,24 +178,13 @@ func IOBluetoothPreferenceSetControllerPowerState(_ state: Int32)
 // MARK: - Image Analysis Extension for Dynamic Color Glow
 extension NSImage {
     var averageColor: Color {
-        // Fast hardware-assisted 1x1 downsampling for instant zero-lag color extraction
-        guard let tiffData = self.tiffRepresentation,
-              let source = CGImageSourceCreateWithData(tiffData as CFData, nil) else {
+        // Direct zero-overhead hardware sampling from CGImage
+        guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return .orange
         }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 4
-        ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-            return .orange
-        }
-        
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         var bitmapData: [UInt8] = [0, 0, 0, 0]
-        let context = CGContext(
+        guard let context = CGContext(
             data: &bitmapData,
             width: 1,
             height: 1,
@@ -203,9 +192,11 @@ extension NSImage {
             bytesPerRow: 4,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
-        context?.interpolationQuality = .low
-        context?.draw(thumbnail, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        ) else {
+            return .orange
+        }
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         
         let multi: Double = 1.35
         let r = min(Double(bitmapData[0]) / 255.0 * multi, 1.0)
@@ -3683,12 +3674,21 @@ struct VerticalSwitcher: View {
 // - Hardware Management Extensions
 extension IslandModel {
     func readSystemBrightness() {
-        let path = "/System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay"
-        if let handle = dlopen(path, RTLD_LAZY),
-           let sym = dlsym(handle, "CoreDisplay_Display_GetUserBrightness") {
-            typealias CBGetUserBrightness = @convention(c) (CGDirectDisplayID) -> Double
-            let getBrightness = unsafeBitCast(sym, to: CBGetUserBrightness.self)
-            self.brightness = getBrightness(CGMainDisplayID())
+        struct CoreDisplayHelper {
+            static let fn: (@convention(c) (CGDirectDisplayID) -> Double)? = {
+                let path = "/System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay"
+                guard let handle = dlopen(path, RTLD_LAZY),
+                      let sym = dlsym(handle, "CoreDisplay_Display_GetUserBrightness") else {
+                    return nil
+                }
+                return unsafeBitCast(sym, to: (@convention(c) (CGDirectDisplayID) -> Double).self)
+            }()
+        }
+        if let getBrightness = CoreDisplayHelper.fn {
+            let val = getBrightness(CGMainDisplayID())
+            if val > 0.0 && val <= 1.0 {
+                self.brightness = val
+            }
         }
     }
     
