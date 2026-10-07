@@ -1,3 +1,20 @@
+struct AirPlayOutputDevice: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let isSelected: Bool
+    let kind: String
+    
+    var iconName: String {
+        let k = kind.lowercased()
+        let n = name.lowercased()
+        if n.contains("airpods") { return "airpodspro" }
+        if n.contains("tv") || k.contains("tv") { return "tv.fill" }
+        if n.contains("homepod") || k.contains("homepod") { return "homepod.fill" }
+        if k.contains("computer") || n.contains("mac") || n.contains("macbook") { return "laptopcomputer" }
+        return "hifispeaker.fill"
+    }
+}
+
 
 struct WiFiNetworkItem: Identifiable, Hashable {
     let id = UUID()
@@ -1599,16 +1616,16 @@ struct IslandView: View {
                 
                 // AirPlay / AirPods Route Output Button (Far Right)
                 Button(action: {
-                    model.openBluetoothSettings()
+                    model.toggleAirPlayInMusic()
                 }) {
                     ZStack {
-                        Rectangle()
-                            .fill(Color.clear)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(model.isShowingAirPlayInMusic ? Color.cyan.opacity(0.25) : Color.clear)
                             .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
                         Image(systemName: model.airPodsConnected ? "airpodspro" : "airplayaudio")
                             .font(.system(size: 19, weight: .medium))
-                            .foregroundColor(.white.opacity(0.65))
+                            .foregroundColor(model.isShowingAirPlayInMusic ? Color.cyan : Color.white.opacity(0.65))
+                            .shadow(color: model.isShowingAirPlayInMusic ? Color.cyan.opacity(0.6) : Color.clear, radius: 4)
                     }
                 }
                 .buttonStyle(.plain)
@@ -1618,6 +1635,15 @@ struct IslandView: View {
             .opacity(showsExpandedMusicDetails ? 1 : 0)
             .offset(y: showsExpandedMusicDetails ? 0 : -36)
             .allowsHitTesting(showsExpandedMusicDetails)
+            
+            // Interactive AirPlay Device Routing Underneath the Music Tab
+            if model.isShowingAirPlayInMusic {
+                AirPlayDevicePickerInMusicView(model: model)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: 8)),
+                        removal: .opacity.combined(with: .offset(y: 4))
+                    ))
+            }
         }
         .padding(14)
     }
@@ -1677,7 +1703,7 @@ extension IslandModel {
         if isExpanded {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 245 : 165
-            case .expandedMusic: return 215
+            case .expandedMusic: return isShowingAirPlayInMusic ? 345 : 215
             case .expandedFood: return 85
             case .expandedPhone: return 92
             case .expandedNotifications: return 88
@@ -2533,6 +2559,8 @@ class IslandModel: ObservableObject {
     @Published var nextTrackName: String = ""
     @Published var prevTrackName: String = ""
     @Published var currentAlbum: String = ""
+    @Published var isShowingAirPlayInMusic: Bool = false
+    @Published var airPlayDevices: [AirPlayOutputDevice] = []
     private var albumTracksCache: [String: [String]] = [:]
     
     private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
@@ -3121,6 +3149,82 @@ class IslandModel: ObservableObject {
         }
     }
     
+    func toggleAirPlayInMusic() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.76)) {
+            isShowingAirPlayInMusic.toggle()
+            if isShowingAirPlayInMusic {
+                fetchAirPlayDevices()
+            }
+        }
+    }
+    
+    func fetchAirPlayDevices() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let scriptSource = """
+            tell application "Music"
+                set devList to {}
+                try
+                    set allDevs to every AirPlay device
+                    repeat with d in allDevs
+                        set dName to name of d
+                        set dSel to selected of d
+                        set dKind to kind of d as string
+                        set end of devList to (dName & "|||" & (dSel as string) & "|||" & dKind)
+                    end repeat
+                end try
+                return devList
+            end tell
+            """
+            var err: NSDictionary?
+            if let desc = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err) {
+                var devices: [AirPlayOutputDevice] = []
+                if desc.descriptorType == 0x6c697374 {
+                    for i in 1...desc.numberOfItems {
+                        if let str = desc.atIndex(i)?.stringValue {
+                            let parts = str.components(separatedBy: "|||")
+                            if parts.count >= 3 {
+                                let name = parts[0]
+                                let sel = parts[1].lowercased() == "true"
+                                let kind = parts[2]
+                                devices.append(AirPlayOutputDevice(id: name, name: name, isSelected: sel, kind: kind))
+                            }
+                        }
+                    }
+                }
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        self?.airPlayDevices = devices
+                    }
+                }
+            }
+        }
+    }
+    
+    func selectAirPlayDevice(_ device: AirPlayOutputDevice) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+            self.airPlayDevices = self.airPlayDevices.map {
+                AirPlayOutputDevice(id: $0.id, name: $0.name, isSelected: $0.id == device.id, kind: $0.kind)
+            }
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let scriptSource = """
+            tell application "Music"
+                try
+                    set allDevs to every AirPlay device
+                    repeat with d in allDevs
+                        if name of d is "\(device.name)" then
+                            set selected of d to true
+                        end if
+                    end repeat
+                end try
+            end tell
+            """
+            var err: NSDictionary?
+            _ = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err)
+            self?.fetchAirPlayDevices()
+        }
+    }
+
     func togglePlayPause() {
         DispatchQueue.global(qos: .userInitiated).async {
             _ = NSAppleScript(source: "tell application \"Music\" to playpause")?.executeAndReturnError(nil)
@@ -3164,15 +3268,46 @@ class IslandModel: ObservableObject {
                         end try
                     end try
                     try
-                        set curIndex to index of curTrk
                         set curPl to current playlist
-                        if curIndex > 1 then
-                            set prevName to name of track (curIndex - 1) of curPl
-                        end if
-                        if curIndex < (count of tracks of curPl) then
-                            set nxtName to name of track (curIndex + 1) of curPl
-                        end if
+                        set curPlTracks to (get name of tracks of curPl)
+                        set c to count of curPlTracks
+                        repeat with i from 1 to c
+                            if (item i of curPlTracks) is equal to tTrack then
+                                if i > 1 then
+                                    set prevName to (item (i - 1) of curPlTracks)
+                                end if
+                                if i < c then
+                                    set nxtName to (item (i + 1) of curPlTracks)
+                                end if
+                                exit repeat
+                            end if
+                        end repeat
                     end try
+                    
+                    if nxtName is "" and prevName is "" then
+                        repeat with pl in (every playlist)
+                            try
+                                set plTracks to (get name of tracks of pl)
+                                if plTracks contains tTrack then
+                                    set c to count of plTracks
+                                    repeat with i from 1 to c
+                                        if (item i of plTracks) is equal to tTrack then
+                                            if i > 1 then
+                                                set prevName to (item (i - 1) of plTracks)
+                                            end if
+                                            if i < c then
+                                                set nxtName to (item (i + 1) of plTracks)
+                                            end if
+                                            exit repeat
+                                        end if
+                                    end repeat
+                                    if nxtName is not "" or prevName is not "" then
+                                        exit repeat
+                                    end if
+                                end if
+                            end try
+                        end repeat
+                    end if
                     try
                         if (count of artworks of curTrk) > 0 then
                             set rArt to raw data of artwork 1 of curTrk
@@ -8974,5 +9109,107 @@ struct LiquidGlassWiFiPicker: View {
                 )
                 .shadow(color: .black.opacity(0.5), radius: 12, x: 0, y: 4)
         )
+    }
+}
+
+
+struct AirPlayDevicePickerInMusicView: View {
+    @ObservedObject var model: IslandModel
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "airplayaudio")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.cyan)
+                    Text("Speakers & Audio Output")
+                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        model.isShowingAirPlayInMusic = false
+                    }
+                } label: {
+                    Image(systemName: "chevron.up.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 2)
+            
+            // Device list
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 4) {
+                    if model.airPlayDevices.isEmpty {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text("Detecting AirPlay devices...")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    } else {
+                        ForEach(model.airPlayDevices) { dev in
+                            Button {
+                                model.selectAirPlayDevice(dev)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: dev.iconName)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(dev.isSelected ? .cyan : .white.opacity(0.8))
+                                        .frame(width: 18)
+                                    
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(dev.name)
+                                            .font(.system(size: 12, weight: dev.isSelected ? .bold : .medium))
+                                            .foregroundColor(dev.isSelected ? .cyan : .white)
+                                            .lineLimit(1)
+                                        Text(dev.kind.capitalized)
+                                            .font(.system(size: 9.5, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.45))
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if dev.isSelected {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.cyan)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(dev.isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.06))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .frame(maxHeight: 88)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 0.7)
+                )
+        )
+        .padding(.top, 2)
     }
 }
