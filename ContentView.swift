@@ -296,11 +296,19 @@ struct IslandView: View {
                             .shadow(color: Color.black.opacity(0.45), radius: 10, y: 5)
                             
                         case .liquidGlass:
+                            // Tone: 0.0 (Light Frost Glass) to 1.0 (Dark Smoked Obsidian)
+                            let tone = model.liquidGlassTone
+                            let baseOpacity = model.isExpanded ? model.notchGlassOpacity : (model.notchCompactAlwaysBlack ? 1.0 : model.notchGlassOpacity)
+                            let darkFill = Color.black.opacity((0.15 + tone * 0.78) * baseOpacity)
+                            let frostHighlight = Color.white.opacity((1.0 - tone) * 0.45 * baseOpacity)
+                            let specularGlow = Color.white.opacity((0.40 - tone * 0.18) * baseOpacity)
+                            
                             ZStack {
-                                shape.fill(Color.black.opacity(0.85))
+                                shape.fill(darkFill)
+                                shape.fill(frostHighlight)
                                 shape.fill(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.20 * model.notchGlassOpacity), Color.clear],
+                                        colors: [specularGlow, Color.white.opacity(0.06 * (1.0 - tone)), Color.clear],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
@@ -309,7 +317,10 @@ struct IslandView: View {
                             .overlay(
                                 shape.stroke(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.35 * model.notchGlassOpacity), Color.white.opacity(0.10 * model.notchGlassOpacity)],
+                                        colors: [
+                                            Color.white.opacity((0.60 - tone * 0.25) * baseOpacity),
+                                            Color.white.opacity(0.15 * baseOpacity)
+                                        ],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ),
@@ -423,16 +434,42 @@ struct IslandView: View {
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
                         .stroke(Color.white.opacity(model.isExpanded ? 0.2 : 0.05), lineWidth: 0.5)
                 )
-                // Ambient Colored Glow around notch
+                // Dynamic Track-Pulsating Ambient Colored Glow behind notch
+                .background(
+                    Group {
+                        if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                            if model.pulsateArtworkGlow {
+                                TimelineView(.animation) { timeline in
+                                    let time = timeline.date.timeIntervalSinceReferenceDate
+                                    let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+                                    let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
+                                    let beat = sin(time * (bpm / 60.0) * Double.pi * 2.0)
+                                    let pulseFactor = (beat + 1.0) / 2.0 // 0.0 to 1.0
+                                    
+                                    let dynamicRadius = (model.isExpanded ? 20.0 : 10.0) + CGFloat(pulseFactor * 14.0 * model.artworkGlowIntensity)
+                                    let dynamicOpacity = (0.30 + pulseFactor * 0.50) * model.artworkGlowIntensity
+                                    
+                                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
+                                        .fill(model.artworkColor)
+                                        .blur(radius: dynamicRadius)
+                                        .opacity(dynamicOpacity)
+                                }
+                            } else {
+                                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
+                                    .fill(model.artworkColor)
+                                    .blur(radius: model.isExpanded ? 22 : 12)
+                                    .opacity(0.55 * model.artworkGlowIntensity)
+                            }
+                        }
+                    }
+                )
                 .shadow(
                     color: ((model.isExpanded && model.state == .expandedAirDrop) || model.isAirDropTargeted)
                         ? model.droppedFileColor.opacity(0.65)
-                        : (((model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow) 
-                            ? model.artworkColor.opacity(model.isExpanded ? 0.45 : 0.65) 
-                            : Color.black.opacity(0.35)), 
-                    radius: model.isExpanded ? 20 : 10, 
+                        : Color.black.opacity(0.35), 
+                    radius: model.isExpanded ? 16 : 8, 
                     x: 0, 
-                    y: model.isExpanded ? 6 : 3
+                    y: model.isExpanded ? 5 : 2
                 )
 
                 if !model.isExpanded {
@@ -2216,6 +2253,17 @@ class IslandModel: ObservableObject {
         }
     }
     
+    @Published var artworkGlowIntensity: Double = {
+        if UserDefaults.standard.object(forKey: "saved_artworkGlowIntensity") != nil {
+            return UserDefaults.standard.double(forKey: "saved_artworkGlowIntensity")
+        }
+        return 0.65
+    }() {
+        didSet {
+            UserDefaults.standard.set(artworkGlowIntensity, forKey: "saved_artworkGlowIntensity")
+        }
+    }
+
     @Published var pulsateArtworkGlow: Bool = {
         if UserDefaults.standard.object(forKey: "saved_pulsateArtworkGlow") != nil {
             return UserDefaults.standard.bool(forKey: "saved_pulsateArtworkGlow")
@@ -3067,9 +3115,6 @@ struct MusicWaveform: View {
     var isPlaying: Bool
     var color: Color = .white
     
-    // Exact fluid Apple iOS Dynamic Island waveform parameters
-    let frequencies: [Double] = [3.6, 5.4, 4.2, 6.2, 4.8]
-    let phases: [Double] = [0.0, 1.25, 2.5, 0.85, 1.95]
     let minHeight: CGFloat = 3.5
     let maxHeight: CGFloat = 16.5
     
@@ -3078,45 +3123,35 @@ struct MusicWaveform: View {
             TimelineView(.animation) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 
-                if model.waveformTrackSynchronized {
-                    let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
-                    let hash = Double(abs(trackKey.hashValue % 1000))
-                    let bpm = 120.0 + Double(abs(trackKey.hashValue % 30) - 15)
-                    let elapsed = max(0, min(2.0, Date().timeIntervalSince(model.lastPlaybackPollTime)))
-                    let liveTrackPos = model.playbackPosition + elapsed
-                    let beatPhase = liveTrackPos * (bpm / 60.0) * Double.pi * 2.0
-                    
-                    HStack(spacing: 2.2) {
-                        ForEach(0..<5, id: \.self) { i in
-                            let bandWeights = [1.0, 1.45, 1.75, 1.35, 0.95][i]
-                            let phaseShift = [0.0, 1.1, 2.3, 3.6, 4.9][i] + (hash * 0.004)
-                            let speed = [5.2, 7.8, 10.4, 8.1, 12.0][i]
-                            
-                            let kickPulse = pow(max(0.0, sin(beatPhase + phaseShift)), 2.0)
-                            let ambientFlow = (sin(time * speed + phaseShift) + 1.0) * 0.35
-                            let microJitter = cos(time * (speed * 1.5) + phaseShift) * 0.15
-                            
-                            let energy = max(0.12, min(1.0, (kickPulse * 0.55 + ambientFlow * 0.35 + microJitter * 0.10) * bandWeights * 0.85 + 0.15))
-                            let h = minHeight + CGFloat(energy) * (maxHeight - minHeight)
-                            
-                            Capsule()
-                                .fill(color)
-                                .frame(width: 3.2, height: h)
-                        }
+                // Track-derived beat dynamics
+                let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+                let hash = Double(abs(trackKey.hashValue % 1000))
+                let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
+                let beatSpeed = (bpm / 60.0) * Double.pi * 2.0
+                let elapsed = max(0, min(2.0, Date().timeIntervalSince(model.lastPlaybackPollTime)))
+                let liveTrackPos = model.playbackPosition + elapsed
+                let currentBeat = liveTrackPos * beatSpeed
+                
+                // 5 Stationary vertical bouncing bars (Equalizer bands with NO horizontal sweep)
+                HStack(spacing: 2.2) {
+                    ForEach(0..<5, id: \.self) { i in
+                        let barSpeed = [3.8, 6.2, 4.9, 7.1, 5.4][i]
+                        let indPhase = [1.2, 3.7, 0.4, 2.9, 1.8][i] + (hash * 0.002)
+                        let bandWeights = [1.1, 1.45, 1.7, 1.35, 0.95][i]
+                        
+                        let beatKick = abs(sin(currentBeat * (i == 0 ? 1.0 : (i == 2 ? 1.5 : 2.0)) + indPhase))
+                        let naturalBounce = (sin(time * barSpeed + indPhase) + 1.0) * 0.42
+                        let jitter = cos(time * (barSpeed * 1.6) + indPhase) * 0.12
+                        
+                        let combined = max(0.15, min(1.0, (beatKick * 0.52 + naturalBounce * 0.36 + jitter * 0.12) * bandWeights * 0.85 + 0.15))
+                        let h = minHeight + CGFloat(combined) * (maxHeight - minHeight)
+                        
+                        Capsule()
+                            .fill(color)
+                            .frame(width: 3.2, height: h)
                     }
-                    .frame(height: maxHeight, alignment: .center)
-                } else {
-                    HStack(spacing: 2.2) {
-                        ForEach(0..<5, id: \.self) { i in
-                            let wave = (sin(time * frequencies[i] + phases[i]) + 1.0) / 2.0
-                            let h = minHeight + CGFloat(wave) * (maxHeight - minHeight)
-                            Capsule()
-                                .fill(color)
-                                .frame(width: 3.2, height: h)
-                        }
-                    }
-                    .frame(height: maxHeight, alignment: .center)
                 }
+                .frame(height: maxHeight, alignment: .center)
             }
         } else {
             HStack(spacing: 2.2) {
@@ -3130,7 +3165,6 @@ struct MusicWaveform: View {
         }
     }
 }
-
 
 enum NotchTheme: String, CaseIterable, Identifiable {
     case classicBlack = "Classic Obsidian"
@@ -3760,6 +3794,29 @@ struct NotchStylingView: View {
                                 Toggle("", isOn: $model.pulsateArtworkGlow)
                                     .toggleStyle(.switch)
                                     .labelsHidden()
+                            }
+                            
+                            Divider().opacity(0.2)
+                            
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Label("Ambient Glow Intensity", systemImage: "sparkles")
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                    Spacer()
+                                    Text(model.artworkGlowIntensity > 0.75 ? "Vibrant" : (model.artworkGlowIntensity < 0.40 ? "Subtle" : "Balanced"))
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.blue)
+                                }
+                                HStack(spacing: 10) {
+                                    Text("Subtle")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                    Slider(value: $model.artworkGlowIntensity, in: 0.15...1.0)
+                                    Text("Vibrant")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
                     }
