@@ -978,35 +978,47 @@ struct IslandView: View {
                             Image(systemName: "music.note").font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
                         }
                     }
-                    .id(model.currentTrackTitle)
+                    .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                     .transition(.flip3D(isForward: model.isForward))
                 }
                 .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
                 .zIndex(1)
                 
                 ZStack(alignment: .leading) {
-                    // Previous Track (Hidden 200px to the left, slides in when dragging right)
-                    if manualDragOffset > 0 && !model.prevTrackName.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(model.prevTrackName).font(.system(size: 15, weight: .bold)).foregroundColor(.white.opacity(0.8)).lineLimit(1)
-                            Text("Previous").font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.4)).lineLimit(1).textCase(.uppercase)
+                    // Previous Track Indicator
+                    if manualDragOffset > 0 {
+                        HStack(spacing: 6) {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("Previous Track")
+                                .font(.system(size: 14, weight: .semibold))
                         }
-                        .offset(x: manualDragOffset - 240)
+                        .foregroundColor(.white.opacity(0.85))
+                        .offset(x: manualDragOffset - 220)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(model.currentTrackTitle).font(.system(size: 15, weight: .bold)).foregroundColor(.white).lineLimit(1)
-                        Text(model.currentTrackArtist).font(.system(size: 13, weight: .medium)).foregroundColor(.white.opacity(0.7)).lineLimit(1)
+                        Text(model.currentTrack.isEmpty ? "No Track Playing" : model.currentTrack)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(1)
                     }
                     .offset(x: manualDragOffset)
                     
-                    // Next Track (Hidden 200px to the right, slides in when dragging left)
-                    if manualDragOffset < 0 && !model.nextTrackName.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(model.nextTrackName).font(.system(size: 15, weight: .bold)).foregroundColor(.white.opacity(0.8)).lineLimit(1)
-                            Text("Next").font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.4)).lineLimit(1).textCase(.uppercase)
+                    // Next Track Indicator
+                    if manualDragOffset < 0 {
+                        HStack(spacing: 6) {
+                            Text("Next Track")
+                                .font(.system(size: 14, weight: .semibold))
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 13, weight: .bold))
                         }
-                        .offset(x: manualDragOffset + 240)
+                        .foregroundColor(.white.opacity(0.85))
+                        .offset(x: manualDragOffset + 220)
                     }
                 }
                 .padding(.leading, 12)
@@ -1033,10 +1045,7 @@ struct IslandView: View {
                                 withAnimation(.easeIn(duration: 0.2)) { manualDragOffset = -400 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
-                                    _ = NSAppleScript(source: "tell application \"Music\" to next track")?.executeAndReturnError(nil)
-                                    usleep(300_000) // Wait 300ms for Apple Music to jump track
-                                    model.fetchCurrentMusicState() // Force fetch state manually
-                                    
+                                    model.skipTrack(forward: true)
                                     DispatchQueue.main.async {
                                         manualDragOffset = 400
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -1050,10 +1059,7 @@ struct IslandView: View {
                                 withAnimation(.easeIn(duration: 0.2)) { manualDragOffset = 400 }
                                 
                                 DispatchQueue.global(qos: .userInitiated).async {
-                                    _ = NSAppleScript(source: "tell application \"Music\" to previous track")?.executeAndReturnError(nil)
-                                    usleep(300_000)
-                                    model.fetchCurrentMusicState()
-                                    
+                                    model.skipTrack(forward: false)
                                     DispatchQueue.main.async {
                                         manualDragOffset = -400
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -1091,9 +1097,7 @@ struct IslandView: View {
             HStack(spacing: 28) {
                 Button(action: {
                     bouncePrev += 1
-                    DispatchQueue.global(qos: .background).async { 
-                        _ = NSAppleScript(source: "tell application \"Music\" to previous track")?.executeAndReturnError(nil) 
-                    }
+                    model.skipTrack(forward: false)
                 }) {
                     ZStack {
                         Rectangle()
@@ -1109,11 +1113,7 @@ struct IslandView: View {
                 .buttonStyle(.plain)
                 
                 Button(action: {
-                    // Instantly visually swap with morphing animation
-                    withAnimation { model.isMusicPlaying.toggle() }
-                    DispatchQueue.global(qos: .background).async { 
-                        _ = NSAppleScript(source: "tell application \"Music\" to playpause")?.executeAndReturnError(nil) 
-                    }
+                    model.togglePlayPause()
                 }) {
                     ZStack {
                         Rectangle()
@@ -1130,9 +1130,7 @@ struct IslandView: View {
                 
                 Button(action: {
                     bounceNext += 1
-                    DispatchQueue.global(qos: .background).async { 
-                        _ = NSAppleScript(source: "tell application \"Music\" to next track")?.executeAndReturnError(nil) 
-                    }
+                    model.skipTrack(forward: true)
                 }) {
                     ZStack {
                         Rectangle()
@@ -1154,7 +1152,7 @@ struct IslandView: View {
         }
         .padding(16)
     }
-    
+
     @ViewBuilder var foodView: some View {
         HStack(spacing: 16) {
             Image(systemName: "bag.fill").foregroundColor(.green).font(.system(size: 24))
@@ -1209,27 +1207,9 @@ extension IslandModel {
         return physicalNotchHeight
     }
     
-    var currentTrackTitle: String { currentTrack }
+        var currentTrackTitle: String { currentTrack }
     var currentTrackArtist: String { currentArtist }
-    var musicProgress: Double { 0.4 }
-    
-    func skipDummyTrack(forward: Bool) {
-        let dummies = [
-            ("Don\'t Stop Me Now", "Queen"),
-            ("Starboy", "The Weeknd"),
-            ("Blinding Lights", "The Weeknd"),
-            ("Cruel Summer", "Taylor Swift"),
-            ("Hotel California", "Eagles")
-        ]
-        if let idx = dummies.firstIndex(where: { $0.0 == currentTrack }) {
-            let next = forward ? (idx + 1) % dummies.count : (idx - 1 + dummies.count) % dummies.count
-            currentTrack = dummies[next].0
-            currentArtist = dummies[next].1
-        } else {
-            currentTrack = dummies[0].0
-            currentArtist = dummies[0].1
-        }
-    } // dummy for UI
+    var musicProgress: Double { trackDuration > 0 ? (playbackPosition / trackDuration) : 0.0 }
 }
 
 struct SwitcherMenu: View {
@@ -1410,9 +1390,10 @@ class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDele
 }
 
 class IslandModel: ObservableObject {
+    private var artworkCache: [String: (image: NSImage, color: Color)] = [:]
+    var currentTrackPersistentID: String = ""
     var pendingArtworkRetry: Bool = false
     var artworkRetryCount: Int = 0
-    var lastArtworkData: Data? = nil
     private var lastVolumeAppleScriptTime: Date = Date()
     private var volumeWorkItem: DispatchWorkItem?
     static let shared = IslandModel()
@@ -2035,7 +2016,7 @@ class IslandModel: ObservableObject {
         }
         DispatchQueue.global(qos: .userInitiated).async {
             _ = NSAppleScript(source: forward ? "tell application \"Music\" to next track" : "tell application \"Music\" to previous track")?.executeAndReturnError(nil)
-            Thread.sleep(forTimeInterval: 0.2) // Allow music app to register skip before fetching!
+            Thread.sleep(forTimeInterval: 0.15)
             self.fetchCurrentMusicState()
         }
     }
@@ -2058,24 +2039,22 @@ class IslandModel: ObservableObject {
         if application "Music" is running then
             tell application "Music"
                 if player state is playing then
-                    set tTrack to name of current track
-                    set tArtist to artist of current track
-                    set tDur to duration of current track
+                    set curTrk to current track
+                    set tID to ""
+                    try
+                        set tID to persistent ID of curTrk
+                    end try
+                    set tTrack to name of curTrk
+                    set tArtist to artist of curTrk
+                    set tDur to duration of curTrk
                     set tPos to player position
                     set rArt to missing value
                     try
-                        set rArt to raw data of artwork 1 of current track
-                    end try
-                    set pTrack to ""
-                    set nTrack to ""
-                    try
-                        set curr to index of current track
-                        if curr > 1 then
-                            set pTrack to name of track (curr - 1)
+                        if (count of artworks of curTrk) > 0 then
+                            set rArt to raw data of artwork 1 of curTrk
                         end if
-                        set nTrack to name of track (curr + 1)
                     end try
-                    return {tTrack, tArtist, tDur, tPos, rArt, pTrack, nTrack}
+                    return {tID, tTrack, tArtist, tDur, tPos, rArt}
                 end if
             end tell
         end if
@@ -2092,8 +2071,18 @@ class IslandModel: ObservableObject {
             forName: NSNotification.Name("com.apple.Music.playerInfo"),
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            self?.fetchCurrentMusicState()
+        ) { [weak self] notif in
+            if let state = notif.userInfo?["Player State"] as? String {
+                if state.lowercased() == "playing" {
+                    self?.fetchCurrentMusicState()
+                } else if state.lowercased() == "paused" || state.lowercased() == "stopped" {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        self?.isMusicPlaying = false
+                    }
+                }
+            } else {
+                self?.fetchCurrentMusicState()
+            }
         }
         
         // 2. Efficient periodic position tracking
@@ -2121,78 +2110,79 @@ class IslandModel: ObservableObject {
                 return
             }
             
-            let tTrack = desc.atIndex(1)?.stringValue ?? "Unknown Track"
-            let tArtist = desc.atIndex(2)?.stringValue ?? "Unknown Artist"
-            let tDuration = desc.atIndex(3)?.doubleValue ?? 100.0
-            let tPosition = desc.atIndex(4)?.doubleValue ?? 0.0
-            let pTrack = desc.atIndex(6)?.stringValue ?? ""
-            let nTrack = desc.atIndex(7)?.stringValue ?? ""
+            let tID = desc.atIndex(1)?.stringValue ?? ""
+            let tTrack = desc.atIndex(2)?.stringValue ?? "Unknown Track"
+            let tArtist = desc.atIndex(3)?.stringValue ?? "Unknown Artist"
+            let tDuration = desc.atIndex(4)?.doubleValue ?? 100.0
+            let tPosition = desc.atIndex(5)?.doubleValue ?? 0.0
             
-            var fetchNewArt = false
-            DispatchQueue.main.sync {
-                self.trackDuration = tDuration > 0 ? tDuration : 1.0
-                self.playbackPosition = tPosition
-                if self.currentTrack != tTrack || self.pendingArtworkRetry {
-                    fetchNewArt = true
-                    if self.currentTrack != tTrack && Date().timeIntervalSince(self.lastManualSkipTime) > 2.0 {
-                        self.isForward = true
-                    }
+            let cacheKey = !tID.isEmpty ? tID : "\(tTrack)_\(tArtist)"
+            
+            var parsedImage: NSImage? = nil
+            var parsedColor: Color = .orange
+            
+            // Check raw artwork data in descriptor
+            if let artDesc = desc.atIndex(6), artDesc.descriptorType != 0x6d736e67 /* 'msng' */ {
+                let rawData = artDesc.data
+                if !rawData.isEmpty, let img = NSImage(data: rawData) {
+                    parsedImage = img
+                    parsedColor = img.averageColor
+                    self.artworkCache[cacheKey] = (img, parsedColor)
                 }
             }
             
-            var newImage: NSImage? = nil
-            var finalColor: Color = .orange
-            var fetchedData: Data? = nil
-            
-            if fetchNewArt {
-                if let dataDesc = desc.atIndex(5) {
-                    let rawData = dataDesc.data
-                    fetchedData = rawData
-                    
-                    if let img = NSImage(data: rawData) {
-                        newImage = img
-                        finalColor = img.averageColor
-                    }
-                }
+            // Check in-memory cache if direct decode wasn't present
+            if parsedImage == nil, let cached = self.artworkCache[cacheKey] {
+                parsedImage = cached.image
+                parsedColor = cached.color
             }
             
             DispatchQueue.main.async {
-                if fetchNewArt {
-                    var doFlip = false
-                    if self.currentTrack != tTrack { 
-                        doFlip = true 
-                        self.artworkRetryCount = 0
+                let isNewTrack = (self.currentTrackPersistentID != cacheKey || self.currentTrack != tTrack)
+                
+                self.trackDuration = tDuration > 0 ? tDuration : 1.0
+                self.playbackPosition = tPosition
+                self.isMusicPlaying = true
+                
+                if isNewTrack {
+                    if Date().timeIntervalSince(self.lastManualSkipTime) > 2.0 {
+                        self.isForward = true
                     }
+                    self.currentTrackPersistentID = cacheKey
+                    self.currentTrack = tTrack
+                    self.currentArtist = tArtist
                     
-                    let isStale = (self.lastArtworkData != nil && fetchedData == self.lastArtworkData)
-                    let isMissing = (fetchedData == nil)
-                    
-                    if (isStale || isMissing) && self.artworkRetryCount < 10 {
-                        self.pendingArtworkRetry = true
-                        self.artworkRetryCount += 1
-                    } else {
+                    if let img = parsedImage {
+                        self.currentArtwork = img
+                        self.artworkColor = parsedColor
                         self.pendingArtworkRetry = false
-                        if fetchedData != nil { self.lastArtworkData = fetchedData }
+                    } else {
+                        // Reset to default music icon while loading — NEVER keep previous track's artwork
+                        self.currentArtwork = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
+                        self.artworkColor = .orange
+                        self.pendingArtworkRetry = true
+                        self.scheduleArtworkRetry(for: cacheKey, attempt: 1)
                     }
-                    
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
-                        self.isMusicPlaying = true
-                        self.currentTrack = tTrack
-                        self.currentArtist = tArtist
-                        self.prevTrackName = pTrack
-                        self.nextTrackName = nTrack
-                        // Commit the image if we got one, or if we gave up on retrying!
-                        if newImage != nil || !self.pendingArtworkRetry || doFlip {
-                            self.currentArtwork = newImage ?? NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
-                            if newImage != nil { self.artworkColor = finalColor }
+                } else {
+                    // Ongoing track: if artwork was pending and now arrived, animate in
+                    if let img = parsedImage, self.pendingArtworkRetry {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.currentArtwork = img
+                            self.artworkColor = parsedColor
                         }
-                    }
-                } else if !self.isMusicPlaying {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        self.isMusicPlaying = true
+                        self.pendingArtworkRetry = false
                     }
                 }
             }
+        }
+    }
+    
+    private func scheduleArtworkRetry(for trackKey: String, attempt: Int) {
+        guard attempt <= 5 else { return }
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + (Double(attempt) * 0.35)) { [weak self] in
+            guard let self = self else { return }
+            guard self.currentTrackPersistentID == trackKey, self.pendingArtworkRetry else { return }
+            self.fetchCurrentMusicState()
         }
     }
 
