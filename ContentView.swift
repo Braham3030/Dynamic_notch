@@ -64,13 +64,39 @@ class AudioAnalyzer: ObservableObject {
     private var engine = AVAudioEngine()
     private var fftSetup: FFTSetup?
     private let bufferSize: UInt32 = 1024
+    private var lastProcessTime: CFAbsoluteTime = 0
+    private var isEngineRunning: Bool = false
+    
+    // Pre-allocated reusable buffers to avoid heap thrashing in real-time audio tap callback
+    private var window: [Float]
+    private var windowed: [Float]
+    private var real: [Float]
+    private var imag: [Float]
+    private var magnitudes: [Float]
     
     init() {
-        fftSetup = vDSP_create_fftsetup(vDSP_Length(log2(Float(bufferSize))), FFTRadix(kFFTRadix2))
+        let log2n = vDSP_Length(log2(Float(bufferSize)))
+        fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
+        let n = Int(bufferSize)
+        let halfN = n / 2
+        
+        var win = [Float](repeating: 0, count: n)
+        vDSP_hann_window(&win, vDSP_Length(n), Int32(vDSP_HANN_NORM))
+        self.window = win
+        self.windowed = [Float](repeating: 0, count: n)
+        self.real = [Float](repeating: 0, count: halfN)
+        self.imag = [Float](repeating: 0, count: halfN)
+        self.magnitudes = [Float](repeating: 0, count: halfN)
+    }
+    
+    deinit {
+        if let setup = fftSetup {
+            vDSP_destroy_fftsetup(setup)
+        }
     }
     
     func startMonitoring() {
-        if engine.isRunning { return }
+        guard !isEngineRunning else { return }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             self.startEngine()
@@ -85,84 +111,94 @@ class AudioAnalyzer: ObservableObject {
     }
     
     func stopMonitoring() {
+        guard isEngineRunning else { return }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
+        isEngineRunning = false
         DispatchQueue.main.async {
             self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
         }
     }
     
     private func startEngine() {
+        guard !isEngineRunning else { return }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0 && format.channelCount > 0 else { return }
         
+        input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: bufferSize, format: format) { [weak self] buffer, _ in
             guard let self = self else { return }
+            
+            // Frame limiter: cap at 30 FPS to reduce CPU/energy usage to near zero
+            let now = CFAbsoluteTimeGetCurrent()
+            guard now - self.lastProcessTime >= 0.033 else { return }
+            self.lastProcessTime = now
+            
             guard let channelData = buffer.floatChannelData?[0] else { return }
+            let frameLength = min(Int(buffer.frameLength), Int(self.bufferSize))
+            guard frameLength >= 256, let fftSetup = self.fftSetup else { return }
             
-            let frameLength = Int(buffer.frameLength)
-            var window = [Float](repeating: 0, count: frameLength)
-            vDSP_hann_window(&window, vDSP_Length(frameLength), Int32(vDSP_HANN_NORM))
+            let halfLength = frameLength / 2
             
-            var windowed = [Float](repeating: 0, count: frameLength)
-            vDSP_vmul(channelData, 1, window, 1, &windowed, 1, vDSP_Length(frameLength))
+            // Vectorized windowing
+            vDSP_vmul(channelData, 1, self.window, 1, &self.windowed, 1, vDSP_Length(frameLength))
             
-            var real = [Float](repeating: 0, count: frameLength / 2)
-            var imag = [Float](repeating: 0, count: frameLength / 2)
-            
-            real.withUnsafeMutableBufferPointer { realPtr in
-                imag.withUnsafeMutableBufferPointer { imagPtr in
+            self.real.withUnsafeMutableBufferPointer { realPtr in
+                self.imag.withUnsafeMutableBufferPointer { imagPtr in
                     var splitComplex = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
                     
-                    windowed.withUnsafeBytes { ptr in
+                    self.windowed.withUnsafeBytes { ptr in
                         let fPtr = ptr.bindMemory(to: Float.self).baseAddress!
-                        fPtr.withMemoryRebound(to: DSPComplex.self, capacity: frameLength / 2) { complexPtr in
-                            vDSP_ctoz(complexPtr, 2, &splitComplex, 1, vDSP_Length(frameLength / 2))
+                        fPtr.withMemoryRebound(to: DSPComplex.self, capacity: halfLength) { complexPtr in
+                            vDSP_ctoz(complexPtr, 2, &splitComplex, 1, vDSP_Length(halfLength))
                         }
                     }
                     
-                    vDSP_fft_zrip(self.fftSetup!, &splitComplex, 1, vDSP_Length(log2(Float(frameLength))), FFTDirection(FFT_FORWARD))
+                    let log2n = vDSP_Length(log2(Float(frameLength)))
+                    vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
                     
-                    var magnitudes = [Float](repeating: 0.0, count: frameLength / 2)
-                    vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(frameLength / 2))
+                    vDSP_zvmags(&splitComplex, 1, &self.magnitudes, 1, vDSP_Length(halfLength))
                     
                     let buckets = 6
                     var finalPeaks = [CGFloat](repeating: 0.2, count: buckets)
-                    // Discard first few DC buckets, heavily weight bass & mids
                     let bandRanges = [
                         1..<3,      // Sub bass
                         3..<7,      // Bass
                         7..<15,     // Low Mid
                         15..<35,    // Mid
                         35..<80,    // High Mid
-                        80..<200    // Treble
+                        80..<min(200, halfLength) // Treble
                     ]
                     
                     for i in 0..<buckets {
                         var sum: Float = 0
                         let range = bandRanges[i]
                         for j in range {
-                            if j < magnitudes.count {
-                                sum += magnitudes[j]
+                            if j < halfLength {
+                                sum += self.magnitudes[j]
                             }
                         }
                         
-                        let avg = sum / Float(range.count)
-                        // Square root to boost lower volumes visually, scale down for aesthetics
+                        let count = max(1, range.count)
+                        let avg = sum / Float(count)
                         let displayValue = CGFloat(min(1.0, max(0.2, (sqrt(avg) / 40.0) * 0.8 + 0.2)))
                         finalPeaks[i] = displayValue
                     }
                     
                     DispatchQueue.main.async {
-                        withAnimation(.spring(response: 0.15, dampingFraction: 0.7)) {
-                            self.peaks = finalPeaks
-                        }
+                        self.peaks = finalPeaks
                     }
                 }
             }
         }
         
-        try? engine.start()
+        do {
+            try engine.start()
+            isEngineRunning = true
+        } catch {
+            isEngineRunning = false
+        }
     }
 }
 
@@ -2293,9 +2329,12 @@ class IslandModel: ObservableObject {
             }
         }
         
-        // 2. Efficient periodic position tracking
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.fetchCurrentMusicState()
+        // 2. Efficient periodic position tracking: Only poll Apple Music when app is actually playing or expanded
+        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isMusicPlaying || self.state == .expandedMusic || !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty {
+                self.fetchCurrentMusicState()
+            }
         }
         fetchCurrentMusicState()
     }
