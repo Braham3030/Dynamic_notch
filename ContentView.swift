@@ -1389,7 +1389,9 @@ struct IslandView: View {
                 ZStack(alignment: .leading) {
                     // Real-Time Previous Track Title Preview (1:1 identical typography and font size)
                     if manualDragOffset > 0 {
-                        let prevDisplay = !model.prevTrackName.isEmpty ? model.prevTrackName : model.currentTrack
+                        let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack) 
+                            ? model.prevTrackName 
+                            : "Previous Track"
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 5) {
                                 Image(systemName: "backward.fill")
@@ -1427,7 +1429,9 @@ struct IslandView: View {
                     
                     // Real-Time Next Track Title Preview (1:1 identical typography and font size)
                     if manualDragOffset < 0 {
-                        let nextDisplay = !model.nextTrackName.isEmpty ? model.nextTrackName : model.currentTrack
+                        let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack) 
+                            ? model.nextTrackName 
+                            : "Next Track"
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 5) {
                                 Text(nextDisplay)
@@ -2534,50 +2538,83 @@ class IslandModel: ObservableObject {
     private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
         guard !track.isEmpty else { return }
         
-        let cacheKey = "\(artist)_\(album.isEmpty ? track : album)"
+        let isSingle = album.lowercased().contains("single") || album.lowercased().contains("ep") || album.isEmpty
+        let cleanArtist = artist.components(separatedBy: "&").first?.components(separatedBy: "feat").first?.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? artist
+        let searchTerm = isSingle ? (cleanArtist.isEmpty ? track : cleanArtist) : "\(cleanArtist) \(album)"
+        let cacheKey = "\(cleanArtist)_\(album.isEmpty ? track : album)"
+        
         if let cachedList = self.albumTracksCache[cacheKey],
            let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
             DispatchQueue.main.async {
-                self.prevTrackName = idx > 0 ? cachedList[idx - 1] : ""
-                self.nextTrackName = idx < cachedList.count - 1 ? cachedList[idx + 1] : ""
+                let p = idx > 0 ? cachedList[idx - 1] : (cachedList.count > 1 ? cachedList.last! : "")
+                let n = idx < cachedList.count - 1 ? cachedList[idx + 1] : (cachedList.count > 1 ? cachedList.first! : "")
+                if p != track { self.prevTrackName = p }
+                if n != track { self.nextTrackName = n }
             }
             return
         }
         
-        guard !artist.isEmpty else { return }
-        let queryTerm = "\(artist) \(album.isEmpty ? track : album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        guard let url = URL(string: "https://itunes.apple.com/search?term=\(queryTerm)&entity=song&limit=50") else { return }
+        guard let encoded = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://itunes.apple.com/search?term=\(encoded)&entity=song&limit=50") else { return }
         
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let self = self, let data = data else { return }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let results = json["results"] as? [[String: Any]] {
                 
-                // Filter songs matching this artist / collection
-                let albumResults = results.filter {
-                    if !album.isEmpty, let cName = $0["collectionName"] as? String {
-                        return cName.localizedCaseInsensitiveContains(album) || album.localizedCaseInsensitiveContains(cName)
+                // 1. If full album, sort by album track number
+                var matchedNames: [String] = []
+                if !isSingle {
+                    let albumResults = results.filter {
+                        if let cName = $0["collectionName"] as? String {
+                            return cName.localizedCaseInsensitiveContains(album) || album.localizedCaseInsensitiveContains(cName)
+                        }
+                        return false
                     }
-                    return true
+                    if albumResults.count > 1 {
+                        var sortedAlbum: [(name: String, trackNum: Int)] = []
+                        for item in albumResults {
+                            if let name = item["trackName"] as? String, let num = item["trackNumber"] as? Int {
+                                if !sortedAlbum.contains(where: { $0.name.lowercased() == name.lowercased() }) {
+                                    sortedAlbum.append((name: name, trackNum: num))
+                                }
+                            }
+                        }
+                        sortedAlbum.sort { $0.trackNum < $1.trackNum }
+                        matchedNames = sortedAlbum.map { $0.name }
+                    }
                 }
-                let songSource = albumResults.isEmpty ? results : albumResults
                 
-                var sortedSongs: [(name: String, trackNum: Int)] = []
-                for item in songSource {
-                    if let name = item["trackName"] as? String, let num = item["trackNumber"] as? Int {
-                        if !sortedSongs.contains(where: { $0.name.lowercased() == name.lowercased() }) {
-                            sortedSongs.append((name: name, trackNum: num))
+                // 2. If single or album matching was not multi-track, collect distinct top artist tracks
+                if matchedNames.count < 2 {
+                    for item in results {
+                        if let name = item["trackName"] as? String {
+                            if !matchedNames.contains(where: { $0.lowercased() == name.lowercased() }) {
+                                matchedNames.append(name)
+                            }
                         }
                     }
                 }
-                sortedSongs.sort { $0.trackNum < $1.trackNum }
-                let names = sortedSongs.map { $0.name }
-                if !names.isEmpty {
-                    self.albumTracksCache[cacheKey] = names
-                    if let idx = names.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+                
+                if !matchedNames.isEmpty {
+                    self.albumTracksCache[cacheKey] = matchedNames
+                    if let idx = matchedNames.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+                        let p = idx > 0 ? matchedNames[idx - 1] : (matchedNames.count > 1 ? matchedNames.last! : "")
+                        let n = idx < matchedNames.count - 1 ? matchedNames[idx + 1] : (matchedNames.count > 1 ? matchedNames.first! : "")
                         DispatchQueue.main.async {
-                            self.prevTrackName = idx > 0 ? names[idx - 1] : ""
-                            self.nextTrackName = idx < names.count - 1 ? names[idx + 1] : ""
+                            if p != track { self.prevTrackName = p }
+                            if n != track { self.nextTrackName = n }
+                        }
+                    } else if matchedNames.count >= 2 {
+                        let filtered = matchedNames.filter { !$0.localizedCaseInsensitiveContains(track) }
+                        DispatchQueue.main.async {
+                            if filtered.count > 1 {
+                                self.prevTrackName = filtered[1]
+                                self.nextTrackName = filtered[0]
+                            } else if let first = filtered.first {
+                                self.nextTrackName = first
+                                self.prevTrackName = first
+                            }
                         }
                     }
                 }
