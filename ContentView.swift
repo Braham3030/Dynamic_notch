@@ -178,13 +178,36 @@ func IOBluetoothPreferenceSetControllerPowerState(_ state: Int32)
 // MARK: - Image Analysis Extension for Dynamic Color Glow
 extension NSImage {
     var averageColor: Color {
-        guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return .orange }
+        // Fast hardware-assisted 1x1 downsampling for instant zero-lag color extraction
+        guard let tiffData = self.tiffRepresentation,
+              let source = CGImageSourceCreateWithData(tiffData as CFData, nil) else {
+            return .orange
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 4
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return .orange
+        }
+        
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         var bitmapData: [UInt8] = [0, 0, 0, 0]
-        let context = CGContext(data: &bitmapData, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        context?.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let context = CGContext(
+            data: &bitmapData,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        context?.interpolationQuality = .low
+        context?.draw(thumbnail, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         
-        let multi: Double = 1.4 
+        let multi: Double = 1.35
         let r = min(Double(bitmapData[0]) / 255.0 * multi, 1.0)
         let g = min(Double(bitmapData[1]) / 255.0 * multi, 1.0)
         let b = min(Double(bitmapData[2]) / 255.0 * multi, 1.0)
@@ -2039,43 +2062,61 @@ class IslandModel: ObservableObject {
         }
     }
     
+    private var precompiledMusicScript: NSAppleScript? = {
+        let scriptSource = """
+        if application "Music" is running then
+            tell application "Music"
+                if player state is playing then
+                    set tTrack to name of current track
+                    set tArtist to artist of current track
+                    set tDur to duration of current track
+                    set tPos to player position
+                    set rArt to missing value
+                    try
+                        set rArt to raw data of artwork 1 of current track
+                    end try
+                    set pTrack to ""
+                    set nTrack to ""
+                    try
+                        set curr to index of current track
+                        if curr > 1 then
+                            set pTrack to name of track (curr - 1)
+                        end if
+                        set nTrack to name of track (curr + 1)
+                    end try
+                    return {tTrack, tArtist, tDur, tPos, rArt, pTrack, nTrack}
+                end if
+            end tell
+        end if
+        return missing value
+        """
+        let script = NSAppleScript(source: scriptSource)
+        script?.compileAndReturnError(nil)
+        return script
+    }()
+    
     private func startMusicMonitoring() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.fetchCurrentMusicState() }
+        // 1. Instant zero-latency notifications on track/playback changes from Apple Music
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.fetchCurrentMusicState()
+        }
+        
+        // 2. Efficient periodic position tracking
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.fetchCurrentMusicState()
+        }
         fetchCurrentMusicState()
     }
     
     func fetchCurrentMusicState() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let scriptSource = """
-            if application "Music" is running then
-                tell application "Music"
-                    if player state is playing then
-                        set tTrack to name of current track
-                        set tArtist to artist of current track
-                        set tDur to duration of current track
-                        set tPos to player position
-                        set rArt to missing value
-                        try
-                            set rArt to raw data of artwork 1 of current track
-                        end try
-                        set pTrack to ""
-                        set nTrack to ""
-                        try
-                            set curr to index of current track
-                            if curr > 1 then
-                                set pTrack to name of track (curr - 1)
-                            end if
-                            set nTrack to name of track (curr + 1)
-                        end try
-                        return {tTrack, tArtist, tDur, tPos, rArt, pTrack, nTrack}
-                    end if
-                end tell
-            end if
-            return missing value
-            """
-            
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
             var err: NSDictionary?
-            guard let script = NSAppleScript(source: scriptSource) else { return }
+            guard let script = self.precompiledMusicScript else { return }
             let desc = script.executeAndReturnError(&err)
             
             if desc.numberOfItems < 2 {
@@ -2460,7 +2501,7 @@ struct MusicWaveform: View {
     
     var body: some View {
         if isPlaying {
-            TimelineView(.animation) { timeline in
+            TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 HStack(spacing: 2.2) {
                     ForEach(0..<5, id: \.self) { i in
