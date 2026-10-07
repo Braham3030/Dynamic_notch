@@ -1797,7 +1797,8 @@ class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDele
                 // Skip Audio (Headphones, earbuds, speakers) and peripherals (Keyboards, mice)
                 if majorClass == 4 || majorClass == 5 { continue }
                 
-                guard let rawName = device.nameOrAddress, !rawName.isEmpty else { continue }
+                let rawName = device.name ?? device.addressString ?? ""
+                guard !rawName.isEmpty else { continue }
                 let lower = rawName.lowercased()
                 
                 // Blacklist audio accessories and non-AirDrop devices
@@ -2570,6 +2571,8 @@ class IslandModel: ObservableObject {
     
     private func resolveSurroundingTrackNames(track: String, artist: String, album: String) {
         guard !track.isEmpty else { return }
+        // If next and previous titles are already resolved directly from Apple Music, skip network query
+        guard self.nextTrackName.isEmpty || self.prevTrackName.isEmpty else { return }
         
         let isSingle = album.lowercased().contains("single") || album.lowercased().contains("ep") || album.isEmpty
         let cleanArtist = artist.components(separatedBy: "&").first?.components(separatedBy: "feat").first?.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? artist
@@ -3523,7 +3526,7 @@ class IslandModel: ObservableObject {
                 
                 for device in devices {
                     if device.isConnected() {
-                        let name = device.nameOrAddress ?? ""
+                        let name = device.name ?? device.addressString ?? ""
                         let isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats") || device.deviceClassMajor == 4
                         if isAppleAudio {
                             if device.responds(to: selSetMode) {
@@ -3568,7 +3571,7 @@ class IslandModel: ObservableObject {
     }
 
     private func refreshBluetoothState() {
-        isBluetoothOn = IOBluetoothHostController.default().powerState == kBluetoothHCIPowerStateON
+        isBluetoothOn = (IOBluetoothHostController.default()?.powerState == kBluetoothHCIPowerStateON)
     }
     
     private var airPodsMonitorTimer: Timer?
@@ -3665,7 +3668,7 @@ class IslandModel: ObservableObject {
             typealias BatIMP = @convention(c) (AnyObject, Selector) -> UInt8
             
             for device in devices {
-                let name = device.nameOrAddress ?? ""
+                let name = device.name ?? device.addressString ?? ""
                 var isAppleAudio = name.localizedCaseInsensitiveContains("AirPods") || name.localizedCaseInsensitiveContains("Beats")
                 
                 if !isAppleAudio && device.responds(to: selIsAdvanced) {
