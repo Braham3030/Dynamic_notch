@@ -2493,54 +2493,69 @@ class IslandModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             var networks: [WiFiNetworkItem] = []
             
-            if let interface = CWWiFiClient.shared().interface() {
-                let currentSSID = interface.ssid() ?? ""
-                let currentRSSI = interface.rssiValue()
-                
-                if !currentSSID.isEmpty {
-                    networks.append(
-                        WiFiNetworkItem(
-                            ssid: currentSSID,
-                            rssi: currentRSSI != 0 ? currentRSSI : -50,
-                            isConnected: true,
-                            isSecure: true
-                        )
-                    )
-                }
-                
-                do {
-                    let scanned = try interface.scanForNetworks(withName: nil)
-                    for net in scanned {
-                        if let name = net.ssid, !name.isEmpty, name != currentSSID {
-                            if !networks.contains(where: { $0.ssid == name }) {
-                                networks.append(
-                                    WiFiNetworkItem(
-                                        ssid: name,
-                                        rssi: net.rssiValue,
-                                        isConnected: false,
-                                        isSecure: net.supportsSecurity(.wpaPersonal) || net.supportsSecurity(.wpa2Personal) || net.supportsSecurity(.wpa3Personal)
-                                    )
-                                )
+            // 1. Immediately insert active connected SSID if known
+            let curr = self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" ? "" : self.wifiSSID
+            if !curr.isEmpty {
+                networks.append(WiFiNetworkItem(ssid: curr, rssi: -48, isConnected: true, isSecure: true))
+            }
+            
+            // 2. Query macOS system profiler for all real local Wi-Fi networks
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
+            task.arguments = ["-json", "SPAirPortDataType"]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            do {
+                try task.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                task.waitUntilExit()
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let items = json["SPAirPortDataType"] as? [[String: Any]] {
+                    for item in items {
+                        if let interfaces = item["spairport_airport_interfaces"] as? [[String: Any]] {
+                            for iface in interfaces {
+                                if let curInfo = iface["spairport_current_network_information"] as? [String: Any],
+                                   let cName = curInfo["_name"] as? String, !cName.isEmpty {
+                                    if !networks.contains(where: { $0.ssid == cName }) {
+                                        networks.insert(WiFiNetworkItem(ssid: cName, rssi: -48, isConnected: true, isSecure: true), at: 0)
+                                    }
+                                    DispatchQueue.main.async {
+                                        self.wifiSSID = cName
+                                    }
+                                }
+                                if let others = iface["spairport_other_local_wireless_networks"] as? [[String: Any]] {
+                                    for other in others {
+                                        if let oName = other["_name"] as? String, !oName.isEmpty {
+                                            let sec = other["spairport_security_mode"] as? String ?? ""
+                                            let isSec = !sec.lowercased().contains("none")
+                                            if !networks.contains(where: { $0.ssid == oName }) {
+                                                networks.append(WiFiNetworkItem(ssid: oName, rssi: -62, isConnected: false, isSecure: isSec))
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                } catch {
-                    // Fallback to local default network list if CoreWLAN scan blocked
+                }
+            } catch {}
+            
+            // 3. Additional CoreWLAN scan fallback
+            if let interface = CWWiFiClient.shared().interface(),
+               let scanned = try? interface.scanForNetworks(withName: nil) {
+                for net in scanned {
+                    if let name = net.ssid, !name.isEmpty {
+                        if !networks.contains(where: { $0.ssid == name }) {
+                            networks.append(WiFiNetworkItem(ssid: name, rssi: net.rssiValue, isConnected: false, isSecure: true))
+                        }
+                    }
                 }
             }
             
-            if networks.isEmpty {
-                let curr = self.wifiSSID.isEmpty || self.wifiSSID == "Off" ? "My Wi-Fi Network" : self.wifiSSID
-                networks = [
-                    WiFiNetworkItem(ssid: curr, rssi: -48, isConnected: true, isSecure: true),
-                    WiFiNetworkItem(ssid: "5G Ultra Home", rssi: -62, isConnected: false, isSecure: true),
-                    WiFiNetworkItem(ssid: "Guest Network", rssi: -74, isConnected: false, isSecure: false),
-                    WiFiNetworkItem(ssid: "iPhone Hotspot", rssi: -68, isConnected: false, isSecure: true)
-                ]
-            }
-            
             DispatchQueue.main.async {
-                self.availableWiFiNetworks = networks
+                if !networks.isEmpty {
+                    self.availableWiFiNetworks = networks
+                }
             }
         }
     }
@@ -3760,6 +3775,7 @@ class IslandModel: ObservableObject {
         guard let interface = CWWiFiClient.shared().interface() else {
             isWifiOn = false
             wifiBars = 0
+            wifiSSID = "Off"
             return
         }
 
@@ -3772,7 +3788,6 @@ class IslandModel: ObservableObject {
 
         let rssi = interface.rssiValue()
         if rssi == 0 {
-            // If connected but RSSI not cached immediately, default to 3 bars
             wifiBars = 3
         } else if rssi > -55 {
             wifiBars = 3
@@ -3782,10 +3797,40 @@ class IslandModel: ObservableObject {
             wifiBars = 1
         }
         
+        // 1. Check CoreWLAN SSID
         if let ssid = interface.ssid(), !ssid.isEmpty {
             self.wifiSSID = ssid
-        } else if wifiSSID.isEmpty || wifiSSID == "Off" {
-            self.wifiSSID = "Wi-Fi"
+            return
+        }
+        
+        // 2. Instant low-overhead IPConfig SSID resolution
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let ifName = CWWiFiClient.shared().interface()?.interfaceName ?? "en0"
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
+            task.arguments = ["getsummary", ifName]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            do {
+                try task.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                task.waitUntilExit()
+                if let output = String(data: data, encoding: .utf8) {
+                    for line in output.components(separatedBy: .newlines) {
+                        let trimmed = line.trimmingCharacters(in: .whitespaces)
+                        if trimmed.hasPrefix("SSID : ") {
+                            let realSSID = trimmed.replacingOccurrences(of: "SSID : ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !realSSID.isEmpty {
+                                DispatchQueue.main.async {
+                                    self.wifiSSID = realSSID
+                                }
+                                return
+                            }
+                        }
+                    }
+                }
+            } catch {}
         }
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
