@@ -1056,18 +1056,8 @@ struct IslandView: View {
     }
     
     @ViewBuilder private var compactAirPodsActivity: some View {
-        HStack(spacing: 0) {
-            // Left ear: Authentic 3D Flipping AirPods
-            AirPods3DView()
-                .frame(width: 26, height: 26)
-            
-            Spacer(minLength: 0)
-            
-            // Right ear: Clean Circular Battery Ring
-            CircularBatteryGauge(batteryLevel: model.airPodsBatteryLevel)
-                .frame(width: 22, height: 22)
-        }
-        .padding(.horizontal, 14)
+        AirPodsCompactStageView(model: model)
+            .padding(.horizontal, 10)
     }
 
     @ViewBuilder private var compactMacBatteryActivity: some View {
@@ -1928,7 +1918,7 @@ extension IslandModel {
             }
         }
         if airPodsShowingCompact {
-            return baseNotchWidth + 108
+            return baseNotchWidth + 160
         }
         if isMusicPlaying {
             return baseNotchWidth + 120
@@ -4505,6 +4495,93 @@ struct AirPodsExpandedView: View {
     }
 }
 
+
+
+struct AirPodsCompactStageView: View {
+    @ObservedObject var model: IslandModel
+    @State private var rotationAngle: Double = 0
+    
+    private var isMax: Bool {
+        model.airPodsName.localizedCaseInsensitiveContains("Max")
+    }
+    private var isGen3OrStandard: Bool {
+        model.airPodsName.localizedCaseInsensitiveContains("3") || (!model.airPodsName.localizedCaseInsensitiveContains("Pro") && !model.airPodsName.localizedCaseInsensitiveContains("Max"))
+    }
+    
+    private var caseIcon: String {
+        if isMax { return "headphones" }
+        if isGen3OrStandard { return "airpods.gen3.chargingcase.wireless" }
+        return "airpodspro.chargingcase.wireless.fill"
+    }
+    
+    private var leftBattery: Int { Int(model.airPodsBatteryLevel * 100) }
+    private var rightBattery: Int { max(5, Int(model.airPodsBatteryLevel * 100) - 2) }
+    private var caseBattery: Int { max(10, Int(model.airPodsBatteryLevel * 100) - 8) }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Left AirPod & Battery
+            HStack(spacing: 4) {
+                Image(systemName: isMax ? "headphones" : "airpod.left")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .rotation3DEffect(
+                        .degrees(rotationAngle),
+                        axis: (x: 0.0, y: 1.0, z: 0.0),
+                        anchor: .center,
+                        perspective: 0.4
+                    )
+                Text("\(leftBattery)%")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(leftBattery > 20 ? .green : .red)
+            }
+            .frame(width: 58, alignment: .leading)
+            
+            Spacer(minLength: 0)
+            
+            // Center Connected AirPods Case with 3D rotation
+            HStack(spacing: 4) {
+                Image(systemName: caseIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .rotation3DEffect(
+                        .degrees(rotationAngle),
+                        axis: (x: 0.0, y: 1.0, z: 0.0),
+                        anchor: .center,
+                        perspective: 0.4
+                    )
+                    .shadow(color: .white.opacity(0.4), radius: 3)
+                Text("\(caseBattery)%")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.green)
+            }
+            
+            Spacer(minLength: 0)
+            
+            // Right AirPod & Battery
+            HStack(spacing: 4) {
+                Text("\(rightBattery)%")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(rightBattery > 20 ? .green : .red)
+                Image(systemName: isMax ? "headphones" : "airpod.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .rotation3DEffect(
+                        .degrees(rotationAngle),
+                        axis: (x: 0.0, y: 1.0, z: 0.0),
+                        anchor: .center,
+                        perspective: 0.4
+                    )
+            }
+            .frame(width: 58, alignment: .trailing)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
+                rotationAngle = 360
+            }
+        }
+    }
+}
 
 struct AirPods3DView: View {
     @State private var flipAngle: Double = 0
@@ -8828,15 +8905,19 @@ struct LiquidScrubber: View {
             }
             .frame(width: scrubberWidth, height: 20, alignment: .center)
             .contentShape(Rectangle())
+            .animation(.spring(response: 0.32, dampingFraction: 0.76), value: currentTrackWidth)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        let targetProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
                         if !isDragging {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.72)) {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.75)) {
                                 isDragging = true
+                                dragProgress = targetProgress
                             }
+                        } else {
+                            dragProgress = targetProgress
                         }
-                        dragProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
                     }
                     .onEnded { value in
                         let finalProgress = Double(min(max(0, value.location.x / scrubberWidth), 1))
@@ -8845,8 +8926,8 @@ struct LiquidScrubber: View {
                             _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
                         }
                         model.playbackPosition = newPos
-                        dragProgress = finalProgress
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
+                            dragProgress = finalProgress
                             isDragging = false
                         }
                     }
