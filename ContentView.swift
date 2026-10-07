@@ -286,10 +286,6 @@ struct IslandView: View {
                         } else {
                             controlsView
                         }
-                    } else {
-                        HStack(spacing: 8) {
-                            if model.airPodsConnected { Image(systemName: "airpodspro").foregroundColor(.white) }
-                        }.padding(.vertical, 4).padding(.horizontal, 16)
                     }
                 }
                 .frame(width: model.width, height: model.height, alignment: .top)
@@ -989,6 +985,7 @@ class IslandModel: ObservableObject {
         startMusicMonitoring()
         startScreenTransitionMonitoring()
         startAirPodsMonitoring()
+        startAudioDeviceMonitoring()
     }
 
     func startScreenTransitionMonitoring() {
@@ -1279,6 +1276,33 @@ class IslandModel: ObservableObject {
         }
     }
     
+    private var airPodsDismissWorkItem: DispatchWorkItem?
+
+    func triggerAirPodsBanner() {
+        airPodsDismissWorkItem?.cancel()
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.72)) {
+            self.airPodsShowingCompact = true
+        }
+        let work = DispatchWorkItem { [weak self] in
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.75)) {
+                self?.airPodsShowingCompact = false
+            }
+        }
+        airPodsDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5, execute: work)
+    }
+
+    func startAudioDeviceMonitoring() {
+        // Notification when audio output changes (e.g. AirPods switch seamlessly from iPhone to Mac)
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("AVSystemController_PickableRoutesDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.checkRealAirPodsStatus()
+        }
+    }
+
     func checkRealAirPodsStatus() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -1339,15 +1363,7 @@ class IslandModel: ObservableObject {
                     
                     if !wasConnected {
                         self.airPodsConnected = true
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
-                            self.airPodsShowingCompact = true
-                        }
-                        // Show the connected card for 5.5 seconds, then transition cleanly back to music / default notch
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.5) {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
-                                self.airPodsShowingCompact = false
-                            }
-                        }
+                        self.triggerAirPodsBanner()
                     }
                 } else {
                     if self.airPodsConnected {
