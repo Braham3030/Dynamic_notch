@@ -67,45 +67,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func setupMouseTracking() {
-        // Track mouse globally across all apps (Apple Music, Finder, Settings, etc.)
+        // Track mouse globally across all apps for smooth notch hover interactions
         mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
-            // ONLY open AirDrop in the notch when the user is actively dragging REAL files or photos!
-            if event.type == .leftMouseDragged {
-                let pboard = NSPasteboard(name: .drag)
-                if let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
-                    let hasRealFilesOrPhotos = urls.contains { url in
-                        let ext = url.pathExtension.lowercased()
-                        let isPhotoOrFile = url.isFileURL || !ext.isEmpty || FileManager.default.fileExists(atPath: url.path)
-                        return isPhotoOrFile
-                    }
-                    if hasRealFilesOrPhotos {
-                        DispatchQueue.main.async {
-                            if !IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    IslandModel.shared.isAirDropTargeted = true
-                                }
-                            }
-                        }
-                    }
-                }
-            }
             self?.handleMouseLocation(NSEvent.mouseLocation)
         }
         // Track mouse locally within our application
         mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
             return event
-        }
-        
-        // Auto reset targeted state on mouse up only after a safety delay if not in expandedAirDrop
-        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if IslandModel.shared.isAirDropTargeted && IslandModel.shared.state != .expandedAirDrop {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        IslandModel.shared.isAirDropTargeted = false
-                    }
-                }
-            }
         }
     }
     
