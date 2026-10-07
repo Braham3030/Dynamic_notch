@@ -716,8 +716,15 @@ struct IslandView: View {
                                     intensity: model.artworkGlowIntensity,
                                     motionVideoURL: videoURL
                                 )
+                                .matchedGeometryEffect(id: "liveMotionTakeover", in: musicActivityNamespace)
                                 .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.46, dampingFraction: 0.78)) {
+                                        model.isLiveWallpaperExpanded = false
+                                    }
+                                }
                             }
                         }
                         .animation(.spring(response: 0.55, dampingFraction: 0.78), value: model.artworkColor)
@@ -1563,57 +1570,62 @@ struct IslandView: View {
         VStack(spacing: 8) {
             // Top Row: Interactive Live Artwork Card | Drag Title | Dynamic Waveform
             HStack(spacing: 14) {
-                // Artwork Card: Clickable to expand into full live wallpaper view with smooth animations
-                Button {
-                    if model.hasLiveMotionWallpaper {
-                        withAnimation(.spring(response: 0.48, dampingFraction: 0.76)) {
-                            model.isLiveWallpaperExpanded.toggle()
-                        }
-                    }
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.clear)
-                            .frame(width: 52, height: 52)
-                        
-                        ZStack {
-                            if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
-                                // Live Video animating smoothly right inside the card!
-                                AVPlayerLoopingMotionView(videoURL: videoURL)
-                                    .frame(width: 52, height: 52)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .stroke(model.isLiveWallpaperExpanded ? model.artworkColor : Color.white.opacity(0.18), lineWidth: model.isLiveWallpaperExpanded ? 2.0 : 0.8)
-                                    )
-                            } else if let img = model.currentArtwork { 
-                                Image(nsImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 52, height: 52)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                                    )
-                            } else {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 52, height: 52)
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 24, weight: .semibold))
-                                    .foregroundColor(.white)
+                // Artwork Card: When clicked, disappears and animates directly into the full live wallpaper!
+                if !(model.hasLiveMotionWallpaper && model.isLiveWallpaperExpanded) {
+                    Button {
+                        if model.hasLiveMotionWallpaper {
+                            withAnimation(.spring(response: 0.46, dampingFraction: 0.78)) {
+                                model.isLiveWallpaperExpanded = true
                             }
                         }
-                        .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
-                        .transition(.flip3D(isForward: model.isForward))
+                    } label: {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.clear)
+                                .frame(width: 52, height: 52)
+                            
+                            ZStack {
+                                if model.hasLiveMotionWallpaper, let videoURL = model.liveMotionVideoURL {
+                                    // Live Video animating smoothly right inside the card!
+                                    AVPlayerLoopingMotionView(videoURL: videoURL)
+                                        .frame(width: 52, height: 52)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(Color.white.opacity(0.22), lineWidth: 0.8)
+                                        )
+                                } else if let img = model.currentArtwork { 
+                                    Image(nsImage: img)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 52, height: 52)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                        )
+                                } else {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 52, height: 52)
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 24, weight: .semibold))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                            .transition(.flip3D(isForward: model.isForward))
+                        }
+                        .matchedGeometryEffect(id: "liveMotionTakeover", in: musicActivityNamespace)
+                        .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.55) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                     }
-                    .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
-                    .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.5) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
+                    .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.7).combined(with: .opacity),
+                        removal: .scale(scale: 1.15).combined(with: .opacity)
+                    ))
+                    .zIndex(1)
                 }
-                .buttonStyle(.plain)
-                .scaleEffect(model.isLiveWallpaperExpanded ? 1.05 : 1.0)
-                .zIndex(1)
                 
                 // Track Title & Artist with Apple-style fluid horizontal drag-to-skip & clean track previews (no blue arrows, clean spacing)
                 ZStack(alignment: .leading) {
