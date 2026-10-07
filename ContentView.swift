@@ -2428,7 +2428,7 @@ struct AirPods3DView: View {
     var body: some View {
         HStack(spacing: 1.5) {
             // Left AirPod
-            Image(systemName: "airpodspro.left")
+            Image(systemName: "airpod.left")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
                 .offset(y: floatOffset)
@@ -2440,7 +2440,7 @@ struct AirPods3DView: View {
                 )
             
             // Right AirPod
-            Image(systemName: "airpodspro.right")
+            Image(systemName: "airpod.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
                 .offset(y: -floatOffset)
