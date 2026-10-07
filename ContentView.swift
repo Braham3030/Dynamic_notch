@@ -1101,9 +1101,9 @@ struct IslandView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 0)
                 
-                // Horizontal Carousel of Big Rounded-Square File Cards (Supports multiple dropped files)
+                // Horizontal Carousel of Big Clean File Previews (No outer double boxes, individual remove X)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         ForEach(Array(model.droppedAirDropFiles.enumerated()), id: \.offset) { index, file in
                             let fileSizeStr: String = {
                                 if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
@@ -1114,31 +1114,53 @@ struct IslandView: View {
                             }()
                             
                             VStack(spacing: 4) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(Color.white.opacity(0.12))
-                                        .frame(width: 64, height: 64)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                                        )
-                                    
-let thumb = NSImage(contentsOf: file) ?? NSWorkspace.shared.icon(forFile: file.path)
+                                ZStack(alignment: .topTrailing) {
+                                    // Big Clean File Thumbnail (74x74) without outer box
+                                    let thumb = NSImage(contentsOf: file) ?? NSWorkspace.shared.icon(forFile: file.path)
                                     Image(nsImage: thumb)
                                         .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: 54, height: 54)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                .shadow(color: Color.black.opacity(0.4), radius: 6, y: 3)
-                                .onDrag {
-                                    return NSItemProvider(object: file as NSURL)
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 74, height: 74)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                        .shadow(color: Color.black.opacity(0.45), radius: 8, x: 0, y: 3)
+                                        .onDrag {
+                                            return NSItemProvider(object: file as NSURL)
+                                        }
+                                    
+                                    // Cross button on the top right side of EVERY file to remove it individually!
+                                    Button {
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                                            if model.droppedAirDropFiles.indices.contains(index) {
+                                                model.droppedAirDropFiles.remove(at: index)
+                                            }
+                                            if model.droppedAirDropFiles.isEmpty {
+                                                model.isShowingAirDropInShelf = false
+                                                model.state = .compact
+                                            }
+                                        }
+                                    } label: {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.black.opacity(0.82))
+                                                .frame(width: 20, height: 20)
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                                )
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .offset(x: 5, y: -5)
+                                    .help("Remove file from Notch")
                                 }
                                 
                                 if !fileSizeStr.isEmpty {
                                     Text(fileSizeStr)
-                                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.75))
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.85))
                                 }
                             }
                             .transition(.scale.combined(with: .opacity))
@@ -1147,8 +1169,9 @@ let thumb = NSImage(contentsOf: file) ?? NSWorkspace.shared.icon(forFile: file.p
                             }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                    .padding(.bottom, 2)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 
@@ -3839,73 +3862,99 @@ struct SettingsWindowBackground: View {
                 endPoint: .bottom
             )
         case .animatedAurora:
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                let shift1 = sin(time * 0.45) * 0.25
-                let shift2 = cos(time * 0.35) * 0.25
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let angle = Angle.degrees(t.truncatingRemainder(dividingBy: 20) * 18.0)
+                let c1 = UnitPoint(x: 0.4 + sin(t * 0.6) * 0.35, y: 0.3 + cos(t * 0.5) * 0.3)
+                let c2 = UnitPoint(x: 0.6 - cos(t * 0.45) * 0.35, y: 0.7 - sin(t * 0.55) * 0.3)
                 
-                RadialGradient(
-                    colors: [
-                        Color.cyan.opacity(0.70 * opacity),
-                        Color.purple.opacity(0.75 * opacity),
-                        Color.blue.opacity(0.85 * opacity),
-                        Color(red: 0.03, green: 0.03, blue: 0.08).opacity(0.98 * opacity)
-                    ],
-                    center: UnitPoint(x: 0.3 + shift1, y: 0.2 + shift2),
-                    startRadius: 40,
-                    endRadius: 750
-                )
+                ZStack {
+                    RadialGradient(
+                        colors: [Color.cyan.opacity(0.75 * opacity), Color.clear],
+                        center: c1,
+                        startRadius: 20,
+                        endRadius: 500
+                    )
+                    RadialGradient(
+                        colors: [Color.purple.opacity(0.85 * opacity), Color.clear],
+                        center: c2,
+                        startRadius: 30,
+                        endRadius: 600
+                    )
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            Color.blue.opacity(0.6 * opacity),
+                            Color.teal.opacity(0.7 * opacity),
+                            Color.purple.opacity(0.8 * opacity),
+                            Color.blue.opacity(0.6 * opacity)
+                        ]),
+                        center: .center,
+                        angle: angle
+                    )
+                    .opacity(0.35)
+                    Color(red: 0.03, green: 0.03, blue: 0.08).opacity(0.75 * opacity)
+                }
             }
         case .animatedCosmic:
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                let x1 = 0.5 + sin(time * 0.3) * 0.3
-                let y1 = 0.5 + cos(time * 0.25) * 0.3
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let p1 = UnitPoint(x: 0.5 + sin(t * 0.5) * 0.38, y: 0.5 + cos(t * 0.4) * 0.38)
+                let p2 = UnitPoint(x: 0.5 - cos(t * 0.45) * 0.38, y: 0.5 - sin(t * 0.55) * 0.38)
                 
-                RadialGradient(
-                    colors: [
-                        Color(red: 0.85, green: 0.25, blue: 0.65).opacity(0.65 * opacity),
-                        Color(red: 0.30, green: 0.15, blue: 0.70).opacity(0.80 * opacity),
-                        Color(red: 0.08, green: 0.04, blue: 0.20).opacity(0.92 * opacity),
-                        Color.black.opacity(0.98 * opacity)
-                    ],
-                    center: UnitPoint(x: x1, y: y1),
-                    startRadius: 30,
-                    endRadius: 800
-                )
+                ZStack {
+                    RadialGradient(
+                        colors: [Color(red: 0.95, green: 0.25, blue: 0.65).opacity(0.80 * opacity), Color.clear],
+                        center: p1,
+                        startRadius: 20,
+                        endRadius: 550
+                    )
+                    RadialGradient(
+                        colors: [Color(red: 0.25, green: 0.20, blue: 0.90).opacity(0.85 * opacity), Color.clear],
+                        center: p2,
+                        startRadius: 25,
+                        endRadius: 600
+                    )
+                    Color(red: 0.05, green: 0.02, blue: 0.12).opacity(0.82 * opacity)
+                }
             }
         case .animatedSunset:
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                let pos = sin(time * 0.38) * 0.2
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let startX = 0.2 + sin(t * 0.5) * 0.3
+                let startY = 0.1 + cos(t * 0.4) * 0.2
+                let endX = 0.8 - sin(t * 0.5) * 0.3
+                let endY = 0.9 - cos(t * 0.4) * 0.2
                 
                 LinearGradient(
                     colors: [
-                        Color(red: 0.98, green: 0.45, blue: 0.25).opacity(0.85 * opacity),
-                        Color(red: 0.85, green: 0.20, blue: 0.55).opacity(0.80 * opacity),
-                        Color(red: 0.35, green: 0.15, blue: 0.65).opacity(0.88 * opacity),
-                        Color(red: 0.08, green: 0.05, blue: 0.22).opacity(0.96 * opacity)
+                        Color(red: 0.98, green: 0.45, blue: 0.25).opacity(0.88 * opacity),
+                        Color(red: 0.88, green: 0.20, blue: 0.55).opacity(0.84 * opacity),
+                        Color(red: 0.35, green: 0.15, blue: 0.65).opacity(0.90 * opacity),
+                        Color(red: 0.08, green: 0.05, blue: 0.22).opacity(0.98 * opacity)
                     ],
-                    startPoint: UnitPoint(x: 0.1 + pos, y: 0.0),
-                    endPoint: UnitPoint(x: 0.9 - pos, y: 1.0)
+                    startPoint: UnitPoint(x: startX, y: startY),
+                    endPoint: UnitPoint(x: endX, y: endY)
                 )
             }
         case .animatedMatrix:
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                let pulse = (sin(time * 0.5) + 1.0) * 0.5
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let wave = (sin(t * 0.8) + 1.0) * 0.5
+                let centerPoint = UnitPoint(x: 0.5 + cos(t * 0.6) * 0.25, y: 0.5 + sin(t * 0.7) * 0.25)
                 
-                RadialGradient(
-                    colors: [
-                        Color(red: 0.0, green: 0.8, blue: 0.6).opacity((0.55 + pulse * 0.25) * opacity),
-                        Color(red: 0.05, green: 0.3, blue: 0.5).opacity(0.80 * opacity),
-                        Color(red: 0.02, green: 0.08, blue: 0.15).opacity(0.95 * opacity),
-                        Color.black.opacity(0.99 * opacity)
-                    ],
-                    center: .center,
-                    startRadius: 20 + CGFloat(pulse * 60),
-                    endRadius: 700
-                )
+                ZStack {
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.0, green: 0.88, blue: 0.65).opacity((0.65 + wave * 0.3) * opacity),
+                            Color(red: 0.05, green: 0.35, blue: 0.55).opacity(0.80 * opacity),
+                            Color.clear
+                        ],
+                        center: centerPoint,
+                        startRadius: 10 + CGFloat(wave * 50),
+                        endRadius: 550
+                    )
+                    Color(red: 0.02, green: 0.06, blue: 0.12).opacity(0.90 * opacity)
+                }
             }
         }
     }
@@ -7690,34 +7739,12 @@ struct BackgroundSettingsView: View {
             
             // SEPARATE SECTION 2: Standard & Nature Wallpapers
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    HStack(spacing: 6) {
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .foregroundColor(.blue)
-                        Text("Standard & Solid Wallpapers")
-                            .font(.headline)
-                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                    }
-                    
-                    Spacer()
-                    
-                    Button {
-                        model.pickCustomWallpaper()
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("Add from Photos...")
-                        }
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule()
-                                .fill(Color.blue)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                HStack(spacing: 6) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .foregroundColor(.blue)
+                    Text("Standard & Solid Wallpapers")
+                        .font(.headline)
+                        .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
                 }
                 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
