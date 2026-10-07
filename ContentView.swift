@@ -353,61 +353,63 @@ struct iOSLiveArtworkWallpaperView: View {
             let time = timeline.date.timeIntervalSinceReferenceDate
             let t = isPlaying ? time : 0.0
             
-            // Multi-frequency organic fluid wave displacement
-            let driftX1 = sin(t * 0.42) * 16.0
-            let driftY1 = cos(t * 0.32) * 10.0
-            let driftX2 = cos(t * 0.36 + 1.2) * 20.0
-            let driftY2 = sin(t * 0.48 + 0.8) * 12.0
-            let scalePulse = 1.0 + sin(t * 0.55) * 0.035
+            // Multi-frequency organic fluid wave displacement for active live motion
+            let driftX1 = sin(t * 0.55) * 20.0
+            let driftY1 = cos(t * 0.42) * 14.0
+            let driftX2 = cos(t * 0.48 + 1.2) * 26.0
+            let driftY2 = sin(t * 0.62 + 0.8) * 16.0
+            let scalePulse = 1.02 + sin(t * 0.70) * 0.05
+            let rotationAngle = sin(t * 0.30) * 3.0
             
             ZStack(alignment: .leading) {
                 // Background deep ambient canvas
                 primaryColor
-                    .opacity(0.24 * intensity)
+                    .opacity(0.32 * intensity)
                 
-                // Base Artwork Layer (Fluid zoom & slow breathing motion)
+                // Base Live Artwork Wallpaper Layer (Fluid zoom, slow breathing motion, and subtle rotation)
                 if let art = artwork {
                     Image(nsImage: art)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: max(100, width * 0.72), height: max(50, height * 1.2))
+                        .frame(width: max(120, width * 0.75), height: max(60, height * 1.35))
                         .scaleEffect(scalePulse)
-                        .offset(x: driftX1 * 0.45 - 8, y: driftY1 * 0.45)
-                        .blur(radius: 20)
-                        .opacity(0.46 * intensity)
+                        .rotationEffect(.degrees(rotationAngle))
+                        .offset(x: driftX1 * 0.6 - 12, y: driftY1 * 0.6)
+                        .blur(radius: 18)
+                        .opacity(0.55 * intensity)
                 }
                 
-                // Fluid Orb 1: Primary chromatic flare
+                // Fluid Orb 1: Primary chromatic dynamic flare
                 Circle()
                     .fill(primaryColor)
-                    .frame(width: 140, height: 140)
-                    .blur(radius: 32)
-                    .offset(x: -15 + driftX1, y: -8 + driftY1)
-                    .opacity(0.40 * intensity)
+                    .frame(width: 160, height: 160)
+                    .blur(radius: 36)
+                    .offset(x: -20 + driftX1, y: -12 + driftY1)
+                    .opacity(0.48 * intensity)
                 
                 // Fluid Orb 2: Ambient electric accent flare
                 Circle()
-                    .fill(Color(hue: 0.52, saturation: 0.75, brightness: 0.95))
-                    .frame(width: 110, height: 110)
-                    .blur(radius: 28)
-                    .offset(x: 55 + driftX2, y: 18 + driftY2)
-                    .opacity(0.24 * intensity)
+                    .fill(Color(hue: 0.52, saturation: 0.78, brightness: 0.98))
+                    .frame(width: 130, height: 130)
+                    .blur(radius: 32)
+                    .offset(x: 65 + driftX2, y: 15 + driftY2)
+                    .opacity(0.28 * intensity)
                 
-                // Fluid Orb 3: Bottom edge liquid light wash
+                // Fluid Orb 3: Liquid light wave wash
                 Ellipse()
-                    .fill(primaryColor.opacity(0.55))
-                    .frame(width: 180, height: 65)
-                    .blur(radius: 26)
-                    .offset(x: driftX2 * 0.6, y: height * 0.32)
-                    .opacity(0.32 * intensity)
+                    .fill(primaryColor.opacity(0.65))
+                    .frame(width: 210, height: 75)
+                    .blur(radius: 28)
+                    .offset(x: driftX2 * 0.7, y: height * 0.30)
+                    .opacity(0.40 * intensity)
             }
-            .frame(width: max(80, width * 0.68), height: height)
+            .frame(width: max(100, width * 0.72), height: height)
             .mask(
                 LinearGradient(
                     colors: [
-                        Color.black.opacity(0.98),
-                        Color.black.opacity(0.80),
-                        Color.black.opacity(0.35),
+                        Color.black.opacity(1.0),
+                        Color.black.opacity(0.88),
+                        Color.black.opacity(0.45),
                         Color.clear
                     ],
                     startPoint: .leading,
@@ -639,21 +641,22 @@ struct IslandView: View {
                     }
                     
                     // 2. Music Ambient Artwork Gradient Glow & iOS Live Animated Motion Wallpaper on Left Part of Notch
-                    if (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
+                    // Explicitly only active when expanded — keeping compact small notch pitch black
+                    if model.isExpanded && (model.isMusicPlaying || model.state == .expandedMusic) && model.enableArtworkGlow {
                         ZStack(alignment: .leading) {
-                            // Vibrant ambient artwork gradient glow across the notch
+                            // Full left-to-right ambient artwork gradient all over the notch
                             LinearGradient(
                                 colors: [
-                                    model.artworkColor.opacity(0.38 * model.artworkGlowIntensity),
-                                    model.artworkColor.opacity(0.12 * model.artworkGlowIntensity),
-                                    Color.clear
+                                    model.artworkColor.opacity(0.48 * model.artworkGlowIntensity),
+                                    model.artworkColor.opacity(0.24 * model.artworkGlowIntensity),
+                                    Color.black.opacity(0.85)
                                 ],
-                                startPoint: .topLeading,
+                                startPoint: .leading,
                                 endPoint: .trailing
                             )
                             .frame(width: model.width, height: model.height)
                             
-                            // iOS Live Motion Artwork Wallpaper covering the left portion of the Notch
+                            // iOS Live Moving Fluid Artwork Wallpaper covering the whole left side
                             iOSLiveArtworkWallpaperView(
                                 artwork: model.currentArtwork,
                                 primaryColor: model.artworkColor,
