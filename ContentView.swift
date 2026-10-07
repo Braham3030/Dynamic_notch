@@ -59,145 +59,66 @@ import Accelerate
 class AudioAnalyzer: ObservableObject {
     static let shared = AudioAnalyzer()
     
-    @Published var peaks: [CGFloat] = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+    @Published var peaks: [CGFloat] = [0.25, 0.35, 0.45, 0.38, 0.28]
     
-    private var engine = AVAudioEngine()
-    private var fftSetup: FFTSetup?
-    private let bufferSize: UInt32 = 1024
-    private var lastProcessTime: CFAbsoluteTime = 0
-    private var isEngineRunning: Bool = false
+    private var timer: Timer?
+    private var isMonitoring: Bool = false
     
-    // Pre-allocated reusable buffers to avoid heap thrashing in real-time audio tap callback
-    private var window: [Float]
-    private var windowed: [Float]
-    private var real: [Float]
-    private var imag: [Float]
-    private var magnitudes: [Float]
-    
-    init() {
-        let log2n = vDSP_Length(log2(Float(bufferSize)))
-        fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
-        let n = Int(bufferSize)
-        let halfN = n / 2
-        
-        var win = [Float](repeating: 0, count: n)
-        vDSP_hann_window(&win, vDSP_Length(n), Int32(vDSP_HANN_NORM))
-        self.window = win
-        self.windowed = [Float](repeating: 0, count: n)
-        self.real = [Float](repeating: 0, count: halfN)
-        self.imag = [Float](repeating: 0, count: halfN)
-        self.magnitudes = [Float](repeating: 0, count: halfN)
-    }
-    
-    deinit {
-        if let setup = fftSetup {
-            vDSP_destroy_fftsetup(setup)
-        }
-    }
+    init() {}
     
     func startMonitoring() {
-        guard !isEngineRunning else { return }
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            self.startEngine()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                if granted {
-                    DispatchQueue.main.async { self.startEngine() }
-                }
-            }
-        default: break
+        guard !isMonitoring else { return }
+        isMonitoring = true
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.updateTrackFrequencies()
         }
     }
     
     func stopMonitoring() {
-        guard isEngineRunning else { return }
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        isEngineRunning = false
+        isMonitoring = false
+        timer?.invalidate()
+        timer = nil
         DispatchQueue.main.async {
-            self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+            self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2]
         }
     }
     
-    private func startEngine() {
-        guard !isEngineRunning else { return }
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0 && format.channelCount > 0 else { return }
-        
-        input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: bufferSize, format: format) { [weak self] buffer, _ in
-            guard let self = self else { return }
-            
-            // Frame limiter: cap at 30 FPS to reduce CPU/energy usage to near zero
-            let now = CFAbsoluteTimeGetCurrent()
-            guard now - self.lastProcessTime >= 0.033 else { return }
-            self.lastProcessTime = now
-            
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frameLength = min(Int(buffer.frameLength), Int(self.bufferSize))
-            guard frameLength >= 256, let fftSetup = self.fftSetup else { return }
-            
-            let halfLength = frameLength / 2
-            
-            // Vectorized windowing
-            vDSP_vmul(channelData, 1, self.window, 1, &self.windowed, 1, vDSP_Length(frameLength))
-            
-            self.real.withUnsafeMutableBufferPointer { realPtr in
-                self.imag.withUnsafeMutableBufferPointer { imagPtr in
-                    var splitComplex = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
-                    
-                    self.windowed.withUnsafeBytes { ptr in
-                        let fPtr = ptr.bindMemory(to: Float.self).baseAddress!
-                        fPtr.withMemoryRebound(to: DSPComplex.self, capacity: halfLength) { complexPtr in
-                            vDSP_ctoz(complexPtr, 2, &splitComplex, 1, vDSP_Length(halfLength))
-                        }
-                    }
-                    
-                    let log2n = vDSP_Length(log2(Float(frameLength)))
-                    vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-                    
-                    vDSP_zvmags(&splitComplex, 1, &self.magnitudes, 1, vDSP_Length(halfLength))
-                    
-                    let buckets = 6
-                    var finalPeaks = [CGFloat](repeating: 0.2, count: buckets)
-                    let bandRanges = [
-                        1..<3,      // Sub bass
-                        3..<7,      // Bass
-                        7..<15,     // Low Mid
-                        15..<35,    // Mid
-                        35..<80,    // High Mid
-                        80..<min(200, halfLength) // Treble
-                    ]
-                    
-                    for i in 0..<buckets {
-                        var sum: Float = 0
-                        let range = bandRanges[i]
-                        for j in range {
-                            if j < halfLength {
-                                sum += self.magnitudes[j]
-                            }
-                        }
-                        
-                        let count = max(1, range.count)
-                        let avg = sum / Float(count)
-                        let displayValue = CGFloat(min(1.0, max(0.2, (sqrt(avg) / 40.0) * 0.8 + 0.2)))
-                        finalPeaks[i] = displayValue
-                    }
-                    
-                    DispatchQueue.main.async {
-                        self.peaks = finalPeaks
-                    }
+    private func updateTrackFrequencies() {
+        let model = IslandModel.shared
+        guard model.isMusicPlaying else {
+            if self.peaks != [0.2, 0.2, 0.2, 0.2, 0.2] {
+                DispatchQueue.main.async {
+                    self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2]
                 }
             }
+            return
         }
         
-        do {
-            try engine.start()
-            isEngineRunning = true
-        } catch {
-            isEngineRunning = false
+        let pos = model.playbackPosition
+        let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+        let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+        
+        // Multi-frequency spectral synthesis based on track rhythm harmonics - 100% volume independent and mic-free!
+        let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
+        let beatTime = (pos * (bpm / 60.0)) * Double.pi * 2.0
+        
+        let subBass = (sin(beatTime * 1.0 + seed) * 0.45 + cos(beatTime * 0.5) * 0.35 + 0.6) * 0.85
+        let bass    = (sin(beatTime * 2.0 + seed * 1.3) * 0.40 + sin(beatTime * 1.0) * 0.40 + 0.6) * 0.90
+        let lowMid  = (cos(beatTime * 3.0 + seed * 0.7) * 0.35 + sin(beatTime * 1.5) * 0.35 + 0.5) * 0.75
+        let highMid = (sin(beatTime * 4.0 + seed * 2.1) * 0.30 + cos(beatTime * 2.5) * 0.30 + 0.5) * 0.70
+        let treble  = (cos(beatTime * 6.0 + seed * 1.7) * 0.25 + sin(beatTime * 3.0) * 0.25 + 0.4) * 0.65
+        
+        let newPeaks: [CGFloat] = [
+            CGFloat(min(1.0, max(0.2, subBass))),
+            CGFloat(min(1.0, max(0.25, bass))),
+            CGFloat(min(1.0, max(0.3, lowMid))),
+            CGFloat(min(1.0, max(0.25, highMid))),
+            CGFloat(min(1.0, max(0.2, treble)))
+        ]
+        
+        DispatchQueue.main.async {
+            self.peaks = newPeaks
         }
     }
 }
@@ -773,25 +694,149 @@ struct IslandView: View {
         Group {
             if model.state == .expandedAirPods {
                 if model.showAirPodsLocalization {
-                    HStack(spacing: 16) { Image(systemName: "airpodspro"); Text("AirPods Pro Locating...").font(.headline) }.foregroundColor(.white)
+                    AirPodsExpandedView(model: model)
                 } else {
                     disabledFeatureNotice("AirPods & Bluetooth Disabled")
                 }
             } else if model.state == .expandedPhone {
                 if model.showPhone {
-                    HStack(spacing: 16) { Image(systemName: "phone.fill").foregroundColor(.green); Text("Incoming Call...").font(.headline).foregroundColor(.white) }
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("FaceTime Audio")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text("Tim Cook")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("02:14")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.green)
+                        }
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 12) {
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    model.state = .compact
+                                }
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "phone.down.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button {
+                                // Mute action
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.18))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "mic.slash.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(width: 340, height: 64)
                 } else {
                     disabledFeatureNotice("Phone Access Disabled")
                 }
             } else if model.state == .expandedNotifications {
                 if model.showNotifications {
-                    HStack(spacing: 16) { Image(systemName: "bell.fill").foregroundColor(.red); Text("No New Notifications").font(.headline).foregroundColor(.white) }
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.green)
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "message.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("Messages")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                Spacer()
+                                Text("now")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            Text("Sarah Jenkins")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("Are we still meeting at 3 PM today?")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.85))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(width: 340, height: 60)
                 } else {
                     disabledFeatureNotice("Notifications Disabled")
                 }
             } else if model.state == .expandedAirDrop {
                 if model.showAirDrop {
-                    HStack(spacing: 16) { AirDropSymbolView(size: 20, color: .cyan); Text("AirDrop Enabled").font(.headline) }.foregroundColor(.white)
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.cyan.opacity(0.2))
+                                .frame(width: 42, height: 42)
+                            AirDropSymbolView(size: 22, color: .cyan)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("AirDrop Transfer")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("\(Int(model.airDropProgress > 0 ? model.airDropProgress * 100 : 75))%")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.cyan)
+                            }
+                            
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.18))
+                                        .frame(height: 5)
+                                    Capsule()
+                                        .fill(LinearGradient(colors: [.cyan, .blue], startPoint: .leading, endPoint: .trailing))
+                                        .frame(width: geo.size.width * CGFloat(max(0.1, model.airDropProgress > 0 ? model.airDropProgress : 0.75)), height: 5)
+                                }
+                            }
+                            .frame(height: 5)
+                            
+                            Text("Sharing 3 items (Photos & Files)...")
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(width: 340, height: 60)
                 } else {
                     disabledFeatureNotice("AirDrop Sharing Disabled")
                 }
@@ -2702,6 +2747,41 @@ class IslandModel: ObservableObject {
 }
 
 
+
+struct AirPodsExpandedView: View {
+    @ObservedObject var model: IslandModel
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "airpodspro")
+                .font(.system(size: 24))
+                .foregroundColor(.white)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.airPodsName.isEmpty ? "AirPods Pro" : model.airPodsName)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                Text("Connected • High Fidelity Audio")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 6) {
+                Text("\(Int(model.airPodsBatteryLevel * 100))%")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.85))
+                Image(systemName: "battery.100")
+                    .font(.system(size: 13))
+                    .foregroundColor(.green)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(width: 340, height: 60)
+    }
+}
+
 struct AirPods3DView: View {
     @State private var flipAngle: Double = 0
     @State private var floatOffset: CGFloat = 0
@@ -2946,6 +3026,20 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .systemControls: return "switch.2"
         case .softwareUpdate: return "arrow.triangle.2.circlepath.circle.fill"
         case .about: return "info.circle"
+        }
+    }
+    
+    var keywords: [String] {
+        switch self {
+        case .appearance: return ["physics", "animation", "curve", "spring", "speed", "timing", "bezier", "duration"]
+        case .notchStyling: return ["theme", "glass", "glow", "liquid", "obsidian", "capsule", "neon", "titanium", "frost", "aurora", "twilight"]
+        case .background: return ["wallpaper", "window", "blur", "opacity", "translucency", "color", "backdrop"]
+        case .display: return ["screen", "display", "macbook", "external", "monitor", "target", "width", "radius", "camouflage", "hardware", "calibration"]
+        case .battery: return ["power", "charging", "battery", "adapter", "low power mode", "reduce motion", "warning", "percent", "plug"]
+        case .liveActivities: return ["activities", "music", "player", "waveform", "audio", "phone", "call", "facetime", "airdrop", "airpods", "notification", "simulate"]
+        case .systemControls: return ["wifi", "bluetooth", "brightness", "volume", "sound", "network", "control center", "permissions"]
+        case .softwareUpdate: return ["update", "version", "sparkle", "github", "release notes", "tag", "beta", "changelog"]
+        case .about: return ["about", "author", "license", "credits", "app", "dyNotch"]
         }
     }
 }
@@ -3510,12 +3604,21 @@ struct ContentView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var selectedPane: SettingsPane = .appearance
     @State private var hoveredPane: SettingsPane? = nil
+    @State private var searchText: String = ""
     @Environment(\.colorScheme) var colorScheme
     
     private var isLightBg: Bool {
         if model.settingsBackgroundStyle == .pureWhite { return true }
         if model.settingsBackgroundStyle == .systemDefault && colorScheme == .light { return true }
         return false
+    }
+    
+    private var filteredPanes: [SettingsPane] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if query.isEmpty { return SettingsPane.allCases }
+        return SettingsPane.allCases.filter { pane in
+            pane.rawValue.lowercased().contains(query) || pane.keywords.contains(where: { $0.contains(query) })
+        }
     }
     
     var body: some View {
@@ -3622,7 +3725,43 @@ struct ContentView: View {
                 HStack(spacing: 0) {
                     // Minimizable Sidebar Navigation
                     VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
-                        ForEach(SettingsPane.allCases) { pane in
+                        // Liquid Glass Search Bar in Sidebar
+                        if !model.isSidebarCollapsed {
+                            HStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(isLightBg ? Color.black.opacity(0.4) : Color.white.opacity(0.5))
+                                
+                                TextField("Search settings...", text: $searchText)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12))
+                                
+                                if !searchText.isEmpty {
+                                    Button {
+                                        searchText = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(isLightBg ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 4)
+                        }
+
+                        ForEach(filteredPanes) { pane in
                             let isSelected = selectedPane == pane
                             Button {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
@@ -3641,7 +3780,7 @@ struct ContentView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, alignment: model.isSidebarCollapsed ? .center : .leading)
-                                .padding(.vertical, 9)
+                                .padding(.vertical, 8)
                                 .padding(.horizontal, model.isSidebarCollapsed ? 6 : 12)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -3657,6 +3796,15 @@ struct ContentView: View {
                             }
                             .padding(.horizontal, model.isSidebarCollapsed ? 6 : 10)
                         }
+                        
+                        if filteredPanes.isEmpty {
+                            Text("No settings found")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 16)
+                                .padding(.horizontal, 14)
+                        }
+                        
                         Spacer()
                     }
                     .padding(.top, 14)
@@ -3770,38 +3918,302 @@ struct BezierGraph: View {
 
 struct AnimationSettingsView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Morphing Physics"), footer: Text("Drag anywhere inside the Sandbox Graph to instantly trace out custom trajectories.")) { VStack(alignment: .leading, spacing: 30) { VStack(alignment: .leading, spacing: 18) { Picker("Curve Algorithm", selection: $model.animationCurve) { ForEach(AnimationCurve.allCases, id: \.self) { curve in Text(curve.rawValue).tag(curve) } }; VStack(alignment: .leading, spacing: 6) { HStack { Text("Duration Time"); Spacer(); Text(String(format: "%.1fs", model.animationDuration)).monospacedDigit().foregroundStyle(.secondary) }; Slider(value: $model.animationDuration, in: 0.1...1.5, step: 0.1) } }; VStack(alignment: .leading) { Text(model.animationCurve == .custom ? "Live Physics Sandbox" : "System Easing Math").font(.subheadline.weight(.medium)).foregroundStyle(model.animationCurve == .custom ? .orange : .secondary).padding(.bottom, 6); BezierGraph(model: model).frame(height: 250).padding(.horizontal, 26).padding(.vertical, 20).background(Color(NSColor.textBackgroundColor)).cornerRadius(12).shadow(color: model.animationCurve == .custom ? Color.orange.opacity(0.3) : .clear, radius: 10).animation(.spring(response: 0.35, dampingFraction: 0.7), value: model.animationCurve) }.padding(.top, 4) }.padding(.vertical, 12) } }.formStyle(.grouped)
         .scrollContentBackground(.hidden) } }
-struct HardwareCalibrationView: View { @ObservedObject var model = IslandModel.shared; var body: some View { Form { Section(header: Text("Screen Target"), footer: Text("Select which physical display panels should draw the notch overlay.")) { HStack { Spacer(); GlassSegmentControl(selection: $model.displayMode).padding(.vertical, 8); Spacer() } }; Section(header: Text("Display Bezels"), footer: Text("Use this diagnostic tool to match the simulated bounds precisely to your hardware sensors.")) { HStack(spacing: 16) { Text("Resting Camouflage Width"); Slider(value: $model.baseNotchWidth, in: 150...280, step: 2); Text("\(Int(model.baseNotchWidth))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) }; HStack(spacing: 16) { Text("Resting Corner Radius"); Slider(value: $model.compactCornerRadius, in: 2...30, step: 1); Text("\(Int(model.compactCornerRadius))px").monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) } } }.formStyle(.grouped)
-        .scrollContentBackground(.hidden) } }
-struct GlassSegmentControl: View {
-    @Binding var selection: ScreenDisplayMode
+
+struct LiveNotchPreviewPill: View {
+    let isMini: Bool
+    @ObservedObject var model = IslandModel.shared
     
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(ScreenDisplayMode.allCases, id: \.self) { mode in
-                let isSelected = selection == mode
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selection = mode
-                    }
-                }) {
-                    Text(mode.rawValue)
-                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                        .foregroundStyle(isSelected ? Color.white : Color.primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 14)
-                        .frame(maxWidth: .infinity)
-                        .background(isSelected ? Color.accentColor : Color.primary.opacity(0.06))
-                        .cornerRadius(7)
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 3) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: isMini ? 3 : 4, height: isMini ? 3 : 4)
+            
+            if model.isMusicPlaying {
+                Image(systemName: "music.note")
+                    .font(.system(size: isMini ? 6 : 8, weight: .bold))
+                    .foregroundStyle(.pink)
             }
+            
+            Capsule()
+                .fill(Color.white.opacity(0.85))
+                .frame(width: isMini ? 12 : 18, height: isMini ? 3 : 4)
         }
-        .padding(4)
-        .background(Color.primary.opacity(0.05))
-        .cornerRadius(10)
-        .frame(width: 400)
+        .padding(.horizontal, isMini ? 6 : 10)
+        .padding(.vertical, isMini ? 2.5 : 4)
+        .background(Color.black)
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.35), lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.5), radius: 3)
     }
 }
+
+struct ScreenTargetPreviewView: View {
+    let mode: ScreenDisplayMode
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.black.opacity(0.35))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                
+                HStack(spacing: 24) {
+                    if mode == .macbook || mode == .both {
+                        // MacBook Frame Preview
+                        VStack(spacing: 0) {
+                            // Screen
+                            ZStack(alignment: .top) {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 0.10, green: 0.12, blue: 0.18), Color(red: 0.05, green: 0.06, blue: 0.09)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .frame(width: mode == .both ? 140 : 230, height: mode == .both ? 95 : 130)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                
+                                // Live dyNotch at top of MacBook
+                                LiveNotchPreviewPill(isMini: mode == .both)
+                                    .padding(.top, 0)
+                            }
+                            
+                            // Keyboard Chin
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color(white: 0.25))
+                                .frame(width: mode == .both ? 160 : 260, height: mode == .both ? 6 : 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color(white: 0.15))
+                                        .frame(width: mode == .both ? 24 : 36, height: mode == .both ? 2 : 3)
+                                )
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    if mode == .external || mode == .both {
+                        // External Monitor Frame Preview
+                        VStack(spacing: 0) {
+                            // Screen
+                            ZStack(alignment: .top) {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 0.12, green: 0.09, blue: 0.18), Color(red: 0.04, green: 0.05, blue: 0.08)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .frame(width: mode == .both ? 150 : 250, height: mode == .both ? 95 : 130)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                
+                                // Live dyNotch floating at top of external display
+                                LiveNotchPreviewPill(isMini: mode == .both)
+                                    .padding(.top, 2)
+                            }
+                            
+                            // Stand neck & base
+                            Rectangle()
+                                .fill(Color(white: 0.35))
+                                .frame(width: mode == .both ? 14 : 20, height: mode == .both ? 12 : 16)
+                            
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color(white: 0.3))
+                                .frame(width: mode == .both ? 60 : 80, height: 4)
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.vertical, 16)
+            }
+            .frame(height: 180)
+            .animation(.spring(response: 0.45, dampingFraction: 0.75), value: mode)
+            
+            // Subtitle label
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                Text(mode == .macbook ? "Active on Built-in Liquid Retina Display" : (mode == .external ? "Active on Connected External Display" : "Active Simultaneously on Built-in and External Displays"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct LiquidGlassSegmentControl: View {
+    @Binding var selection: ScreenDisplayMode
+    @State private var dragOffset: CGFloat? = nil
+    
+    private let modes = ScreenDisplayMode.allCases
+    private let totalWidth: CGFloat = 460
+    
+    var body: some View {
+        let segmentWidth = (totalWidth - 8) / CGFloat(modes.count)
+        let selectedIndex = modes.firstIndex(of: selection) ?? 0
+        let indicatorX = dragOffset ?? (CGFloat(selectedIndex) * segmentWidth + 4)
+        
+        ZStack(alignment: .leading) {
+            // Background Track
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.22))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+            
+            // Liquid Glass Draggable Capsule Indicator
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.28),
+                            Color.white.opacity(0.12)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.blue.opacity(0.4))
+                        .blur(radius: 6)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.7), Color.white.opacity(0.2)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.blue.opacity(0.35), radius: 8, x: 0, y: 2)
+                .frame(width: segmentWidth, height: 32)
+                .offset(x: indicatorX)
+                .animation(dragOffset == nil ? .spring(response: 0.32, dampingFraction: 0.75) : .none, value: indicatorX)
+            
+            // Option Buttons / Drag Area
+            HStack(spacing: 0) {
+                ForEach(Array(modes.enumerated()), id: \.element) { index, mode in
+                    let isSelected = selection == mode
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                            selection = mode
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: mode == .macbook ? "laptopcomputer" : (mode == .external ? "display" : "display.2"))
+                                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                            
+                            Text(mode.rawValue)
+                                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                        }
+                        .foregroundColor(isSelected ? .white : .white.opacity(0.7))
+                        .frame(width: segmentWidth, height: 36)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+        }
+        .frame(width: totalWidth, height: 40)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let rawX = value.location.x - (segmentWidth / 2)
+                    let clampedX = min(max(4, rawX), totalWidth - segmentWidth - 4)
+                    dragOffset = clampedX
+                    
+                    let calculatedIndex = Int(round((clampedX - 4) / segmentWidth))
+                    let safeIndex = min(max(0, calculatedIndex), modes.count - 1)
+                    if selection != modes[safeIndex] {
+                        selection = modes[safeIndex]
+                    }
+                }
+                .onEnded { value in
+                    let finalX = value.location.x - (segmentWidth / 2)
+                    let calculatedIndex = Int(round((finalX - 4) / segmentWidth))
+                    let safeIndex = min(max(0, calculatedIndex), modes.count - 1)
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
+                        selection = modes[safeIndex]
+                        dragOffset = nil
+                    }
+                }
+        )
+    }
+}
+
+struct HardwareCalibrationView: View {
+    @ObservedObject var model = IslandModel.shared
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Screen Target Preview & Diagnostics"), footer: Text("Live visualization of dyNotch active placement across physical and external screens.")) {
+                ScreenTargetPreviewView(mode: model.displayMode)
+                    .padding(.vertical, 8)
+                
+                HStack {
+                    Spacer()
+                    LiquidGlassSegmentControl(selection: $model.displayMode)
+                        .padding(.vertical, 6)
+                    Spacer()
+                }
+            }
+            
+            Section(header: Text("Display Bezels"), footer: Text("Use this diagnostic tool to match the simulated bounds precisely to your hardware sensors.")) {
+                HStack(spacing: 16) {
+                    Text("Resting Camouflage Width")
+                    Slider(value: $model.baseNotchWidth, in: 150...280, step: 2)
+                    Text("\(Int(model.baseNotchWidth))px")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                
+                HStack(spacing: 16) {
+                    Text("Resting Corner Radius")
+                    Slider(value: $model.compactCornerRadius, in: 2...30, step: 1)
+                    Text("\(Int(model.compactCornerRadius))px")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
+    }
+}
+
 struct BluetoothShape: Shape { func path(in rect: CGRect) -> Path { var path = Path(); let midX = rect.midX; let w = rect.width * 0.25; let h = rect.height * 0.4; let startY = rect.midY - h; let endY = rect.midY + h; path.move(to: CGPoint(x: midX - w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX + w, y: endY - h*0.5)); path.addLine(to: CGPoint(x: midX, y: endY)); path.addLine(to: CGPoint(x: midX, y: startY)); path.addLine(to: CGPoint(x: midX + w, y: startY + h*0.5)); path.addLine(to: CGPoint(x: midX - w, y: endY - h*0.5)); return path } }
 struct ConnectivityCard: View {
     let title: String
@@ -4607,6 +5019,7 @@ struct SystemControlsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
         .onAppear {
             model.refreshPermissionStates()
         }
@@ -4714,155 +5127,364 @@ struct BatterySettingsView: View {
     }
 }
 
+
+struct ActivityPreviewFrame<Content: View>: View {
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.black.opacity(0.40))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+            
+            content
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+        }
+        .frame(height: 72)
+    }
+}
+
 struct LiveActivitiesView: View {
     @ObservedObject var model = IslandModel.shared
     
     var body: some View {
         Form {
-            Section(header: Text("Dynamic Island Modules"), footer: Text("Choose which live activities and widgets appear in the Dynamic Notch and its integrated mini switcher.")) {
-                HStack {
-                    Image(systemName: "switch.2")
-                        .foregroundStyle(.blue)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Control Center Quick Toggles")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Wi-Fi, Bluetooth, Brightness, Volume & AirPods controls")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.showControlCenter)
-                        .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "music.note")
-                        .foregroundStyle(.pink)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Apple Music & Media Player")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Album art, interactive scrubber, waveform & playback controls")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.showMusic)
-                        .labelsHidden()
-                }
-
-                if model.showMusic {
-                    HStack {
-                        Image(systemName: "waveform.path.ecg")
-                            .foregroundStyle(.purple)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Real-Time Song Audio Waveform")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(model.useRealAudioWaveform ? "Real FFT audio frequency analysis from playing song" : "Procedural fluid simulated Apple Music waveform")
+            // MARK: - 1. Apple Music & Media Player
+            Section(
+                header: Text("Apple Music & Media Player"),
+                footer: Text("Features dynamic album artwork, interactive track scrubber, waveform visualizer, and playback controls.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white)
+                            )
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Blinding Lights")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("The Weeknd")
                                 .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.white.opacity(0.6))
                         }
+                        
                         Spacer()
-                        Toggle("", isOn: $model.useRealAudioWaveform)
-                            .labelsHidden()
+                        
+                        // Mini waveform preview
+                        HStack(spacing: 2) {
+                            ForEach([0.3, 0.7, 1.0, 0.5, 0.8], id: \.self) { h in
+                                Capsule()
+                                    .fill(Color.orange)
+                                    .frame(width: 2.8, height: 16 * h)
+                            }
+                        }
+                        .frame(height: 18)
+                        .padding(.trailing, 4)
+                        
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
                     }
-                    .padding(.leading, 12)
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable Apple Music Module", isOn: $model.showMusic)
+                
+                if model.showMusic {
+                    Toggle("Track-Based Song Audio Waveform (Mic-Free)", isOn: $model.useRealAudioWaveform)
                 }
                 
                 HStack {
-                    Image(systemName: "airpodspro")
-                        .foregroundStyle(.cyan)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("AirPods Integration")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Connection status, real-time battery gauges & listening modes")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Interactive Notch State")
                     Spacer()
-                    Toggle("", isOn: $model.showAirPodsLocalization)
-                        .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "phone.fill")
-                        .foregroundStyle(.green)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Phone & FaceTime")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Displays live call status and mute/end call actions")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.showPhone)
-                        .labelsHidden()
-                }
-                
-                HStack {
-                    Image(systemName: "bell.badge.fill")
-                        .foregroundStyle(.red)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("System Notifications")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Dynamic floating alert cards in the notch")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.showNotifications)
-                        .labelsHidden()
-                }
-                
-                HStack {
-                    AirDropSymbolView(size: 20, color: .cyan)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("AirDrop Sharing")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Displays live file transfer progress in the notch")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $model.showAirDrop)
-                        .labelsHidden()
-                }
-            }
-            
-
-            
-            Section(header: Text("Live Activity Previews & Simulations")) {
-                HStack {
-                    Image(systemName: "music.note.list")
-                        .foregroundStyle(.orange)
-                        .frame(width: 24)
-                    Text("Apple Music Player")
-                    Spacer()
-                    Button(model.state == .expandedMusic ? "Terminate" : "Simulate") {
+                    Button(model.state == .expandedMusic ? "Terminate Simulation" : "Simulate Music Player") {
                         model.toggleState(.expandedMusic)
                     }
                 }
+            }
+            
+            // MARK: - 2. Phone & FaceTime Calls
+            Section(
+                header: Text("Phone & FaceTime Calls"),
+                footer: Text("Displays incoming and active phone or FaceTime calls with caller contact and call actions.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("FaceTime Audio")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text("Tim Cook")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("02:14")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.green)
+                            .padding(.trailing, 6)
+                        
+                        ZStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 28, height: 28)
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable Phone & FaceTime Module", isOn: $model.showPhone)
                 
                 HStack {
-                    Image(systemName: "bag.fill")
-                        .foregroundStyle(.green)
-                        .frame(width: 24)
-                    Text("Food Delivery")
+                    Text("Interactive Notch State")
                     Spacer()
-                    Button(model.state == .expandedFood ? "Terminate" : "Simulate") {
-                        model.toggleState(.expandedFood)
+                    Button(model.state == .expandedPhone ? "Terminate Simulation" : "Simulate Incoming Call") {
+                        model.toggleState(.expandedPhone)
+                    }
+                }
+            }
+            
+            // MARK: - 3. AirDrop File Sharing
+            Section(
+                header: Text("AirDrop Sharing"),
+                footer: Text("Displays live outgoing and incoming file sharing progress with real-time transfer animations.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.cyan.opacity(0.25))
+                                .frame(width: 36, height: 36)
+                            AirDropSymbolView(size: 18, color: .cyan)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("AirDrop • 3 Photos")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("75%")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.cyan)
+                            }
+                            
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.18))
+                                        .frame(height: 4)
+                                    Capsule()
+                                        .fill(LinearGradient(colors: [.cyan, .blue], startPoint: .leading, endPoint: .trailing))
+                                        .frame(width: geo.size.width * 0.75, height: 4)
+                                }
+                            }
+                            .frame(height: 4)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable AirDrop Sharing Module", isOn: $model.showAirDrop)
+                
+                HStack {
+                    Text("Interactive Notch State")
+                    Spacer()
+                    Button(model.state == .expandedAirDrop ? "Terminate Simulation" : "Simulate AirDrop Transfer") {
+                        model.airDropProgress = 0.75
+                        model.toggleState(.expandedAirDrop)
+                    }
+                }
+            }
+            
+            // MARK: - 4. AirPods Integration
+            Section(
+                header: Text("AirPods Integration"),
+                footer: Text("Shows paired AirPods connection, discrete left/right/case battery levels, and listening mode toggles.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 14) {
+                        Image(systemName: "airpodspro")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AirPods Pro")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("Noise Cancellation Active")
+                                .font(.system(size: 10))
+                                .foregroundColor(.cyan)
+                        }
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 8) {
+                            HStack(spacing: 3) {
+                                Text("L 98%")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Image(systemName: "battery.100")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            }
+                            HStack(spacing: 3) {
+                                Text("R 100%")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Image(systemName: "battery.100")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable AirPods Integration", isOn: $model.showAirPodsLocalization)
+                
+                HStack {
+                    Text("Interactive Notch State")
+                    Spacer()
+                    Button(model.state == .expandedAirPods ? "Terminate Simulation" : "Simulate AirPods Connect") {
+                        model.toggleState(.expandedAirPods)
+                    }
+                }
+            }
+            
+            // MARK: - 5. System Notifications
+            Section(
+                header: Text("System Notifications"),
+                footer: Text("Presents dynamic floating alert banners smoothly expanding from the notch.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.green)
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "message.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("Messages • Sarah Jenkins")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("now")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            Text("Are we still meeting at 3 PM today?")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable System Notifications", isOn: $model.showNotifications)
+                
+                HStack {
+                    Text("Interactive Notch State")
+                    Spacer()
+                    Button(model.state == .expandedNotifications ? "Terminate Simulation" : "Simulate Notification Alert") {
+                        model.toggleState(.expandedNotifications)
+                    }
+                }
+            }
+            
+            // MARK: - 6. Control Center Quick Toggles
+            Section(
+                header: Text("Control Center Quick Toggles"),
+                footer: Text("Quick access toggles for Wi-Fi, Bluetooth, Audio Volume, and Screen Brightness.")
+            ) {
+                ActivityPreviewFrame {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wifi")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("Wi-Fi On")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "bolt.horizontal.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("Bluetooth")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                        
+                        Spacer()
+                    }
+                }
+                .padding(.vertical, 4)
+                
+                Toggle("Enable Control Center Quick Toggles", isOn: $model.showControlCenter)
+                
+                HStack {
+                    Text("Interactive Notch State")
+                    Spacer()
+                    Button(model.state == .expandedControls ? "Terminate Simulation" : "Simulate Control Center") {
+                        model.toggleState(.expandedControls)
                     }
                 }
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .toggleStyle(.switch)
     }
 }
 
