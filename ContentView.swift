@@ -11,26 +11,30 @@ struct AppleMusicLyricsView: View {
     @ObservedObject var model: IslandModel
     
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 8) {
-                headerRow
-                lyricsScrollView
-            }
-            .padding(.vertical, 8)
+        TimelineView(.animation(minimumInterval: 0.033)) { timeline in
+            let currentSec = model.currentPrecisePlaybackPosition
             
-            // Bottom-Right Apple Music Sing (Karaoke) Control: Icon at bottom, Thick Vertical Slider expanding above it!
-            karaokeSingFloatingControl
-                .padding(.trailing, 14)
-                .padding(.bottom, 12)
+            ZStack(alignment: .bottomTrailing) {
+                VStack(spacing: 8) {
+                    headerRow
+                    lyricsScrollView(currentSec: currentSec)
+                }
+                .padding(.vertical, 8)
+                
+                // Bottom-Right Apple Music Sing (Karaoke) Control: Icon at bottom, Thick Vertical Slider expanding above it!
+                karaokeSingFloatingControl
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 12)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.black.opacity(0.55))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(LinearGradient(colors: [model.artworkColor.opacity(0.40), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.0)
+                    )
+            )
         }
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(LinearGradient(colors: [model.artworkColor.opacity(0.40), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.0)
-                )
-        )
     }
     
     private var headerRow: some View {
@@ -49,13 +53,13 @@ struct AppleMusicLyricsView: View {
         .padding(.top, 2)
     }
     
-    private var lyricsScrollView: some View {
+    private func lyricsScrollView(currentSec: Double) -> some View {
         Group {
             if model.isFetchingLyrics {
                 VStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(0.8)
-                    Text("Fetching Live Lyrics...")
+                    Text("Fetching High-Precision Live Lyrics...")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                 }
@@ -63,8 +67,7 @@ struct AppleMusicLyricsView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 18) {
-                            let currentSec = model.playbackPosition
+                        VStack(alignment: .leading, spacing: 20) {
                             ForEach(Array(model.currentTrackLyrics.indices), id: \.self) { (idx: Int) in
                                 let line = model.currentTrackLyrics[idx]
                                 let isCurrent = currentSec >= line.startTime && currentSec < line.endTime
@@ -72,30 +75,22 @@ struct AppleMusicLyricsView: View {
                                 Button(action: {
                                     model.seekToPosition(line.startTime)
                                 }) {
-                                    if !line.words.isEmpty {
-                                        // Precise Apple-style word-by-word flow
-                                        WrappingHStack(words: line.words, currentSec: currentSec, isCurrentLine: isCurrent, artworkColor: model.artworkColor)
-                                    } else {
-                                        Text(line.text)
-                                            .font(.system(size: isCurrent ? 20 : 16, weight: isCurrent ? .bold : .semibold, design: .rounded))
-                                            .foregroundColor(isCurrent ? .white : Color.white.opacity(0.35))
-                                            .blur(radius: isCurrent ? 0 : 0.3)
-                                            .scaleEffect(isCurrent ? 1.04 : 1.0, anchor: .leading)
-                                            .shadow(color: isCurrent ? model.artworkColor.opacity(0.80) : Color.clear, radius: isCurrent ? 12 : 0)
-                                            .multilineTextAlignment(.leading)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
+                                    AppleLyricsLineView(
+                                        line: line,
+                                        currentSec: currentSec,
+                                        isCurrentLine: isCurrent,
+                                        artworkColor: model.artworkColor
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .id(line.id)
-                                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isCurrent)
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.trailing, model.isKaraokeActive ? 54 : 16)
-                        .padding(.vertical, 10)
+                        .padding(.trailing, model.isKaraokeActive ? 56 : 16)
+                        .padding(.vertical, 14)
                     }
-                    .onChange(of: model.playbackPosition) { newPos in
+                    .onChange(of: currentSec) { newPos in
                         let activeIndex = model.currentTrackLyrics.indices.first {
                             let l = model.currentTrackLyrics[$0]
                             return newPos >= l.startTime && newPos < l.endTime
@@ -125,8 +120,8 @@ struct AppleMusicLyricsView: View {
                         ZStack(alignment: .bottom) {
                             // Thick outer pill groove
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.20))
-                                .frame(width: 28, height: totalH)
+                                .fill(Color.white.opacity(0.22))
+                                .frame(width: 30, height: totalH)
                             
                             // Glowing liquid vocal fill inside thick slider
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -137,12 +132,12 @@ struct AppleMusicLyricsView: View {
                                         endPoint: .bottom
                                     )
                                 )
-                                .frame(width: 28, height: fillH)
-                                .shadow(color: model.artworkColor.opacity(0.8), radius: 6)
+                                .frame(width: 30, height: fillH)
+                                .shadow(color: model.artworkColor.opacity(0.85), radius: 6)
                             
                             // Vocal icon inside slider
                             Image(systemName: "music.mic")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(fillH > 24 ? .black.opacity(0.7) : .white.opacity(0.8))
                                 .padding(.bottom, 6)
                         }
@@ -156,18 +151,18 @@ struct AppleMusicLyricsView: View {
                                 }
                         )
                     }
-                    .frame(width: 32, height: 110)
+                    .frame(width: 34, height: 115)
                 }
                 .padding(4)
                 .background(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.black.opacity(0.65))
+                        .fill(Color.black.opacity(0.70))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.white.opacity(0.18), lineWidth: 1.0)
+                                .stroke(Color.white.opacity(0.22), lineWidth: 1.2)
                         )
                 )
-                .shadow(color: Color.black.opacity(0.5), radius: 8, y: 4)
+                .shadow(color: Color.black.opacity(0.55), radius: 10, y: 4)
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.85, anchor: .bottom)),
                     removal: .opacity.combined(with: .scale(scale: 0.85, anchor: .bottom))
@@ -196,59 +191,33 @@ struct AppleMusicLyricsView: View {
     }
 }
 
-// MARK: - Word-by-Word Flowing Text View for Apple Music Lyrics
-struct WrappingHStack: View {
-    let words: [LyricsWord]
+// MARK: - Word-by-Word Glowing Line View for Apple Music Lyrics
+struct AppleLyricsLineView: View {
+    let line: LyricsLine
     let currentSec: Double
     let isCurrentLine: Bool
     let artworkColor: Color
     
     var body: some View {
-        // Flow layout for words with individual dynamic illumination
-        var width = CGFloat.zero
-        var height = CGFloat.zero
-        
-        return GeometryReader { g in
-            ZStack(alignment: .topLeading) {
-                ForEach(words) { word in
-                    let isWordActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
-                    let hasWordPassed = isCurrentLine && currentSec >= word.endTime
-                    
-                    Text(word.text + " ")
-                        .font(.system(size: isCurrentLine ? 20 : 16, weight: isCurrentLine ? .bold : .semibold, design: .rounded))
-                        .foregroundColor(
-                            isWordActive ? Color.white : (
-                                (hasWordPassed || isCurrentLine) ? Color.white.opacity(0.92) : Color.white.opacity(0.35)
-                            )
+        HStack(alignment: .top, spacing: 4) {
+            ForEach(line.words) { word in
+                let isWordActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
+                let hasWordPassed = isCurrentLine && currentSec >= word.endTime
+                
+                Text(word.text)
+                    .font(.system(size: isCurrentLine ? 21 : 16, weight: isCurrentLine ? .bold : .semibold, design: .rounded))
+                    .foregroundColor(
+                        isWordActive ? Color.white : (
+                            hasWordPassed ? Color.white.opacity(0.92) : (isCurrentLine ? Color.white.opacity(0.60) : Color.white.opacity(0.32))
                         )
-                        .blur(radius: isWordActive ? 0 : (isCurrentLine ? 0.1 : 0.3))
-                        .scaleEffect(isWordActive ? 1.08 : 1.0, anchor: .leading)
-                        .shadow(color: isWordActive ? artworkColor.opacity(0.95) : (isCurrentLine ? artworkColor.opacity(0.4) : Color.clear), radius: isWordActive ? 12 : 0)
-                        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isWordActive)
-                        .alignmentGuide(.leading, computeValue: { d in
-                            if (abs(width - d.width) > g.size.width) {
-                                width = 0
-                                height -= d.height + 4
-                            }
-                            let result = width
-                            if word.id == words.last?.id {
-                                width = 0
-                            } else {
-                                width -= d.width
-                            }
-                            return result
-                        })
-                        .alignmentGuide(.top, computeValue: { _ in
-                            let result = height
-                            if word.id == words.last?.id {
-                                height = 0
-                            }
-                            return result
-                        })
-                }
+                    )
+                    .scaleEffect(isWordActive ? 1.08 : (isCurrentLine ? 1.02 : 1.0), anchor: .leading)
+                    .shadow(color: isWordActive ? artworkColor.opacity(0.95) : (isCurrentLine ? artworkColor.opacity(0.40) : Color.clear), radius: isWordActive ? 14 : 0)
+                    .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isWordActive)
             }
         }
-        .frame(minHeight: 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .blur(radius: isCurrentLine ? 0 : 0.25)
     }
 }
 
@@ -3253,6 +3222,15 @@ class IslandModel: ObservableObject {
 
     @Published var trackDuration: Double = 1.0
     @Published var playbackPosition: Double = 0.0
+    var lastPlaybackUpdateTime: Date = Date()
+    
+    var currentPrecisePlaybackPosition: Double {
+        if isMusicPlaying {
+            let elapsed = Date().timeIntervalSince(lastPlaybackUpdateTime)
+            return min(trackDuration, playbackPosition + elapsed)
+        }
+        return playbackPosition
+    }
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
     @Published var hasLiveMotionWallpaper: Bool = false
     @Published var isLiveWallpaperExpanded: Bool = UserDefaults.standard.bool(forKey: "isLiveWallpaperExpanded") {
@@ -3889,61 +3867,48 @@ class IslandModel: ObservableObject {
             
             var fetchedLRC: String? = nil
             
-            func queryLRC(cleanTrack: String, cleanArtist: String) -> String? {
-                var urlComponents = URLComponents(string: "https://lrclib.net/api/get")
-                urlComponents?.queryItems = [
-                    URLQueryItem(name: "track_name", value: cleanTrack),
-                    URLQueryItem(name: "artist_name", value: cleanArtist),
-                    URLQueryItem(name: "duration", value: String(Int(trackDur)))
-                ]
-                if let url = urlComponents?.url {
-                    var req = URLRequest(url: url)
-                    req.timeoutInterval = 3.5
-                    req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
-                    let sema = DispatchSemaphore(value: 0)
-                    var lrcResult: String? = nil
-                    URLSession.shared.dataTask(with: req) { data, _, _ in
-                        if let d = data, let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                            lrcResult = (json["syncedLyrics"] as? String) ?? (json["plainLyrics"] as? String)
-                        }
-                        sema.signal()
-                    }.resume()
-                    _ = sema.wait(timeout: .now() + 3.5)
-                    if let res = lrcResult, !res.isEmpty { return res }
-                }
-                
+            func queryLRC(query: String) -> String? {
                 var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
-                searchComponents?.queryItems = [URLQueryItem(name: "q", value: cleanTrack + " " + cleanArtist)]
-                if let searchURL = searchComponents?.url {
-                    var req = URLRequest(url: searchURL)
-                    req.timeoutInterval = 3.5
-                    req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
-                    let sema = DispatchSemaphore(value: 0)
-                    var searchResult: String? = nil
-                    URLSession.shared.dataTask(with: req) { data, _, _ in
-                        if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]], !list.isEmpty {
-                            for item in list {
-                                if let synced = item["syncedLyrics"] as? String, !synced.isEmpty {
-                                    searchResult = synced
-                                    break
-                                }
-                            }
-                            if searchResult == nil, let plain = list[0]["plainLyrics"] as? String {
-                                searchResult = plain
+                searchComponents?.queryItems = [URLQueryItem(name: "q", value: query)]
+                guard let searchURL = searchComponents?.url else { return nil }
+                
+                var req = URLRequest(url: searchURL)
+                req.timeoutInterval = 4.0
+                req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
+                let sema = DispatchSemaphore(value: 0)
+                var searchResult: String? = nil
+                URLSession.shared.dataTask(with: req) { data, _, _ in
+                    if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]], !list.isEmpty {
+                        // Pick best candidate that has syncedLyrics and matches track name closely
+                        for item in list {
+                            if let synced = item["syncedLyrics"] as? String, !synced.isEmpty {
+                                searchResult = synced
+                                break
                             }
                         }
-                        sema.signal()
-                    }.resume()
-                    _ = sema.wait(timeout: .now() + 3.5)
-                    return searchResult
-                }
-                return nil
+                        if searchResult == nil, let plain = list[0]["plainLyrics"] as? String {
+                            searchResult = plain
+                        }
+                    }
+                    sema.signal()
+                }.resume()
+                _ = sema.wait(timeout: .now() + 4.0)
+                return searchResult
             }
             
-            let cleanTitle = trackName.components(separatedBy: "(")[0].components(separatedBy: "[")[0].trimmingCharacters(in: .whitespaces)
-            fetchedLRC = queryLRC(cleanTrack: trackName, cleanArtist: artistName)
-            if fetchedLRC == nil && cleanTitle != trackName {
-                fetchedLRC = queryLRC(cleanTrack: cleanTitle, cleanArtist: artistName)
+            // Clean queries
+            let cleanTrack = trackName.components(separatedBy: "(")[0].components(separatedBy: "[")[0].trimmingCharacters(in: .whitespaces)
+            let cleanArtist = artistName.components(separatedBy: ",")[0].components(separatedBy: "&")[0].components(separatedBy: "feat")[0].trimmingCharacters(in: .whitespaces)
+            
+            // 1. Precise query with clean track & primary artist
+            fetchedLRC = queryLRC(query: "\(cleanTrack) \(cleanArtist)")
+            if fetchedLRC == nil {
+                // 2. Query with raw track and artist
+                fetchedLRC = queryLRC(query: "\(trackName) \(artistName)")
+            }
+            if fetchedLRC == nil {
+                // 3. Query with clean track alone
+                fetchedLRC = queryLRC(query: cleanTrack)
             }
             
             var rawLines: [(time: Double, text: String)] = []
@@ -4030,6 +3995,7 @@ class IslandModel: ObservableObject {
 
     func seekToPosition(_ newPos: TimeInterval) {
         self.playbackPosition = newPos
+        self.lastPlaybackUpdateTime = Date()
         DispatchQueue.global(qos: .userInitiated).async {
             _ = NSAppleScript(source: "tell application \"Music\" to set player position to \(newPos)")?.executeAndReturnError(nil)
         }
@@ -4295,10 +4261,10 @@ class IslandModel: ObservableObject {
             }
         }
         
-        // 2. Efficient periodic position tracking: Only poll Apple Music when app is actually playing or expanded
-        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        // 2. High-precision position tracking for authentic word-by-word Apple Music lyrics sync
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if self.isMusicPlaying || self.state == .expandedMusic || !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty {
+            if self.isMusicPlaying || self.state == .expandedMusic {
                 self.fetchCurrentMusicState()
             }
         }
@@ -4368,6 +4334,7 @@ class IslandModel: ObservableObject {
                 if !prvTitle.isEmpty { self.prevTrackName = prvTitle }
                 self.currentAlbum = tAlbum
                 self.playbackPosition = tPosition
+                self.lastPlaybackUpdateTime = Date()
                 self.lastPlaybackPollTime = Date()
                 let isActuallyPlaying = (pState.lowercased() == "playing" || pState.lowercased() == "kpsp")
                 if Date().timeIntervalSince(self.lastPlayPauseToggleTime) > 0.8 {
