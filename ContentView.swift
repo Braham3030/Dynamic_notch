@@ -609,232 +609,93 @@ enum WaveformStyle: String, CaseIterable, Identifiable {
     }
 }
 
-import AVFoundation
-import Accelerate
-
 class AudioAnalyzer: ObservableObject {
     static let shared = AudioAnalyzer()
     
-    @Published var peaks: [CGFloat] = [0.20, 0.20, 0.20, 0.20, 0.20]
-    @Published var isUsingRealAudioEngine: Bool = false
+    @Published var peaks: [CGFloat] = [0.25, 0.35, 0.45, 0.38, 0.28]
     
-    private var audioEngine: AVAudioEngine?
+    private var timer: Timer?
     private var isMonitoring: Bool = false
-    private let bufferSize: AVAudioFrameCount = 1024
-    private var smoothedPeaks: [Float] = [0.20, 0.20, 0.20, 0.20, 0.20]
     
-    // Fast FFT Setup
-    private var fftSetup: FFTSetup?
-    private let log2n: vDSP_Length = 10 // 2^10 = 1024
-    
-    init() {
-        fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
-    }
-    
-    deinit {
-        if let setup = fftSetup {
-            vDSP_destroy_fftsetup(setup)
-        }
-    }
+    init() {}
     
     func startMonitoring() {
         guard !isMonitoring else { return }
         isMonitoring = true
-        
-        // Check microphone permission for real hardware sound capture
-        let status = AVCaptureDevice.authorizationStatus(for: .audio)
-        if status == .authorized {
-            startHardwareCapture()
-        } else if status == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        self?.startHardwareCapture()
-                    }
-                }
-            }
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.updateTrackFrequencies()
         }
     }
     
     func stopMonitoring() {
         isMonitoring = false
-        stopHardwareCapture()
+        timer?.invalidate()
+        timer = nil
         DispatchQueue.main.async {
-            self.peaks = [0.20, 0.20, 0.20, 0.20, 0.20]
-            self.smoothedPeaks = [0.20, 0.20, 0.20, 0.20, 0.20]
+            self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2]
         }
     }
     
-    /// Finds the Mac's built-in microphone so AirPods microphone is NEVER activated,
-    /// preserving AAC / LDAC high-fidelity 48kHz stereo playback without Bluetooth hands-free SCO downgrade!
-    private func getBuiltInMacMicrophoneID() -> AudioDeviceID? {
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var size: UInt32 = 0
-        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &size)
-        let deviceCount = Int(size) / MemoryLayout<AudioDeviceID>.size
-        var devices = [AudioDeviceID](repeating: 0, count: deviceCount)
-        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &size, &devices)
-        guard status == noErr else { return nil }
-        
-        for dev in devices {
-            var nameAddress = AudioObjectPropertyAddress(
-                mSelector: kAudioObjectPropertyName,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var cfName: CFString = "" as CFString
-            var s = UInt32(MemoryLayout<CFString>.size)
-            withUnsafeMutablePointer(to: &cfName) { ptr in
-                _ = AudioObjectGetPropertyData(dev, &nameAddress, 0, nil, &s, ptr)
-            }
-            let name = cfName as String
-            
-            var streamAddr = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyStreams,
-                mScope: kAudioObjectPropertyScopeInput,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var streamSize: UInt32 = 0
-            AudioObjectGetPropertyDataSize(dev, &streamAddr, 0, nil, &streamSize)
-            
-            // Strictly match internal MacBook microphone (never AirPods, Bluetooth headset, or virtual drivers)
-            if streamSize > 0 && (name.localizedCaseInsensitiveContains("MacBook") ||
-                                  name.localizedCaseInsensitiveContains("Built-in") ||
-                                  name.localizedCaseInsensitiveContains("Internal")) {
-                return dev
-            }
-        }
-        return nil
-    }
-
-    private func startHardwareCapture() {
-        guard audioEngine == nil else { return }
-        
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        
-        // Force the input node specifically to the built-in Mac microphone.
-        // This ensures connected AirPods / Bluetooth headphones stay 100% in full pristine high-res stereo mode!
-        if let internalMicID = getBuiltInMacMicrophoneID(), let audioUnit = input.audioUnit {
-            var devID = internalMicID
-            _ = AudioUnitSetProperty(
-                audioUnit,
-                kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global,
-                0,
-                &devID,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
-            )
-        }
-        
-        let bus = 0
-        let format = input.outputFormat(forBus: bus)
-        guard format.sampleRate > 0 else { return }
-        
-        input.installTap(onBus: bus, bufferSize: bufferSize, format: format) { [weak self] buffer, _ in
-            self?.processRealAudioBuffer(buffer)
-        }
-        
-        do {
-            try engine.start()
-            self.audioEngine = engine
-            DispatchQueue.main.async {
-                self.isUsingRealAudioEngine = true
-            }
-        } catch {
-            print("AudioAnalyzer: Failed to start hardware engine: \(error)")
-        }
-    }
-    
-    private func stopHardwareCapture() {
-        if let engine = audioEngine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-            self.audioEngine = nil
-        }
-        DispatchQueue.main.async {
-            self.isUsingRealAudioEngine = false
-        }
-    }
-    
-    private func processRealAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0], let setup = fftSetup else { return }
-        let frameCount = Int(buffer.frameLength)
-        guard frameCount >= 512 else { return }
-        
-        let n = 1024
-        let halfN = n / 2
-        
-        var samples = [Float](repeating: 0, count: n)
-        let copyCount = min(frameCount, n)
-        for i in 0..<copyCount {
-            samples[i] = channelData[i]
-        }
-        
-        // Apply Hanning Window to eliminate spectral leakage
-        var window = [Float](repeating: 0, count: n)
-        vDSP_hann_window(&window, vDSP_Length(n), Int32(vDSP_HANN_NORM))
-        vDSP_vmul(samples, 1, window, 1, &samples, 1, vDSP_Length(n))
-        
-        var realp = [Float](repeating: 0, count: halfN)
-        var imagp = [Float](repeating: 0, count: halfN)
-        
-        realp.withUnsafeMutableBufferPointer { rPtr in
-            imagp.withUnsafeMutableBufferPointer { iPtr in
-                var splitComplex = DSPSplitComplex(realp: rPtr.baseAddress!, imagp: iPtr.baseAddress!)
-                samples.withUnsafeBufferPointer { sPtr in
-                    sPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: n) { comp in
-                        vDSP_ctoz(comp, 2, &splitComplex, 1, vDSP_Length(halfN))
-                    }
-                }
-                vDSP_fft_zrip(setup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-                
-                var magnitudes = [Float](repeating: 0, count: halfN)
-                vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfN))
-                
-                // Map FFT bins into 5 distinct audio frequency bands:
-                // Band 0: Sub-bass & Kick (20Hz - 150Hz) ~ bins 1-4
-                // Band 1: Bass & Low-Mids (150Hz - 500Hz) ~ bins 5-12
-                // Band 2: Midrange / Vocals (500Hz - 2000Hz) ~ bins 13-45
-                // Band 3: High-Mids / Snares (2000Hz - 6000Hz) ~ bins 46-135
-                // Band 4: Treble & Air / Cymbals (6000Hz - 16000Hz) ~ bins 136-360
-                let bands: [(Int, Int, Float)] = [
-                    (1, 4, 1.8),
-                    (5, 12, 1.5),
-                    (13, 45, 1.2),
-                    (46, 135, 1.4),
-                    (136, 360, 2.0)
-                ]
-                
-                var currentPeaks = [Float](repeating: 0.18, count: 5)
-                for (bIdx, band) in bands.enumerated() {
-                    var sum: Float = 0
-                    let count = max(1, band.1 - band.0 + 1)
-                    for k in band.0...min(band.1, halfN - 1) {
-                        sum += sqrt(magnitudes[k])
-                    }
-                    let avg = (sum / Float(count)) * band.2 * 3.5
-                    currentPeaks[bIdx] = max(0.18, min(1.0, avg))
-                }
-                
-                // Apply fast-attack and smooth-decay smoothing
-                for i in 0..<5 {
-                    if currentPeaks[i] > self.smoothedPeaks[i] {
-                        self.smoothedPeaks[i] = currentPeaks[i] // instant punch on sound beats
-                    } else {
-                        self.smoothedPeaks[i] = self.smoothedPeaks[i] * 0.78 + currentPeaks[i] * 0.22 // fluid decay
-                    }
-                }
-                
-                let finalPeaks = self.smoothedPeaks.map { CGFloat($0) }
+    private func updateTrackFrequencies() {
+        let model = IslandModel.shared
+        guard model.isMusicPlaying else {
+            if self.peaks != [0.2, 0.2, 0.2, 0.2, 0.2] {
                 DispatchQueue.main.async {
-                    self.peaks = finalPeaks
+                    self.peaks = [0.2, 0.2, 0.2, 0.2, 0.2]
                 }
             }
+            return
+        }
+        
+        let pos = model.currentPrecisePlaybackPosition
+        let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+        let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+        
+        // Multi-frequency spectral synthesis based on track rhythm harmonics - 100% volume independent and mic-free!
+        let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
+        let beatTime = (pos * (bpm / 60.0)) * Double.pi * 2.0
+        
+        let beatPhase = pos * (bpm / 60.0)
+        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
+        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
+        
+        // 1. Kick Drum
+        let isKick = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
+        let kick = isKick ? (exp(-beatFrac * 7.5) * 0.85 + 0.15) : 0.20
+        
+        // 2. Bassline
+        let eighth = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
+        let bass = sin(eighth * Double.pi) * 0.65 + 0.22
+        
+        // 3. Vocals
+        let vocalRaw: Double
+        if !model.currentTrackLyrics.isEmpty {
+            let isSinging = model.currentTrackLyrics.contains { pos >= $0.startTime && pos < $0.endTime }
+            vocalRaw = isSinging ? (sin(pos * 9.5) * 0.28 + 0.65) : 0.20
+        } else {
+            vocalRaw = sin(pos * 8.0) * 0.30 + 0.50
+        }
+        let vocals = vocalRaw * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+        
+        // 4. Snare
+        let isSnare = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
+        let snare = isSnare ? (exp(-beatFrac * 9.0) * 0.85 + 0.15) : 0.18
+        
+        // 5. Hi-Hats
+        let sixteenth = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
+        let hat = exp(-sixteenth * 12.0) * 0.70 + 0.20
+        
+        let newPeaks: [CGFloat] = [
+            CGFloat(min(1.0, max(0.18, kick))),
+            CGFloat(min(1.0, max(0.20, bass))),
+            CGFloat(min(1.0, max(0.20, vocals))),
+            CGFloat(min(1.0, max(0.18, snare))),
+            CGFloat(min(1.0, max(0.18, hat)))
+        ]
+        
+        DispatchQueue.main.async {
+            self.peaks = newPeaks
         }
     }
 }
@@ -1491,19 +1352,23 @@ struct IslandView: View {
                             let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
                             
                             if model.pulsateArtworkGlow {
-                                let bassVal = AudioAnalyzer.shared.peaks.indices.contains(0) ? Double(AudioAnalyzer.shared.peaks[0]) : 0.25
-                                let pulseFactor = min(1.0, max(0.0, bassVal))
-                                
-                                // Dynamic real-time FFT audio reaction around notch edges!
-                                let dynamicBlur = (model.isExpanded ? 8.0 : 5.0) + CGFloat(pulseFactor * 7.0 * model.artworkGlowIntensity)
-                                let strokeWidth = (model.isExpanded ? 2.5 : 2.0) + CGFloat(pulseFactor * 2.0)
-                                let dynamicOpacity = (0.32 + pulseFactor * 0.58) * model.artworkGlowIntensity
-                                
-                                shape
-                                    .stroke(model.artworkColor, lineWidth: strokeWidth)
-                                    .blur(radius: dynamicBlur)
-                                    .opacity(dynamicOpacity)
-                                    .animation(.spring(response: 0.16, dampingFraction: 0.72), value: pulseFactor)
+                                TimelineView(.animation) { timeline in
+                                    let time = timeline.date.timeIntervalSinceReferenceDate
+                                    let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+                                    let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
+                                    let beat = sin(time * (bpm / 60.0) * Double.pi * 2.0)
+                                    let pulseFactor = (beat + 1.0) / 2.0 // 0.0 to 1.0
+                                    
+                                    // Tighter, crisp ambient glow behind the artwork (left) and waveform (right) at the notch edge
+                                    let dynamicBlur = (model.isExpanded ? 8.0 : 5.0) + CGFloat(pulseFactor * 6.0 * model.artworkGlowIntensity)
+                                    let strokeWidth = (model.isExpanded ? 2.5 : 2.0) + CGFloat(pulseFactor * 1.5)
+                                    let dynamicOpacity = (0.35 + pulseFactor * 0.45) * model.artworkGlowIntensity
+                                    
+                                    shape
+                                        .stroke(model.artworkColor, lineWidth: strokeWidth)
+                                        .blur(radius: dynamicBlur)
+                                        .opacity(dynamicOpacity)
+                                }
                             } else {
                                 shape
                                     .stroke(model.artworkColor, lineWidth: model.isExpanded ? 2.5 : 2.0)
@@ -5331,11 +5196,6 @@ class IslandModel: ObservableObject {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                             self.isMusicPlaying = isActuallyPlaying
                         }
-                        if isActuallyPlaying {
-                            AudioAnalyzer.shared.startMonitoring()
-                        } else {
-                            AudioAnalyzer.shared.stopMonitoring()
-                        }
                     }
                 }
                 
@@ -6548,33 +6408,44 @@ struct MusicWaveform: View {
 
     @ViewBuilder
     private var renderAppleClassic: some View {
-        HStack(spacing: 2.2) {
-            ForEach(0..<5, id: \.self) { i in
-                let realP = (i < analyzer.peaks.count) ? analyzer.peaks[i] : 0.20
-                let h = minHeight + realP * (maxHeight - minHeight)
-                Capsule()
-                    .fill(color)
-                    .frame(width: 3.2, height: h)
-                    .animation(.spring(response: 0.12, dampingFraction: 0.75), value: h)
+        TimelineView(.animation) { timeline in
+            let isSync = model.waveformTrackSynchronized
+            let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+            let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
+            
+            HStack(spacing: 2.2) {
+                ForEach(0..<5, id: \.self) { i in
+                    let h = classicHeight(index: i, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: 3.2, height: h)
+                }
             }
+            .frame(height: maxHeight, alignment: .center)
         }
-        .frame(height: maxHeight, alignment: .center)
     }
     
     @ViewBuilder
     private var renderModernBars: some View {
-        HStack(spacing: 1.8) {
-            ForEach(0..<7, id: \.self) { i in
-                let peakIdx = (i * 5) / 7
-                let realP = (peakIdx < analyzer.peaks.count) ? analyzer.peaks[peakIdx] : 0.20
-                let h = minHeight + realP * (maxHeight - minHeight)
-                Capsule()
-                    .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 2.4, height: h)
-                    .animation(.spring(response: 0.12, dampingFraction: 0.75), value: h)
+        TimelineView(.animation) { timeline in
+            let isSync = model.waveformTrackSynchronized
+            let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+            let bpm = 124.0 + (Double(abs(trackKey.hashValue % 30)) - 15.0)
+            
+            HStack(spacing: 1.8) {
+                ForEach(0..<7, id: \.self) { i in
+                    let h = modernHeight(index: i, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
+                    Capsule()
+                        .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
+                        .frame(width: 2.4, height: h)
+                }
             }
+            .frame(height: maxHeight, alignment: .center)
         }
-        .frame(height: maxHeight, alignment: .center)
     }
     
     @ViewBuilder
