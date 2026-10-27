@@ -2221,22 +2221,24 @@ struct IslandView: View {
                 ZStack(alignment: .leading) {
                     // 1. Real-Time Previous Track Title (positioned comfortably to the left at -260pt with generous margin)
                     if manualDragOffset > 0 {
-                        let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack) 
+                        let prevDisplay = (!model.prevTrackName.isEmpty && model.prevTrackName != model.currentTrack && Int(model.prevTrackName) == nil) 
                             ? model.prevTrackName 
-                            : "Previous Track"
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(prevDisplay)
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.95))
-                                .lineLimit(1)
-                            Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
-                                .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
-                                .lineLimit(1)
+                            : ""
+                        if !prevDisplay.isEmpty {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(prevDisplay)
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.95))
+                                    .lineLimit(1)
+                                Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.65))
+                                    .lineLimit(1)
+                            }
+                            .padding(.leading, 4)
+                            .offset(x: manualDragOffset - 260)
+                            .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 30.0)))
                         }
-                        .padding(.leading, 4)
-                        .offset(x: manualDragOffset - 260)
-                        .opacity(min(1.0, max(0.0, Double(manualDragOffset) / 30.0)))
                     }
                     
                     // 2. Active Playing Track (smoothly slides out and in on any track switch)
@@ -2262,22 +2264,24 @@ struct IslandView: View {
                     
                     // 3. Real-Time Next Track Title (positioned to the right at +260pt)
                     if manualDragOffset < 0 {
-                        let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack) 
+                        let nextDisplay = (!model.nextTrackName.isEmpty && model.nextTrackName != model.currentTrack && Int(model.nextTrackName) == nil) 
                             ? model.nextTrackName 
-                            : "Next Track"
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(nextDisplay)
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.95))
-                                .lineLimit(1)
-                            Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
-                                .font(.system(size: 12.5, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
-                                .lineLimit(1)
+                            : ""
+                        if !nextDisplay.isEmpty {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(nextDisplay)
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.95))
+                                    .lineLimit(1)
+                                Text(model.currentArtist.isEmpty ? "Apple Music" : model.currentArtist)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.65))
+                                    .lineLimit(1)
+                            }
+                            .padding(.leading, 4)
+                            .offset(x: manualDragOffset + 260)
+                            .opacity(min(1.0, max(0.0, Double(-manualDragOffset) / 30.0)))
                         }
-                        .padding(.leading, 4)
-                        .offset(x: manualDragOffset + 260)
-                        .opacity(min(1.0, max(0.0, Double(-manualDragOffset) / 30.0)))
                     }
                 }
                 .padding(.leading, 2)
@@ -4323,13 +4327,18 @@ class IslandModel: ObservableObject {
 
     func skipTrack(forward: Bool) {
         let targetCandidate = forward ? self.nextTrackName : self.prevTrackName
+        let isRealTrackName = !targetCandidate.isEmpty && 
+                              targetCandidate != "Next Track" && 
+                              targetCandidate != "Previous Track" && 
+                              Int(targetCandidate) == nil
+        
         DispatchQueue.main.async {
             self.isForward = forward
             self.lastManualSkipTime = Date()
             self.buttonSkipTrigger += (forward ? 1 : -1)
             
-            // Instantly apply next/previous track name and cached artwork optimistically!
-            if !targetCandidate.isEmpty {
+            // Instantly apply next/previous track name and cached artwork optimistically ONLY if genuine track title!
+            if isRealTrackName {
                 self.currentTrack = targetCandidate
                 for (k, v) in self.artworkCache {
                     if k.localizedCaseInsensitiveContains(targetCandidate) || targetCandidate.localizedCaseInsensitiveContains(k) {
@@ -5048,15 +5057,6 @@ class IslandModel: ObservableObject {
                         if curTrackIndex < totalPlTracks then
                             set nxtName to name of track (curTrackIndex + 1) of curPl
                         end if
-                    on error
-                        -- Fallback for Apple Music radio / stream / up-next tracks
-                        try
-                            set curIdx to index of curTrk
-                            if curIdx > 1 then
-                                set prevName to name of track (curIdx - 1)
-                            end if
-                            set nxtName to name of track (curIdx + 1)
-                        end try
                     end try
                     
                     -- Direct Raw High-Res Artwork
@@ -5183,8 +5183,9 @@ class IslandModel: ObservableObject {
                 
                 self.trackDuration = tDuration
                 self.isCurrentTrackFavorited = isFav
-                if !nxtTitle.isEmpty { self.nextTrackName = nxtTitle }
-                if !prvTitle.isEmpty { self.prevTrackName = prvTitle }
+                // Only accept valid descriptive track titles (not pure numeric store IDs or single digit IDs)
+                if !nxtTitle.isEmpty && Int(nxtTitle) == nil { self.nextTrackName = nxtTitle }
+                if !prvTitle.isEmpty && Int(prvTitle) == nil { self.prevTrackName = prvTitle }
                 self.currentAlbum = tAlbum
                 self.playbackPosition = tPosition
                 self.lastPlaybackUpdateTime = scriptCaptureTime
