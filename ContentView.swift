@@ -2309,42 +2309,31 @@ struct IslandView: View {
                             manualDragOffset = value.translation.width
                         }
                         .onEnded { drag in
-                            if drag.translation.width < -35 {
-                                // Slide completely off to the left and slide next track in from right
-                                model.isForward = true
-                                model.lastManualSkipTime = Date()
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            let velocity = drag.predictedEndTranslation.width - drag.translation.width
+                            let isLeftSwipe = drag.translation.width < -30 || velocity < -120
+                            let isRightSwipe = drag.translation.width > 30 || velocity > 120
+                            
+                            if isLeftSwipe {
+                                // Directly slide next track into center (0) seamlessly without any glitch!
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                                     manualDragOffset = -260
                                 }
-                                
-                                DispatchQueue.global(qos: .userInitiated).async {
-                                    model.skipTrack(forward: true)
-                                    DispatchQueue.main.async {
-                                        manualDragOffset = 260
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-                                            manualDragOffset = 0
-                                        }
-                                    }
+                                model.skipTrack(forward: true)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                                    manualDragOffset = 0
                                 }
-                            } else if drag.translation.width > 35 {
-                                // Slide completely off to the right and slide prev track in from left
-                                model.isForward = false
-                                model.lastManualSkipTime = Date()
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            } else if isRightSwipe {
+                                // Directly slide previous track into center (0) seamlessly without any glitch!
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
                                     manualDragOffset = 260
                                 }
-                                
-                                DispatchQueue.global(qos: .userInitiated).async {
-                                    model.skipTrack(forward: false)
-                                    DispatchQueue.main.async {
-                                        manualDragOffset = -260
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-                                            manualDragOffset = 0
-                                        }
-                                    }
+                                model.skipTrack(forward: false)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                                    manualDragOffset = 0
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.70)) {
+                                // Snapped back if threshold not met
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.76)) {
                                     manualDragOffset = 0
                                 }
                             }
@@ -4333,13 +4322,15 @@ class IslandModel: ObservableObject {
     @Published var buttonSkipTrigger: Int = 0
 
     func skipTrack(forward: Bool) {
+        let targetCandidate = forward ? self.nextTrackName : self.prevTrackName
         DispatchQueue.main.async {
             self.isForward = forward
             self.lastManualSkipTime = Date()
             self.buttonSkipTrigger += (forward ? 1 : -1)
-            // Instant optimistic artwork switch from cache if next/previous track name is known
-            let targetCandidate = forward ? self.nextTrackName : self.prevTrackName
+            
+            // Instantly apply next/previous track name and cached artwork optimistically!
             if !targetCandidate.isEmpty {
+                self.currentTrack = targetCandidate
                 for (k, v) in self.artworkCache {
                     if k.localizedCaseInsensitiveContains(targetCandidate) || targetCandidate.localizedCaseInsensitiveContains(k) {
                         self.currentArtwork = v.image
@@ -4351,7 +4342,7 @@ class IslandModel: ObservableObject {
         }
         DispatchQueue.global(qos: .userInteractive).async {
             _ = NSAppleScript(source: forward ? "tell application \"Music\" to next track" : "tell application \"Music\" to previous track")?.executeAndReturnError(nil)
-            // Immediately query state without artificial sleep for ultra-responsive artwork update
+            // Fast state query to confirm playback and update surrounding track names
             self.fetchCurrentMusicState()
         }
     }
