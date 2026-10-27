@@ -1339,6 +1339,9 @@ struct IslandView: View {
                     }
                 }
                 .frame(width: model.width, height: model.height)
+                .animation(.spring(response: 0.36, dampingFraction: 0.78), value: model.notchTheme)
+                .animation(.spring(response: 0.36, dampingFraction: 0.78), value: model.notchGlassOpacity)
+                .animation(.spring(response: 0.36, dampingFraction: 0.78), value: model.notchGlowIntensity)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .overlay(
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous)
@@ -1500,6 +1503,10 @@ struct IslandView: View {
                     }
                 }
                 .frame(width: model.width, height: model.height, alignment: .top)
+                .animation(.spring(response: 0.36, dampingFraction: 0.76, blendDuration: 0.25), value: model.isExpanded)
+                .animation(.spring(response: 0.36, dampingFraction: 0.76, blendDuration: 0.25), value: model.state)
+                .animation(.spring(response: 0.36, dampingFraction: 0.76, blendDuration: 0.25), value: model.width)
+                .animation(.spring(response: 0.36, dampingFraction: 0.76, blendDuration: 0.25), value: model.height)
                 .overlay(alignment: .topTrailing) {
                     if model.isExpanded && model.state != .expandedAirPods && model.state != .expandedPhone && model.state != .expandedNotifications {
                         VerticalSwitcher(model: model, activeState: model.state)
@@ -2209,6 +2216,7 @@ struct IslandView: View {
                         .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
                         .transition(.flip3D(isForward: model.isForward))
                     }
+                    .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
                     .shadow(color: model.hasLiveMotionWallpaper ? model.artworkColor.opacity(0.55) : Color.black.opacity(0.4), radius: model.hasLiveMotionWallpaper ? 6 : 4, y: 2)
                 }
                 .buttonStyle(.plain)
