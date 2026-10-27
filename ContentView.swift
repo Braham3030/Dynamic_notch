@@ -4449,36 +4449,40 @@ class IslandModel: ObservableObject {
                 return resultLRC
             }
             
-            // Helper: Query search endpoint (/api/search) with duration matching
-            func queryLRC(query: String, expectedDur: Double) -> String? {
+            // Helper: Query search endpoint with structured track & artist query items
+            func queryStructuredSearch(tName: String, aName: String, expectedDur: Double) -> String? {
                 var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
-                searchComponents?.queryItems = [URLQueryItem(name: "q", value: query)]
+                var items: [URLQueryItem] = [
+                    URLQueryItem(name: "track_name", value: tName)
+                ]
+                if !aName.isEmpty {
+                    items.append(URLQueryItem(name: "artist_name", value: aName))
+                }
+                searchComponents?.queryItems = items
                 guard let searchURL = searchComponents?.url else { return nil }
                 
                 var req = URLRequest(url: searchURL)
                 req.timeoutInterval = 4.0
-                req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+                req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
                 let sema = DispatchSemaphore(value: 0)
                 var searchResult: String? = nil
                 URLSession.shared.dataTask(with: req) { data, _, _ in
                     if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]], !list.isEmpty {
-                        // Filter candidates that have syncedLyrics
-                        let syncedCandidates = list.filter {
-                            let syn = ($0["syncedLyrics"] as? String) ?? ""
-                            return !syn.isEmpty
+                        // Score candidates based on:
+                        // 1. Has synced lyrics (highest priority)
+                        // 2. Duration proximity to expected track length (within 12 seconds)
+                        let candidates = list.compactMap { item -> (synced: String, score: Double)? in
+                            guard let syn = item["syncedLyrics"] as? String, !syn.isEmpty else { return nil }
+                            let candDur = (item["duration"] as? Double) ?? 0.0
+                            let durDiff = abs(candDur - expectedDur)
+                            // Reject candidate if duration is completely off (> 18 seconds)
+                            if expectedDur > 30 && durDiff > 18.0 { return nil }
+                            return (syn, durDiff)
                         }
                         
-                        if !syncedCandidates.isEmpty {
-                            // Sort by closest duration difference to trackDur to guarantee correct audio sync!
-                            let sorted = syncedCandidates.sorted { a, b in
-                                let durA = (a["duration"] as? Double) ?? 0.0
-                                let durB = (b["duration"] as? Double) ?? 0.0
-                                return abs(durA - expectedDur) < abs(durB - expectedDur)
-                            }
-                            searchResult = sorted.first?["syncedLyrics"] as? String
-                        }
-                        
-                        if searchResult == nil, let plain = list.first?["plainLyrics"] as? String {
+                        if let best = candidates.sorted(by: { $0.score < $1.score }).first {
+                            searchResult = best.synced
+                        } else if let plain = list.first?["plainLyrics"] as? String, !plain.isEmpty {
                             searchResult = plain
                         }
                     }
@@ -4488,26 +4492,49 @@ class IslandModel: ObservableObject {
                 return searchResult
             }
             
-            // Clean queries
-            let cleanTrack = trackName.components(separatedBy: "(")[0].components(separatedBy: "[")[0].trimmingCharacters(in: .whitespaces)
-            let cleanArtist = artistName.components(separatedBy: ",")[0].components(separatedBy: "&")[0].components(separatedBy: "feat")[0].trimmingCharacters(in: .whitespaces)
+            // Clean queries: strip (feat. ...), [Remastered], (Deluxe), etc.
+            let cleanTrack = trackName.replacingOccurrences(of: "\\(.*\\)", with: "", options: .regularExpression)
+                                      .replacingOccurrences(of: "\\[.*\\]", with: "", options: .regularExpression)
+                                      .trimmingCharacters(in: .whitespaces)
+            let cleanArtist = artistName.components(separatedBy: ",")[0]
+                                        .components(separatedBy: "&")[0]
+                                        .components(separatedBy: "feat")[0]
+                                        .components(separatedBy: "ft.")[0]
+                                        .trimmingCharacters(in: .whitespaces)
             
-            // 1. Try direct exact match with duration
-            fetchedLRC = queryDirectGet(tName: cleanTrack, aName: cleanArtist, dSecs: trackDur)
+            // 1. Try structured search with exact clean track & clean artist
+            fetchedLRC = queryStructuredSearch(tName: cleanTrack, aName: cleanArtist, expectedDur: trackDur)
             
-            // 2. Query search with clean track & primary artist (sorted by closest duration)
+            // 2. Try direct exact match (/api/get)
             if fetchedLRC == nil {
-                fetchedLRC = queryLRC(query: "\(cleanTrack) \(cleanArtist)", expectedDur: trackDur)
+                fetchedLRC = queryDirectGet(tName: cleanTrack, aName: cleanArtist, dSecs: trackDur)
             }
             
-            // 3. Query search with raw track and artist
+            // 3. Try structured search with raw track and artist
             if fetchedLRC == nil {
-                fetchedLRC = queryLRC(query: "\(trackName) \(artistName)", expectedDur: trackDur)
+                fetchedLRC = queryStructuredSearch(tName: trackName, aName: artistName, expectedDur: trackDur)
             }
             
-            // 4. Query search with clean track alone
+            // 4. Try general free-form search query (/api/search?q=...)
             if fetchedLRC == nil {
-                fetchedLRC = queryLRC(query: cleanTrack, expectedDur: trackDur)
+                var freeComponents = URLComponents(string: "https://lrclib.net/api/search")
+                freeComponents?.queryItems = [URLQueryItem(name: "q", value: "\(cleanTrack) \(cleanArtist)")]
+                if let u = freeComponents?.url {
+                    var req = URLRequest(url: u)
+                    req.timeoutInterval = 3.5
+                    req.setValue("dyNotch/1.0", forHTTPHeaderField: "User-Agent")
+                    let sema = DispatchSemaphore(value: 0)
+                    URLSession.shared.dataTask(with: req) { data, _, _ in
+                        if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] {
+                            let withSync = list.filter { !(($0["syncedLyrics"] as? String) ?? "").isEmpty }
+                            if let match = withSync.sorted(by: { abs((( $0["duration"] as? Double) ?? 0) - trackDur) < abs((( $1["duration"] as? Double) ?? 0) - trackDur) }).first {
+                                fetchedLRC = match["syncedLyrics"] as? String
+                            }
+                        }
+                        sema.signal()
+                    }.resume()
+                    _ = sema.wait(timeout: .now() + 3.5)
+                }
             }
             
             var rawLines: [(time: Double, text: String)] = []
@@ -6319,95 +6346,34 @@ struct MusicWaveform: View {
     }
     
     private func classicHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
-        if !isSync {
-            let f = frequencies[index]
-            let p = phases[index]
-            let primaryWave = sin(trackTime * f + p)
-            let subHarmonic = sin(trackTime * (f * 0.5) + p) * 0.35
-            let wave = max(0.0, min(1.0, (primaryWave + subHarmonic + 1.35) / 2.7))
-            return minHeight + CGFloat(wave) * (maxHeight - minHeight)
-        }
+        // Continuous, glitch-free trigonometric synthesis guaranteed zero jumps at second boundaries!
+        let f = frequencies[index % frequencies.count]
+        let p = phases[index % phases.count]
         
-        // --- REAL INSTRUMENT SPECIFIC REACTION ---
-        let beatPhase = trackTime * (bpm / 60.0)
-        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
-        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
-        let wave: Double
+        // Multi-layered harmonic sine waves:
+        // 1. Primary beat tempo oscillation
+        let beatFreq = (bpm / 60.0) * 0.75
+        let beatWave = sin(trackTime * beatFreq * Double.pi * 2.0 + p)
         
-        switch index {
-        case 0:
-            // 1. 🥁 Kick Drum & Sub-Bass: Punchy downbeat hits on 1 and 3 with fast exponential decay
-            let isKickBeat = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
-            let attack = isKickBeat ? exp(-beatFrac * 7.5) : (exp(-beatFrac * 9.0) * 0.35)
-            wave = max(0.15, min(1.0, attack * 0.85 + 0.15))
-            
-        case 1:
-            // 2. 🎸 Bassline & Low Toms: 8th-note bounce following groove
-            let eighthFrac = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
-            let groove = sin(eighthFrac * Double.pi) * 0.65 + cos(beatPhase * Double.pi * 0.5 + seed) * 0.25 + 0.15
-            wave = max(0.18, min(1.0, groove))
-            
-        case 2:
-            // 3. 🎙️ Vocals & Melodic Harmony: Tracks real-time active lyric syllable cadence & Karaoke level
-            if !model.currentTrackLyrics.isEmpty {
-                let isSinging = model.currentTrackLyrics.contains { trackTime >= $0.startTime && trackTime < $0.endTime }
-                if isSinging {
-                    let cadence = sin(trackTime * 9.5) * 0.28 + sin(trackTime * 16.0) * 0.15 + 0.62
-                    wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
-                } else {
-                    wave = 0.20 * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
-                }
-            } else {
-                let cadence = sin(beatPhase * 1.5 + seed) * 0.32 + sin(trackTime * 7.5) * 0.22 + 0.46
-                wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
-            }
-            
-        case 3:
-            // 4. 🪘 Snare Drum & Rhythm Guitars: Sharp snap on backbeats 2 and 4
-            let isSnareBeat = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
-            let snap = isSnareBeat ? exp(-beatFrac * 9.0) : 0.12
-            wave = max(0.15, min(1.0, snap * 0.88 + 0.12))
-            
-        default:
-            // 5. ✨ Hi-Hats & Shimmering Cymbals: Rapid 16th-note metallic percussion
-            let sixteenthFrac = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
-            let hat = exp(-sixteenthFrac * 12.0)
-            wave = max(0.15, min(1.0, hat * 0.70 + 0.20))
-        }
+        // 2. High-frequency musical bar modulation
+        let barWave = sin(trackTime * f + p + seed)
         
-        return minHeight + CGFloat(wave) * (maxHeight - minHeight)
+        // 3. Sub-harmonic body
+        let subWave = sin(trackTime * (f * 0.45) + p * 1.5) * 0.35
+        
+        // Combine into a perfectly smooth [0.0...1.0] normalized envelope
+        let combined = (beatWave * 0.45 + barWave * 0.40 + subWave + 1.25) / 2.5
+        let clamped = max(0.08, min(1.0, combined))
+        
+        return minHeight + CGFloat(clamped) * (maxHeight - minHeight)
     }
 
     private func modernHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
-        let p = phases[index % phases.count]
-        if !isSync {
-            let wave = max(0.0, min(1.0, sin(trackTime * frequencies[index] + p) * 0.5 + 0.5))
-            return minHeight + CGFloat(wave) * (maxHeight - minHeight)
-        }
-        
-        let beatPhase = trackTime * (bpm / 60.0)
-        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
-        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
-        let wave: Double
-        
-        switch index % 5 {
-        case 0:
-            let isKick = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
-            wave = isKick ? (exp(-beatFrac * 7.0) * 0.85 + 0.15) : 0.20
-        case 1:
-            let eighth = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
-            wave = sin(eighth * Double.pi) * 0.65 + 0.25
-        case 2:
-            let cadence = (sin(trackTime * 8.0) * 0.35 + 0.55)
-            wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
-        case 3:
-            let isSnare = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
-            wave = isSnare ? (exp(-beatFrac * 8.5) * 0.85 + 0.15) : 0.18
-        default:
-            let sixteenth = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
-            wave = exp(-sixteenth * 11.0) * 0.75 + 0.20
-        }
-        return minHeight + CGFloat(max(0.15, min(1.0, wave))) * (maxHeight - minHeight)
+        let f = frequencies[index % frequencies.count] * 1.15
+        let p = phases[index % phases.count] + Double(index) * 0.4
+        let beatFreq = (bpm / 60.0) * 0.85
+        let wave = (sin(trackTime * beatFreq * Double.pi * 2.0 + p) * 0.45 + sin(trackTime * f + p) * 0.45 + 1.1) / 2.2
+        return minHeight + CGFloat(max(0.08, min(1.0, wave))) * (maxHeight - minHeight)
     }
 
     private func neonHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
