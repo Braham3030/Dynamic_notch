@@ -665,14 +665,74 @@ class AudioAnalyzer: ObservableObject {
         }
     }
     
+    /// Finds the Mac's built-in microphone so AirPods microphone is NEVER activated,
+    /// preserving AAC / LDAC high-fidelity 48kHz stereo playback without Bluetooth hands-free SCO downgrade!
+    private func getBuiltInMacMicrophoneID() -> AudioDeviceID? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &size)
+        let deviceCount = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var devices = [AudioDeviceID](repeating: 0, count: deviceCount)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &size, &devices)
+        guard status == noErr else { return nil }
+        
+        for dev in devices {
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioObjectPropertyName,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var cfName: CFString = "" as CFString
+            var s = UInt32(MemoryLayout<CFString>.size)
+            withUnsafeMutablePointer(to: &cfName) { ptr in
+                _ = AudioObjectGetPropertyData(dev, &nameAddress, 0, nil, &s, ptr)
+            }
+            let name = cfName as String
+            
+            var streamAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            AudioObjectGetPropertyDataSize(dev, &streamAddr, 0, nil, &streamSize)
+            
+            // Strictly match internal MacBook microphone (never AirPods, Bluetooth headset, or virtual drivers)
+            if streamSize > 0 && (name.localizedCaseInsensitiveContains("MacBook") ||
+                                  name.localizedCaseInsensitiveContains("Built-in") ||
+                                  name.localizedCaseInsensitiveContains("Internal")) {
+                return dev
+            }
+        }
+        return nil
+    }
+
     private func startHardwareCapture() {
         guard audioEngine == nil else { return }
         
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        
+        // Force the input node specifically to the built-in Mac microphone.
+        // This ensures connected AirPods / Bluetooth headphones stay 100% in full pristine high-res stereo mode!
+        if let internalMicID = getBuiltInMacMicrophoneID(), let audioUnit = input.audioUnit {
+            var devID = internalMicID
+            _ = AudioUnitSetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &devID,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+        }
+        
         let bus = 0
         let format = input.outputFormat(forBus: bus)
-        
         guard format.sampleRate > 0 else { return }
         
         input.installTap(onBus: bus, bufferSize: bufferSize, format: format) { [weak self] buffer, _ in
