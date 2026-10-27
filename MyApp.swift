@@ -77,43 +77,56 @@ class IslandDropTargetHostingView<Content: View>: NSHostingView<Content> {
 
 struct FullScreenGlowView: View {
     @ObservedObject var model = IslandModel.shared
+    @ObservedObject var analyzer = AudioAnalyzer.shared
     
     var body: some View {
         GeometryReader { geo in
             if model.enableFullWindowGlow && model.isMusicPlaying {
+                // Calculate dynamic audio pulse factor directly from real-time FFT bass & midrange harmonics!
+                // Band 0 = Sub-bass/Kick, Band 1 = Bassline, Band 2 = Vocals/Midrange
+                let bassEnergy = analyzer.peaks.indices.contains(0) ? Double(analyzer.peaks[0]) : 0.25
+                let midEnergy = analyzer.peaks.indices.contains(2) ? Double(analyzer.peaks[2]) : 0.25
+                let audioFactor = min(1.0, max(0.0, (bassEnergy * 0.65 + midEnergy * 0.35)))
+                
+                // Dynamic breathing parameters driven by live track sound:
+                let currentIntensity = model.fullWindowGlowIntensity * (0.50 + audioFactor * 0.85)
+                let dynamicBorderWidth: CGFloat = 32.0 + CGFloat(audioFactor * 28.0)
+                let dynamicBlur: CGFloat = 24.0 + CGFloat(audioFactor * 22.0)
+                let dynamicFloodHeight: CGFloat = 260.0 + CGFloat(audioFactor * 120.0)
+                
                 ZStack {
-                    // Outer peripheral display border glow
+                    // 1. Outer peripheral display border glow that dynamically pulses with the real track audio!
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
                             LinearGradient(
                                 colors: [
-                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.95),
-                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.50),
-                                    model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.20),
+                                    model.artworkColor.opacity(min(1.0, currentIntensity * 0.95)),
+                                    model.artworkColor.opacity(min(1.0, currentIntensity * 0.55)),
+                                    model.artworkColor.opacity(min(1.0, currentIntensity * 0.25)),
                                     Color.clear
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             ),
-                            lineWidth: 36
+                            lineWidth: dynamicBorderWidth
                         )
-                        .blur(radius: 28)
+                        .blur(radius: dynamicBlur)
                         .blendMode(.plusLighter)
                     
-                    // Top ambient floodlight glow directly below display notch
+                    // 2. Top ambient floodlight glow directly below display notch reacting dynamically to track transients!
                     VStack {
                         RadialGradient(
                             colors: [
-                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.60),
-                                model.artworkColor.opacity(model.fullWindowGlowIntensity * 0.15),
+                                model.artworkColor.opacity(min(1.0, currentIntensity * 0.75)),
+                                model.artworkColor.opacity(min(1.0, currentIntensity * 0.25)),
                                 Color.clear
                             ],
                             center: .top,
                             startRadius: 20,
-                            endRadius: min(geo.size.width, geo.size.height) * 0.65
+                            endRadius: min(geo.size.width, geo.size.height) * (0.55 + CGFloat(audioFactor * 0.25))
                         )
-                        .frame(height: 280)
-                        .blur(radius: 35)
+                        .frame(height: dynamicFloodHeight)
+                        .blur(radius: dynamicBlur + 10)
                         .blendMode(.plusLighter)
                         
                         Spacer()
@@ -121,7 +134,8 @@ struct FullScreenGlowView: View {
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
                 .allowsHitTesting(false)
-                .animation(.easeInOut(duration: 0.6), value: model.artworkColor)
+                .animation(.spring(response: 0.16, dampingFraction: 0.72), value: audioFactor)
+                .animation(.easeInOut(duration: 0.5), value: model.artworkColor)
             }
         }
         .ignoresSafeArea()
@@ -331,6 +345,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             
             self.islandWindows.forEach { $0.window.orderOut(nil) }
             self.islandWindows.removeAll()
+            self.glowWindows.forEach { $0.orderOut(nil) }
+            self.glowWindows.removeAll()
 
             let screens = NSScreen.screens
             guard !screens.isEmpty else { return }

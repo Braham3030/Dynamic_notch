@@ -1491,23 +1491,19 @@ struct IslandView: View {
                             let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
                             
                             if model.pulsateArtworkGlow {
-                                TimelineView(.animation) { timeline in
-                                    let time = timeline.date.timeIntervalSinceReferenceDate
-                                    let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
-                                    let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
-                                    let beat = sin(time * (bpm / 60.0) * Double.pi * 2.0)
-                                    let pulseFactor = (beat + 1.0) / 2.0 // 0.0 to 1.0
-                                    
-                                    // Tighter, crisp ambient glow behind the artwork (left) and waveform (right) at the notch edge
-                                    let dynamicBlur = (model.isExpanded ? 8.0 : 5.0) + CGFloat(pulseFactor * 6.0 * model.artworkGlowIntensity)
-                                    let strokeWidth = (model.isExpanded ? 2.5 : 2.0) + CGFloat(pulseFactor * 1.5)
-                                    let dynamicOpacity = (0.35 + pulseFactor * 0.45) * model.artworkGlowIntensity
-                                    
-                                    shape
-                                        .stroke(model.artworkColor, lineWidth: strokeWidth)
-                                        .blur(radius: dynamicBlur)
-                                        .opacity(dynamicOpacity)
-                                }
+                                let bassVal = AudioAnalyzer.shared.peaks.indices.contains(0) ? Double(AudioAnalyzer.shared.peaks[0]) : 0.25
+                                let pulseFactor = min(1.0, max(0.0, bassVal))
+                                
+                                // Dynamic real-time FFT audio reaction around notch edges!
+                                let dynamicBlur = (model.isExpanded ? 8.0 : 5.0) + CGFloat(pulseFactor * 7.0 * model.artworkGlowIntensity)
+                                let strokeWidth = (model.isExpanded ? 2.5 : 2.0) + CGFloat(pulseFactor * 2.0)
+                                let dynamicOpacity = (0.32 + pulseFactor * 0.58) * model.artworkGlowIntensity
+                                
+                                shape
+                                    .stroke(model.artworkColor, lineWidth: strokeWidth)
+                                    .blur(radius: dynamicBlur)
+                                    .opacity(dynamicOpacity)
+                                    .animation(.spring(response: 0.16, dampingFraction: 0.72), value: pulseFactor)
                             } else {
                                 shape
                                     .stroke(model.artworkColor, lineWidth: model.isExpanded ? 2.5 : 2.0)
