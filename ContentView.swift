@@ -26,27 +26,37 @@ struct AppleMusicLyricsView: View {
                     .padding(.trailing, 14)
                     .padding(.bottom, 12)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.black.opacity(0.55))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(LinearGradient(colors: [model.artworkColor.opacity(0.40), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.0)
-                    )
-            )
+            .background(Color.clear)
         }
     }
     
     private var headerRow: some View {
-        HStack {
+        HStack(spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "quote.bubble.fill")
+                Image(systemName: model.isKaraokeActive ? "mic.fill" : "quote.bubble.fill")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(model.artworkColor)
-                Text("Live Lyrics")
+                Text(model.isKaraokeActive ? "Apple Music Sing • Karaoke" : "Live Lyrics")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
+            
+            if model.isKaraokeActive {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.yellow)
+                    Text(model.karaokeVocalLevel <= 0.15 ? "Vocals Muted" : "Singing Active (\(Int(model.karaokeVocalLevel * 100))%)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(model.artworkColor.opacity(0.25)))
+                .overlay(Capsule().stroke(model.artworkColor.opacity(0.5), lineWidth: 0.8))
+                .transition(.opacity)
+            }
+            
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -67,7 +77,7 @@ struct AppleMusicLyricsView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 18) {
                             ForEach(Array(model.currentTrackLyrics.indices), id: \.self) { (idx: Int) in
                                 let line = model.currentTrackLyrics[idx]
                                 let isCurrent = currentSec >= line.startTime && currentSec < line.endTime
@@ -79,6 +89,7 @@ struct AppleMusicLyricsView: View {
                                         line: line,
                                         currentSec: currentSec,
                                         isCurrentLine: isCurrent,
+                                        isKaraokeActive: model.isKaraokeActive,
                                         artworkColor: model.artworkColor
                                     )
                                 }
@@ -90,37 +101,68 @@ struct AppleMusicLyricsView: View {
                         .padding(.trailing, model.isKaraokeActive ? 56 : 16)
                         .padding(.vertical, 14)
                     }
-                    .onChange(of: currentSec) { newPos in
-                        let activeIndex = model.currentTrackLyrics.indices.first {
-                            let l = model.currentTrackLyrics[$0]
-                            return newPos >= l.startTime && newPos < l.endTime
+                    .onAppear {
+                        // Instant scroll to current track position when lyrics panel opens
+                        let currentLine = model.currentTrackLyrics.first(where: { currentSec >= $0.startTime && currentSec < $0.endTime })
+                            ?? model.currentTrackLyrics.last(where: { currentSec >= $0.startTime })
+                            ?? model.currentTrackLyrics.first
+                        if let line = currentLine {
+                            proxy.scrollTo(line.id, anchor: .center)
+                            // Double-tap scroll after SwiftUI layout pass to ensure exact target is framed
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                                    proxy.scrollTo(line.id, anchor: .center)
+                                }
+                            }
                         }
-                        if let idx = activeIndex {
-                            withAnimation(.spring(response: 0.40, dampingFraction: 0.80)) {
-                                proxy.scrollTo(model.currentTrackLyrics[idx].id, anchor: .center)
+                    }
+                    .onChange(of: model.currentTrackLyrics.count) { _ in
+                        // Instant scroll when lyrics finish loading for the current track
+                        let currentLine = model.currentTrackLyrics.first(where: { currentSec >= $0.startTime && currentSec < $0.endTime })
+                            ?? model.currentTrackLyrics.last(where: { currentSec >= $0.startTime })
+                            ?? model.currentTrackLyrics.first
+                        if let line = currentLine {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                                    proxy.scrollTo(line.id, anchor: .center)
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: model.currentTrackLyrics.first(where: { currentSec >= $0.startTime && currentSec < $0.endTime })?.id) { newID in
+                        if let id = newID {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                proxy.scrollTo(id, anchor: .center)
                             }
                         }
                     }
                 }
             }
         }
-        .frame(height: 250)
+        .frame(height: 175)
     }
     
     // Bottom-Right Apple Music Sing (Karaoke) Control
     private var karaokeSingFloatingControl: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             // Thick Vertical Liquid Glass Slider positioned directly ABOVE the karaoke icon
             if model.isKaraokeActive {
                 VStack(spacing: 4) {
+                    Text(model.karaokeVocalLevel <= 0.15 ? "Muted" : "\(Int(model.karaokeVocalLevel * 100))%")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.black.opacity(0.6)))
+                    
                     GeometryReader { geo in
                         let totalH = geo.size.height
-                        let fillH = totalH * CGFloat(1.0 - model.karaokeVocalLevel)
+                        let fillH = max(12, totalH * CGFloat(model.karaokeVocalLevel))
                         
                         ZStack(alignment: .bottom) {
                             // Thick outer pill groove
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.22))
+                                .fill(Color.white.opacity(0.18))
                                 .frame(width: 30, height: totalH)
                             
                             // Glowing liquid vocal fill inside thick slider
@@ -146,20 +188,20 @@ struct AppleMusicLyricsView: View {
                         .gesture(
                             DragGesture(minimumDistance: 0)
                                 .onChanged { val in
-                                    let progress = 1.0 - Double(min(max(0, val.location.y / totalH), 1.0))
-                                    model.setKaraokeVocalLevel(1.0 - progress)
+                                    let normalized = max(0.0, min(1.0, 1.0 - Double(val.location.y / totalH)))
+                                    model.setKaraokeVocalLevel(normalized)
                                 }
                         )
                     }
-                    .frame(width: 34, height: 115)
+                    .frame(width: 34, height: 110)
                 }
-                .padding(4)
+                .padding(6)
                 .background(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.black.opacity(0.70))
+                        .fill(Color.black.opacity(0.75))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.white.opacity(0.22), lineWidth: 1.2)
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1.2)
                         )
                 )
                 .shadow(color: Color.black.opacity(0.55), radius: 10, y: 4)
@@ -191,33 +233,180 @@ struct AppleMusicLyricsView: View {
     }
 }
 
-// MARK: - Word-by-Word Glowing Line View for Apple Music Lyrics
+// MARK: - Flow Layout for Multi-Line Lyrics Wrapping
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 5.0
+    var lineSpacing: CGFloat = 4.0
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 300
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > width && currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        return CGSize(width: width, height: currentY + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX: CGFloat = bounds.minX
+        var currentY: CGFloat = bounds.minY
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: currentX, y: currentY), proposal: ProposedViewSize(size))
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Authentic Apple Music Dynamic Instrumental Countdown Dots
+struct AppleInstrumentalDotsView: View {
+    let duration: TimeInterval
+    let elapsed: TimeInterval
+    let artworkColor: Color
+    
+    var body: some View {
+        let totalCount = 3
+        let frac = max(0.0, min(1.0, elapsed / max(1.0, duration)))
+        
+        HStack(spacing: 9) {
+            ForEach(0..<totalCount, id: \.self) { i in
+                let dotThreshold = Double(i) / Double(totalCount)
+                let dotActive = frac >= dotThreshold
+                let dotScale: CGFloat = dotActive ? 1.25 : 0.85
+                let dotOpacity: Double = dotActive ? 1.0 : 0.28
+                
+                Circle()
+                    .fill(dotActive ? Color.white : Color.white.opacity(0.35))
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(dotScale)
+                    .shadow(color: dotActive ? artworkColor.opacity(0.95) : Color.clear, radius: 7)
+                    .shadow(color: dotActive ? Color.white.opacity(0.7) : Color.clear, radius: 3)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.65), value: dotActive)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Letter-by-Letter Animated Sweeping Word View
+struct AppleLyricsWordView: View {
+    let text: String
+    let progress: Double // 0.0 to 1.0 progressive fill across letters
+    let isCurrentLine: Bool
+    let isActive: Bool
+    let isPast: Bool
+    let artworkColor: Color
+    
+    // Constant typography prevents any word jumping or letter shifting
+    private let fontSize: CGFloat = 16.5
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: fontSize, weight: .bold, design: .rounded))
+            .foregroundColor(
+                isCurrentLine 
+                    ? (isPast ? Color.white.opacity(0.95) : Color.white.opacity(0.38))
+                    : Color.white.opacity(0.22)
+            )
+            .overlay(alignment: .leading) {
+                if isCurrentLine && (isActive || isPast) {
+                    Text(text)
+                        .font(.system(size: fontSize, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .shadow(color: artworkColor.opacity(isActive ? 0.95 : 0.50), radius: isActive ? 8 : 4)
+                        .shadow(color: Color.white.opacity(isActive ? 0.65 : 0.20), radius: isActive ? 4 : 2)
+                        .mask(alignment: .leading) {
+                            GeometryReader { geo in
+                                Rectangle()
+                                    .frame(
+                                        width: isPast ? geo.size.width : max(0, min(geo.size.width, geo.size.width * CGFloat(progress))),
+                                        height: geo.size.height,
+                                        alignment: .leading
+                                    )
+                            }
+                        }
+                }
+            }
+            .fixedSize()
+    }
+}
+
+// MARK: - Natural Wrapping Glowing Line View for Apple Music Lyrics & Karaoke
 struct AppleLyricsLineView: View {
     let line: LyricsLine
     let currentSec: Double
     let isCurrentLine: Bool
+    var isKaraokeActive: Bool = false
     let artworkColor: Color
     
+    private let fontSize: CGFloat = 16.5
+    
     var body: some View {
-        HStack(alignment: .top, spacing: 4) {
-            ForEach(line.words) { word in
-                let isWordActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
-                let hasWordPassed = isCurrentLine && currentSec >= word.endTime
-                
-                Text(word.text)
-                    .font(.system(size: isCurrentLine ? 21 : 16, weight: isCurrentLine ? .bold : .semibold, design: .rounded))
-                    .foregroundColor(
-                        isWordActive ? Color.white : (
-                            hasWordPassed ? Color.white.opacity(0.92) : (isCurrentLine ? Color.white.opacity(0.60) : Color.white.opacity(0.32))
+        Group {
+            if line.isInstrumentalBreak {
+                // Dynamic instrumental dots animated smoothly IN and OUT only when currently active!
+                ZStack(alignment: .leading) {
+                    if isCurrentLine {
+                        AppleInstrumentalDotsView(
+                            duration: max(1.0, line.endTime - line.startTime),
+                            elapsed: max(0.0, currentSec - line.startTime),
+                            artworkColor: artworkColor
                         )
-                    )
-                    .scaleEffect(isWordActive ? 1.08 : (isCurrentLine ? 1.02 : 1.0), anchor: .leading)
-                    .shadow(color: isWordActive ? artworkColor.opacity(0.95) : (isCurrentLine ? artworkColor.opacity(0.40) : Color.clear), radius: isWordActive ? 14 : 0)
-                    .animation(.spring(response: 0.20, dampingFraction: 0.75), value: isWordActive)
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.65).combined(with: .opacity).animation(.spring(response: 0.40, dampingFraction: 0.72)),
+                                removal: .scale(scale: 0.65).combined(with: .opacity).animation(.easeOut(duration: 0.25))
+                            )
+                        )
+                    }
+                }
+                .frame(minHeight: isCurrentLine ? 24 : 0)
+                .animation(.spring(response: 0.38, dampingFraction: 0.78), value: isCurrentLine)
+            } else if line.words.isEmpty {
+                Text(line.text)
+                    .font(.system(size: fontSize, weight: .bold, design: .rounded))
+                    .foregroundColor(isCurrentLine ? .white : .white.opacity(0.25))
+                    .shadow(color: isCurrentLine ? artworkColor.opacity(0.8) : Color.clear, radius: isCurrentLine ? 6 : 0)
+            } else {
+                FlowLayout(spacing: 5.5, lineSpacing: 5.0) {
+                    ForEach(line.words) { word in
+                        let isPast = currentSec >= word.endTime
+                        let isActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
+                        let progress: Double = isActive 
+                            ? max(0.0, min(1.0, (currentSec - word.startTime) / max(0.08, word.endTime - word.startTime))) 
+                            : (isPast ? 1.0 : 0.0)
+                        
+                        AppleLyricsWordView(
+                            text: word.text,
+                            progress: progress,
+                            isCurrentLine: isCurrentLine,
+                            isActive: isActive,
+                            isPast: isPast,
+                            artworkColor: artworkColor
+                        )
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .blur(radius: isCurrentLine ? 0 : 0.25)
     }
 }
 
@@ -228,28 +417,45 @@ struct LyricsLine: Identifiable, Equatable {
     let endTime: TimeInterval
     let text: String
     var words: [LyricsWord] = []
+    var isInstrumentalBreak: Bool = false
 }
 
 import AVKit
 import AVFoundation
+import CoreAudio
+import AudioToolbox
+
 struct AirPlayOutputDevice: Identifiable, Hashable {
     let id: String
     let name: String
     var isSelected: Bool
     let kind: String
     var volume: Double = 0.8
+    var audioDeviceID: AudioDeviceID? = nil
     
     var iconName: String {
         let k = kind.lowercased()
         let n = name.lowercased()
         if n.contains("airpods") { return "airpodspro" }
+        if n.contains("headphone") || n.contains("beats") || n.contains("sony") || n.contains("bose") { return "headphones" }
         if n.contains("tv") || k.contains("tv") { return "tv.fill" }
         if n.contains("homepod") || k.contains("homepod") { return "homepod.fill" }
-        if k.contains("computer") || n.contains("mac") || n.contains("macbook") { return "laptopcomputer" }
+        if k.contains("computer") || n.contains("mac") || n.contains("macbook") || n.contains("speaker") { return "laptopcomputer" }
         return "hifispeaker.fill"
     }
 }
 
+
+/// Single source of truth for turning a Wi-Fi RSSI reading into a 0...3 bar count.
+/// 0 means "unknown / not connected" and must never be rendered as full strength.
+enum WiFiSignal {
+    static func bars(forRSSI rssi: Int) -> Int {
+        guard rssi < 0 else { return 0 }
+        if rssi >= -55 { return 3 }
+        if rssi >= -70 { return 2 }
+        return 1
+    }
+}
 
 struct WiFiNetworkItem: Identifiable, Hashable {
     let id = UUID()
@@ -259,10 +465,34 @@ struct WiFiNetworkItem: Identifiable, Hashable {
     let isSecure: Bool
     
     var bars: Int {
-        if rssi > -55 { return 3 }
-        if rssi > -70 { return 2 }
-        if rssi > -85 { return 1 }
-        return 1
+        WiFiSignal.bars(forRSSI: rssi)
+    }
+}
+
+struct BluetoothDeviceItem: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let isConnected: Bool
+    let deviceClass: Int
+    var batteryLevel: Int? = nil
+    
+    var iconName: String {
+        let lower = name.lowercased()
+        if lower.contains("airpod") {
+            return "airpodspro"
+        } else if lower.contains("buds") || lower.contains("headphone") || lower.contains("wh-") || lower.contains("wf-") || lower.contains("px7") || lower.contains("clip") {
+            return "headphones"
+        } else if lower.contains("mouse") || lower.contains("master") {
+            return "computermouse.fill"
+        } else if lower.contains("keyboard") || lower.contains("keys") {
+            return "keyboard.fill"
+        } else if lower.contains("iphone") {
+            return "iphone"
+        } else if lower.contains("watch") {
+            return "applewatch"
+        } else {
+            return "wave.3.right.circle.fill"
+        }
     }
 }
 
@@ -418,7 +648,7 @@ class AudioAnalyzer: ObservableObject {
             return
         }
         
-        let pos = model.playbackPosition
+        let pos = model.currentPrecisePlaybackPosition
         let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
         let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
         
@@ -426,18 +656,42 @@ class AudioAnalyzer: ObservableObject {
         let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
         let beatTime = (pos * (bpm / 60.0)) * Double.pi * 2.0
         
-        let subBass = (sin(beatTime * 1.0 + seed) * 0.45 + cos(beatTime * 0.5) * 0.35 + 0.6) * 0.85
-        let bass    = (sin(beatTime * 2.0 + seed * 1.3) * 0.40 + sin(beatTime * 1.0) * 0.40 + 0.6) * 0.90
-        let lowMid  = (cos(beatTime * 3.0 + seed * 0.7) * 0.35 + sin(beatTime * 1.5) * 0.35 + 0.5) * 0.75
-        let highMid = (sin(beatTime * 4.0 + seed * 2.1) * 0.30 + cos(beatTime * 2.5) * 0.30 + 0.5) * 0.70
-        let treble  = (cos(beatTime * 6.0 + seed * 1.7) * 0.25 + sin(beatTime * 3.0) * 0.25 + 0.4) * 0.65
+        let beatPhase = pos * (bpm / 60.0)
+        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
+        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
+        
+        // 1. Kick Drum
+        let isKick = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
+        let kick = isKick ? (exp(-beatFrac * 7.5) * 0.85 + 0.15) : 0.20
+        
+        // 2. Bassline
+        let eighth = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
+        let bass = sin(eighth * Double.pi) * 0.65 + 0.22
+        
+        // 3. Vocals
+        let vocalRaw: Double
+        if !model.currentTrackLyrics.isEmpty {
+            let isSinging = model.currentTrackLyrics.contains { pos >= $0.startTime && pos < $0.endTime }
+            vocalRaw = isSinging ? (sin(pos * 9.5) * 0.28 + 0.65) : 0.20
+        } else {
+            vocalRaw = sin(pos * 8.0) * 0.30 + 0.50
+        }
+        let vocals = vocalRaw * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+        
+        // 4. Snare
+        let isSnare = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
+        let snare = isSnare ? (exp(-beatFrac * 9.0) * 0.85 + 0.15) : 0.18
+        
+        // 5. Hi-Hats
+        let sixteenth = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
+        let hat = exp(-sixteenth * 12.0) * 0.70 + 0.20
         
         let newPeaks: [CGFloat] = [
-            CGFloat(min(1.0, max(0.2, subBass))),
-            CGFloat(min(1.0, max(0.25, bass))),
-            CGFloat(min(1.0, max(0.3, lowMid))),
-            CGFloat(min(1.0, max(0.25, highMid))),
-            CGFloat(min(1.0, max(0.2, treble)))
+            CGFloat(min(1.0, max(0.18, kick))),
+            CGFloat(min(1.0, max(0.20, bass))),
+            CGFloat(min(1.0, max(0.20, vocals))),
+            CGFloat(min(1.0, max(0.18, snare))),
+            CGFloat(min(1.0, max(0.18, hat)))
         ]
         
         DispatchQueue.main.async {
@@ -761,6 +1015,7 @@ struct IslandView: View {
     @State private var showsExpandedMusicDetails = false
     @State private var showsExpandedControls = false
     @Namespace private var musicActivityNamespace
+    @Namespace private var glassPickerNamespace
     
     var body: some View {
         VStack(spacing: 0) {
@@ -975,7 +1230,7 @@ struct IslandView: View {
                     // Explicitly only active when expanded — 2-Stage Genie Choreography:
                     // Stage 1: Live Wallpaper FIRST sucks into artwork card!
                     // Stage 2: Ambient Gradient follows immediately after into the artwork card!
-                    if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
+                    if model.isExpanded && model.state == .expandedMusic && model.isMusicPlaying && model.enableArtworkGlow {
                         ZStack(alignment: .topLeading) {
                             // Full left-to-right ambient artwork gradient with Genie retraction to artwork anchor (top-left)
                             LinearGradient(
@@ -1092,7 +1347,7 @@ struct IslandView: View {
                 // Dynamic Track-Pulsating Ambient Edge Glow around artwork and waveform staying strictly at the side edges of the notch
                 .background(
                     Group {
-                        if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow {
+                        if model.isExpanded && model.state == .expandedMusic && model.enableArtworkGlow && model.isMusicPlaying {
                             let cornerR = model.isExpanded ? 24.0 : model.compactCornerRadius
                             let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
                             
@@ -1159,7 +1414,7 @@ struct IslandView: View {
                 
                 // Content Layer & Vertically Centered Switcher inside the Notch
                 VStack(spacing: 0) {
-                    Spacer().frame(height: max(6, model.physicalNotchHeight - 18))
+                    Spacer().frame(height: model.isExpanded ? max(38, model.physicalNotchHeight + 8) : 0)
                     
                     if model.isAirDropTargeted && model.state != .expandedAirDrop {
                         // Notch File Shelf Drop Target (Animated compact scale)
@@ -1201,32 +1456,22 @@ struct IslandView: View {
                         } else {
                             VStack(spacing: 0) {
                                 // 1. Standard Upper Section (Tightly aligned right up at the top edge)
-                                ZStack(alignment: .top) {
-                                    Group {
-                                        if model.state == .expandedMusic {
-                                            musicView
-                                        } else if model.state == .expandedFood {
-                                            foodView
-                                        } else if model.state == .expandedAirDrop {
-                                            airDropExpandedView
-                                        } else {
-                                            controlsView
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .top)
-                                    .padding(.top, 0)
-                                    .padding(.leading, 18)
-                                    .padding(.trailing, 48)
-                                    
-                                    // Right Side: Compact Liquid Glass Vertical Switcher positioned neatly at the top right
-                                    HStack(spacing: 0) {
-                                        Spacer(minLength: 0)
-                                        VerticalSwitcher(model: model, activeState: model.state)
-                                            .padding(.top, 2)
-                                            .padding(.trailing, 10)
+                                Group {
+                                    if model.state == .expandedMusic {
+                                        musicView
+                                    } else if model.state == .expandedFood {
+                                        foodView
+                                    } else if model.state == .expandedAirDrop {
+                                        airDropExpandedView
+                                    } else {
+                                        controlsView
                                     }
                                 }
-                                .frame(width: model.width, height: (model.state == .expandedMusic ? 180 : (model.state == .expandedFood ? 80 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 240 : 160) : (model.airPodsConnected ? 260 : 195)))))
+                                .frame(maxWidth: .infinity, alignment: .top)
+                                .padding(.top, 0)
+                                .padding(.leading, 18)
+                                .padding(.trailing, 48)
+                                .frame(width: model.width, height: (model.state == .expandedMusic ? 180 : (model.state == .expandedFood ? 80 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 240 : 160) : ((model.isShowingWiFiPicker || model.isShowingBluetoothPicker) ? 270 : (model.airPodsConnected ? 245 : 170))))), alignment: .top)
                                 
                                 // 2. Real-Time Lyrics & Karaoke Sing Drawer Below (Full Notch Width)
                                 if model.state == .expandedMusic && model.isShowingLyricsInMusic {
@@ -1255,6 +1500,13 @@ struct IslandView: View {
                     }
                 }
                 .frame(width: model.width, height: model.height, alignment: .top)
+                .overlay(alignment: .topTrailing) {
+                    if model.isExpanded && model.state != .expandedAirPods && model.state != .expandedPhone && model.state != .expandedNotifications {
+                        VerticalSwitcher(model: model, activeState: model.state)
+                            .padding(.top, max(38, model.physicalNotchHeight + 8))
+                            .padding(.trailing, 10)
+                    }
+                }
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: model.isExpanded ? 24 : model.compactCornerRadius, bottomTrailingRadius: model.isExpanded ? 24 : model.compactCornerRadius, topTrailingRadius: 0, style: .continuous))
                 .compositingGroup()
                 .onDrop(of: [.fileURL, .item], isTargeted: $model.isAirDropTargeted) { providers in
@@ -1337,12 +1589,21 @@ struct IslandView: View {
             .onHover { h in 
                 hovered = h
                 if h {
-                    if !model.isExpanded { withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { model.state = model.isMusicPlaying ? .expandedMusic : .expandedControls } }
+                    if !model.isExpanded {
+                        showsExpandedMusicDetails = model.isMusicPlaying
+                        withAnimation(.spring(response: 0.22, dampingFraction: 0.76)) {
+                            model.state = model.isMusicPlaying ? .expandedMusic : .expandedControls
+                        }
+                    }
                 } else {
                     if model.autoCloseBehavior != .clickOutside {
                         let delay: TimeInterval = model.autoCloseBehavior == .immediate ? 0.2 : (model.autoCloseBehavior == .threeSeconds ? 3.0 : 5.0)
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            if !hovered { withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { model.state = .compact } }
+                            if !hovered {
+                                withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+                                    model.state = .compact
+                                }
+                            }
                         }
                     }
                 }
@@ -1524,93 +1785,97 @@ struct IslandView: View {
                 }
             } else {
                 if model.showControlCenter {
-                    ZStack {
-                        VStack(spacing: 8) {
-                            // 1. Top Row: WiFi & Bluetooth Cards with Titles & Live Status
-                            HStack(spacing: 8) {
-                                ConnectivityCard(
-                                    title: "Wi-Fi",
-                                    subtitle: model.isWifiOn ? (model.wifiSSID.isEmpty ? "Connected" : model.wifiSSID) : "Off",
-                                    icon: "wifi",
-                                    isOn: model.isWifiOn,
-                                    activeTint: .blue,
-                                    wifiBars: model.wifiBars,
-                                    onToggle: {
-                                        model.toggleWiFi()
-                                    },
-                                    onDetailsClick: {
-                                        model.scanAvailableWiFiNetworks()
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                                            model.isShowingWiFiPicker.toggle()
+                    ZStack(alignment: .top) {
+                        if !model.isShowingWiFiPicker && !model.isShowingBluetoothPicker {
+                            VStack(spacing: 8) {
+                                // 1. Top Row: WiFi & Bluetooth Cards that transform into windows
+                                HStack(spacing: 8) {
+                                    ConnectivityCard(
+                                        title: "Wi-Fi",
+                                        subtitle: model.isWifiOn ? (model.wifiSSID.isEmpty ? "Connected" : model.wifiSSID) : "Off",
+                                        icon: "wifi",
+                                        isOn: model.isWifiOn,
+                                        activeTint: .blue,
+                                        wifiBars: model.wifiBars,
+                                        onToggle: {
+                                            model.toggleWiFi()
+                                        },
+                                        onDetailsClick: {
+                                            model.scanAvailableWiFiNetworks()
+                                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76, blendDuration: 0.08)) {
+                                                model.isShowingWiFiPicker = true
+                                            }
                                         }
-                                    }
-                                )
-                                
-                                ConnectivityCard(
-                                    title: "Bluetooth",
-                                    subtitle: model.isBluetoothOn ? "On" : "Off",
-                                    icon: "bluetooth.custom",
-                                    isOn: model.isBluetoothOn,
-                                    activeTint: .blue,
-                                    onToggle: {
-                                        model.toggleBluetooth()
-                                    }
-                                )
-                            }
-                            .frame(maxWidth: .infinity)
-                        
-                        // 2. Middle Row: Brightness Slider with Title
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Brightness")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.55))
-                                .padding(.leading, 2)
-                            
-                            CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in 
-                                model.applySystemBrightness(forcedValue: val) 
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 28)
-                        }
-                        .frame(maxWidth: .infinity)
-                        
-                        // 3. Middle Row: Volume Slider with Title
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Volume")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.55))
-                                .padding(.leading, 2)
-                            
-                            CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in 
-                                model.applySystemVolume(forcedValue: val) 
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 28)
-                        }
-                        .frame(maxWidth: .infinity)
-                        
-                        // 4. Bottom Row: AirPods Noise Control Liquid Glass Slider (Only visible when AirPods are connected)
-                        if model.airPodsConnected {
-                            AirPodsListeningModeSlider(model: model)
+                                    )
+                                    .matchedGeometryEffect(id: "wifiWindowMorph", in: glassPickerNamespace)
+                                    
+                                    ConnectivityCard(
+                                        title: "Bluetooth",
+                                        subtitle: model.isBluetoothOn ? (model.connectedBluetoothDeviceName ?? "On") : "Off",
+                                        icon: "bluetooth.custom",
+                                        isOn: model.isBluetoothOn,
+                                        activeTint: .blue,
+                                        onToggle: {
+                                            model.toggleBluetooth()
+                                        },
+                                        onDetailsClick: {
+                                            model.scanAvailableBluetoothDevices()
+                                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76, blendDuration: 0.08)) {
+                                                model.isShowingBluetoothPicker = true
+                                            }
+                                        }
+                                    )
+                                    .matchedGeometryEffect(id: "bluetoothWindowMorph", in: glassPickerNamespace)
+                                }
                                 .frame(maxWidth: .infinity)
-                                .transition(.asymmetric(
-                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                    removal: .opacity
-                                ))
+                                
+                                // Sliders Row (gracefully transitions)
+                                VStack(spacing: 8) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Brightness")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.white.opacity(0.70))
+                                            .padding(.leading, 2)
+                                        
+                                        CustomSlider(value: $model.brightness, icon: "sun.max.fill") { val in 
+                                            model.applySystemBrightness(forcedValue: val) 
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 28)
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Volume")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.white.opacity(0.70))
+                                            .padding(.leading, 2)
+                                        
+                                        CustomSlider(value: $model.volume, icon: "speaker.wave.3.fill") { val in 
+                                            model.applySystemVolume(forcedValue: val) 
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 28)
+                                    }
+                                    
+                                    if model.airPodsConnected {
+                                        AirPodsListeningModeSlider(model: model)
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                }
+                                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else if model.isShowingWiFiPicker {
+                            LiquidGlassWiFiPicker(model: model)
+                                .matchedGeometryEffect(id: "wifiWindowMorph", in: glassPickerNamespace)
+                                .transition(.identity)
+                        } else if model.isShowingBluetoothPicker {
+                            LiquidGlassBluetoothPicker(model: model)
+                                .matchedGeometryEffect(id: "bluetoothWindowMorph", in: glassPickerNamespace)
+                                .transition(.identity)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    
-                    // Liquid Glass WiFi Networks Overlay
-                    if model.isShowingWiFiPicker {
-                        LiquidGlassWiFiPicker(model: model)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.94)),
-                                removal: .opacity.combined(with: .scale(scale: 0.94))
-                            ))
-                            .zIndex(10)
-                    }
-                }
                 } else {
                     disabledFeatureNotice("Control Center Quick Toggles Disabled")
                 }
@@ -1992,7 +2257,7 @@ struct IslandView: View {
                     ))
                     .padding(.leading, 4)
                     .offset(x: manualDragOffset)
-                    .opacity(max(0.15, 1.0 - Double(abs(manualDragOffset)) / 140.0))
+                    .opacity(max(0.0, 1.0 - Double(abs(manualDragOffset)) / 120.0))
                     .animation(.spring(response: 0.38, dampingFraction: 0.72), value: model.currentTrack)
                     
                     // 3. Real-Time Next Track Title (positioned to the right at +260pt)
@@ -2018,6 +2283,26 @@ struct IslandView: View {
                 .padding(.leading, 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
+                // Dynamic Edge Blur & Soft Masking: ONLY blurs at edges when dragging towards artwork or waveform!
+                .mask(
+                    GeometryReader { geo in
+                        let drag = abs(manualDragOffset)
+                        let leftFade: CGFloat = (manualDragOffset > 0) ? min(36.0, max(0.0, drag * 0.8)) : 0.0
+                        let rightFade: CGFloat = (manualDragOffset < 0) ? min(36.0, max(0.0, drag * 0.8)) : 0.0
+                        
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .white, location: leftFade / max(1.0, geo.size.width)),
+                                .init(color: .white, location: 1.0 - (rightFade / max(1.0, geo.size.width))),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    }
+                )
+                .clipped()
                 .gesture(
                     DragGesture(minimumDistance: 3)
                         .onChanged { value in
@@ -2104,6 +2389,7 @@ struct IslandView: View {
                             .scaleEffect(model.isCurrentTrackFavorited ? 1.15 : 1.0)
                             .symbolEffect(.bounce, value: model.isCurrentTrackFavorited)
                     }
+                    .interactiveHover(scale: 1.12)
                 }
                 .buttonStyle(.plain)
                 
@@ -2164,8 +2450,11 @@ struct IslandView: View {
                 
                 HStack(spacing: 8) {
                     // Lyrics Button with Synchronized Apple Music Lyrics & Karaoke Sing
+                    let lyricsDisabled = !model.hasLyricsAvailable && !model.isFetchingLyrics
                     Button(action: {
-                        model.toggleLyricsInMusic()
+                        if !lyricsDisabled {
+                            model.toggleLyricsInMusic()
+                        }
                     }) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -2173,11 +2462,17 @@ struct IslandView: View {
                                 .frame(width: 36, height: 36)
                             Image(systemName: model.isShowingLyricsInMusic ? "quote.bubble.fill" : "quote.bubble")
                                 .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(model.isShowingLyricsInMusic ? model.artworkColor : Color.white.opacity(0.65))
-                                .shadow(color: model.isShowingLyricsInMusic ? model.artworkColor.opacity(0.6) : Color.clear, radius: 4)
+                                .foregroundColor(
+                                    lyricsDisabled 
+                                        ? Color.white.opacity(0.22) 
+                                        : (model.isShowingLyricsInMusic ? model.artworkColor : Color.white.opacity(0.65))
+                                )
+                                .shadow(color: (model.isShowingLyricsInMusic && !lyricsDisabled) ? model.artworkColor.opacity(0.6) : Color.clear, radius: 4)
                         }
+                        .interactiveHover(scale: lyricsDisabled ? 1.0 : 1.10)
                     }
                     .buttonStyle(.plain)
+                    .disabled(lyricsDisabled)
                     
                     // AirPlay / AirPods Route Output Button (Far Right)
                     Button(action: {
@@ -2187,11 +2482,12 @@ struct IslandView: View {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(model.isShowingAirPlayInMusic ? Color.cyan.opacity(0.25) : Color.clear)
                                 .frame(width: 36, height: 36)
-                            Image(systemName: model.airPodsConnected ? "airpodspro" : "airplayaudio")
+                            Image(systemName: model.activeAudioRouteIcon)
                                 .font(.system(size: 19, weight: .medium))
                                 .foregroundColor(model.isShowingAirPlayInMusic ? Color.cyan : Color.white.opacity(0.65))
                                 .shadow(color: model.isShowingAirPlayInMusic ? Color.cyan.opacity(0.6) : Color.clear, radius: 4)
                         }
+                        .interactiveHover(scale: 1.10)
                     }
                     .buttonStyle(.plain)
                 }
@@ -2242,7 +2538,7 @@ extension IslandModel {
             }
         }
         if airPodsShowingCompact {
-            return baseNotchWidth + 160
+            return baseNotchWidth + 140
         }
         if isMusicPlaying {
             return baseNotchWidth + 120
@@ -2261,16 +2557,26 @@ extension IslandModel {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 235 : 155
             case .expandedMusic: 
-                if isShowingLyricsInMusic { return 500 }
+                if isShowingLyricsInMusic { return 455 }
                 if isShowingAirPlayInMusic { return 405 }
                 return 198
             case .expandedFood: return 75
             case .expandedPhone: return 85
             case .expandedNotifications: return 82
             case .expandedAirPods: return 165
-            case .expandedControls: return airPodsConnected ? 275 : 210
+            case .expandedControls:
+            if isShowingWiFiPicker || isShowingBluetoothPicker {
+                return 325
+            }
+            if airPodsConnected {
+                return 295
+            }
+            return 220
             case .compact: return physicalNotchHeight
             }
+        }
+        if airPodsShowingCompact {
+            return physicalNotchHeight
         }
         return physicalNotchHeight
     }
@@ -3047,50 +3353,223 @@ class IslandModel: ObservableObject {
         didSet { applySystemVolume() }
     }
     @Published var availableWiFiNetworks: [WiFiNetworkItem] = []
+    @Published var personalHotspots: [WiFiNetworkItem] = []
+    @Published var availableBluetoothDevices: [BluetoothDeviceItem] = []
     @Published var isShowingWiFiPicker: Bool = false
+    @Published var isShowingBluetoothPicker: Bool = false
+    @Published var isScanningWiFi: Bool = false
+    @Published var isScanningBluetooth: Bool = false
+    @Published var adaptiveIntensity: Double = UserDefaults.standard.double(forKey: "airpods_adaptive_intensity") == 0 ? 0.5 : UserDefaults.standard.double(forKey: "airpods_adaptive_intensity")
+    private var lastWifiScanTime: Date = .distantPast
     
+    func setAdaptiveIntensity(_ val: Double) {
+        adaptiveIntensity = val
+        UserDefaults.standard.set(val, forKey: "airpods_adaptive_intensity")
+    }
+
+    var connectedBluetoothDeviceName: String? {
+        if let dev = availableBluetoothDevices.first(where: { $0.isConnected }) {
+            return dev.name
+        }
+        if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice],
+           let first = devices.first(where: { $0.isConnected() }) {
+            return first.name
+        }
+        return nil
+    }
+
     func scanAvailableWiFiNetworks() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            var networks: [WiFiNetworkItem] = []
-            
-            // 1. Immediately insert active connected SSID if known
-            let curr = self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" ? "" : self.wifiSSID
-            if !curr.isEmpty {
-                networks.append(WiFiNetworkItem(ssid: curr, rssi: -48, isConnected: true, isSecure: true))
+        isScanningWiFi = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            guard let interface = CWWiFiClient.shared().interface() else {
+                DispatchQueue.main.async { self.isScanningWiFi = false }
+                return
             }
             
-            // 2. Query macOS system profiler for all real local Wi-Fi networks
+            let currentChannel = interface.wlanChannel()?.channelNumber ?? 0
+            let currentRSSI = interface.rssiValue()
+            
+            // 1. Check for nearby iPhone in Bluetooth / Instant Hotspot
+            var nearbyPhoneName: String? = nil
+            if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+                for d in devices {
+                    let name = d.name ?? ""
+                    if name.lowercased().contains("iphone") || name.lowercased().contains("ipad") {
+                        nearbyPhoneName = name
+                        break
+                    }
+                }
+            }
+            
+            // 2. Scan for actual nearby networks using CoreWLAN
+            var scannedNetworks: [CWNetwork] = []
+            if let scanned = try? interface.scanForNetworks(withSSID: nil) {
+                scannedNetworks = Array(scanned)
+            }
+            
+            // 3. Resolve active connected SSID
+            var connectedSSID: String? = nil
+            if let directSSID = interface.ssid(), !directSSID.isEmpty, directSSID != "<redacted>" {
+                connectedSSID = directSSID
+            }
+            if connectedSSID == nil {
+                let onChannel = scannedNetworks.filter { $0.wlanChannel?.channelNumber == currentChannel && ($0.ssid != nil && !$0.ssid!.isEmpty && $0.ssid! != "<redacted>") }
+                if let match = onChannel.min(by: { abs($0.rssiValue - currentRSSI) < abs($1.rssiValue - currentRSSI) }) {
+                    connectedSSID = match.ssid
+                }
+            }
+            
+            var items: [WiFiNetworkItem] = []
+            var hotspots: [WiFiNetworkItem] = []
+            var seenSSIDs = Set<String>()
+            
+            // Active connected network
+            if let conn = connectedSSID, !conn.isEmpty {
+                let matchingNet = scannedNetworks.first(where: { $0.ssid == conn })
+                let rssi = matchingNet?.rssiValue ?? currentRSSI
+                let isHotspot = conn.lowercased().contains("iphone") || conn.lowercased().contains("ipad") || conn.lowercased().contains("hotspot")
+                let item = WiFiNetworkItem(ssid: conn, rssi: rssi, isConnected: true, isSecure: true)
+                seenSSIDs.insert(conn)
+                if isHotspot {
+                    hotspots.append(item)
+                } else {
+                    items.append(item)
+                }
+            }
+            
+            // Over-the-air scanned networks
+            for net in scannedNetworks {
+                guard let name = net.ssid, !name.isEmpty, name != "<redacted>", !seenSSIDs.contains(name) else { continue }
+                seenSSIDs.insert(name)
+                let isHotspot = name.lowercased().contains("iphone") || name.lowercased().contains("ipad") || name.lowercased().contains("hotspot")
+                let item = WiFiNetworkItem(ssid: name, rssi: net.rssiValue, isConnected: false, isSecure: true)
+                if isHotspot {
+                    hotspots.append(item)
+                } else {
+                    items.append(item)
+                }
+            }
+            
+            // Add nearby iPhone as Personal Hotspot if detected
+            if let phone = nearbyPhoneName, !seenSSIDs.contains(phone) {
+                hotspots.append(WiFiNetworkItem(ssid: phone, rssi: -48, isConnected: false, isSecure: true))
+            }
+            
+            // Sort remaining scanned networks by signal strength (RSSI descending)
+            if items.count > 1 {
+                let first = items[0]
+                var rest = Array(items.dropFirst())
+                rest.sort { $0.rssi > $1.rssi }
+                items = [first] + rest
+            }
+            
+            DispatchQueue.main.async {
+                if let conn = connectedSSID, !conn.isEmpty {
+                    self.wifiSSID = conn
+                }
+                self.personalHotspots = hotspots
+                self.availableWiFiNetworks = items
+                self.isScanningWiFi = false
+            }
+        }
+    }
+    
+    func connectToWiFiNetwork(_ network: WiFiNetworkItem) {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.74, blendDuration: 0.06)) {
+            self.wifiSSID = network.ssid
+            self.wifiBars = network.bars
+            self.isWifiOn = true
+            self.isShowingWiFiPicker = false
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+            task.arguments = ["-setairportnetwork", "en0", network.ssid]
+            try? task.run()
+        }
+    }
+
+    func scanAvailableBluetoothDevices() {
+        isScanningBluetooth = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            var availableItems: [BluetoothDeviceItem] = []
+            var activeAddresses = Set<String>()
+            var seenNames = Set<String>()
+            
+            func parseBatteryLevel(from props: [String: Any]) -> Int? {
+                let keys = ["device_batteryLevelMain", "device_batteryLevel", "device_batteryLevelRight", "device_batteryLevelLeft", "device_batteryLevelCase", "BatteryPercent"]
+                for k in keys {
+                    if let valStr = props[k] as? String {
+                        let digits = valStr.filter { $0.isNumber }
+                        if let num = Int(digits), num > 0 { return num }
+                    } else if let num = props[k] as? Int, num > 0 {
+                        return num
+                    }
+                }
+                return nil
+            }
+            
+            // 1. Devices currently connected via IOBluetoothDevice
+            if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
+                for d in devices {
+                    let addr = (d.addressString ?? "").lowercased().replacingOccurrences(of: "-", with: ":")
+                    let name = d.name ?? "Bluetooth Device"
+                    if d.isConnected() {
+                        activeAddresses.insert(addr)
+                        seenNames.insert(name)
+                        var bat: Int? = nil
+                        if name.lowercased().contains("airpod") {
+                            bat = Int(self.airPodsBatteryLevel * 100)
+                        }
+                        availableItems.append(BluetoothDeviceItem(id: d.addressString ?? addr, name: name, isConnected: true, deviceClass: Int(d.deviceClassMajor), batteryLevel: bat))
+                    }
+                }
+            }
+            
+            // 2. Query system profiler for devices physically in range right now (live RSSI & battery)
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-            task.arguments = ["-json", "SPAirPortDataType"]
+            task.arguments = ["SPBluetoothDataType", "-json", "-detailLevel", "basic"]
             let pipe = Pipe()
             task.standardOutput = pipe
-            do {
-                try task.run()
+            if (try? task.run()) != nil {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 task.waitUntilExit()
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let items = json["SPAirPortDataType"] as? [[String: Any]] {
-                    for item in items {
-                        if let interfaces = item["spairport_airport_interfaces"] as? [[String: Any]] {
-                            for iface in interfaces {
-                                if let curInfo = iface["spairport_current_network_information"] as? [String: Any],
-                                   let cName = curInfo["_name"] as? String, !cName.isEmpty {
-                                    if !networks.contains(where: { $0.ssid == cName }) {
-                                        networks.insert(WiFiNetworkItem(ssid: cName, rssi: -48, isConnected: true, isSecure: true), at: 0)
-                                    }
-                                    DispatchQueue.main.async {
-                                        self.wifiSSID = cName
+                   let root = json["SPBluetoothDataType"] as? [[String: Any]] {
+                    for entry in root {
+                        // Connected devices
+                        if let connected = entry["device_connected"] as? [[String: [String: Any]]] {
+                            for d in connected {
+                                for (name, props) in d {
+                                    let rawAddr = (props["device_address"] as? String ?? "").lowercased()
+                                    let bat = parseBatteryLevel(from: props) ?? (name.lowercased().contains("airpod") ? Int(self.airPodsBatteryLevel * 100) : nil)
+                                    if !activeAddresses.contains(rawAddr) && !seenNames.contains(name) {
+                                        activeAddresses.insert(rawAddr)
+                                        seenNames.insert(name)
+                                        availableItems.append(BluetoothDeviceItem(id: rawAddr, name: name, isConnected: true, deviceClass: 4, batteryLevel: bat))
+                                    } else {
+                                        // Update battery on already added connected item
+                                        if let idx = availableItems.firstIndex(where: { $0.id.lowercased() == rawAddr || $0.name == name }) {
+                                            availableItems[idx].batteryLevel = bat
+                                        }
                                     }
                                 }
-                                if let others = iface["spairport_other_local_wireless_networks"] as? [[String: Any]] {
-                                    for other in others {
-                                        if let oName = other["_name"] as? String, !oName.isEmpty {
-                                            let sec = other["spairport_security_mode"] as? String ?? ""
-                                            let isSec = !sec.lowercased().contains("none")
-                                            if !networks.contains(where: { $0.ssid == oName }) {
-                                                networks.append(WiFiNetworkItem(ssid: oName, rssi: -62, isConnected: false, isSecure: isSec))
-                                            }
+                            }
+                        }
+                        // Disconnected but in-range devices (must have live device_rssi!)
+                        if let notConnected = entry["device_not_connected"] as? [[String: [String: Any]]] {
+                            for d in notConnected {
+                                for (name, props) in d {
+                                    let rawAddr = (props["device_address"] as? String ?? "").lowercased()
+                                    if let rssiStr = props["device_rssi"] as? String, !rssiStr.isEmpty {
+                                        let bat = parseBatteryLevel(from: props)
+                                        if !activeAddresses.contains(rawAddr) && !seenNames.contains(name) {
+                                            activeAddresses.insert(rawAddr)
+                                            seenNames.insert(name)
+                                            availableItems.append(BluetoothDeviceItem(id: rawAddr, name: name, isConnected: false, deviceClass: 0, batteryLevel: bat))
                                         }
                                     }
                                 }
@@ -3098,34 +3577,54 @@ class IslandModel: ObservableObject {
                         }
                     }
                 }
-            } catch {}
+            }
             
-            // 3. Additional CoreWLAN scan fallback
-            if let interface = CWWiFiClient.shared().interface(),
-               let scanned = try? interface.scanForNetworks(withName: nil) {
-                for net in scanned {
-                    if let name = net.ssid, !name.isEmpty {
-                        if !networks.contains(where: { $0.ssid == name }) {
-                            networks.append(WiFiNetworkItem(ssid: name, rssi: net.rssiValue, isConnected: false, isSecure: true))
-                        }
-                    }
+            // Sort: connected first, then alphabetical
+            availableItems.sort { a, b in
+                if a.isConnected != b.isConnected {
+                    return a.isConnected && !b.isConnected
                 }
+                return a.name.localizedCompare(b.name) == .orderedAscending
             }
             
             DispatchQueue.main.async {
-                if !networks.isEmpty {
-                    self.availableWiFiNetworks = networks
+                self.availableBluetoothDevices = availableItems
+                self.isScanningBluetooth = false
+            }
+        }
+    }
+
+    func toggleConnectBluetoothDevice(_ item: BluetoothDeviceItem) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice],
+               let dev = devices.first(where: { ($0.addressString == item.id) || ($0.name == item.name) }) {
+                if dev.isConnected() {
+                    dev.closeConnection()
+                } else {
+                    dev.openConnection()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    self?.scanAvailableBluetoothDevices()
                 }
             }
         }
     }
-    
-    func connectToWiFiNetwork(_ network: WiFiNetworkItem) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-            self.wifiSSID = network.ssid
-            self.wifiBars = network.bars
-            self.isWifiOn = true
-            self.isShowingWiFiPicker = false
+
+    func openBluetoothSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
+            NSWorkspace.shared.open(url)
+        } else {
+            let settingsURL = URL(fileURLWithPath: "/System/Applications/System Settings.app")
+            NSWorkspace.shared.open(settingsURL)
+        }
+    }
+
+    func openWiFiSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.wifi-settings-extension") {
+            NSWorkspace.shared.open(url)
+        } else {
+            let settingsURL = URL(fileURLWithPath: "/System/Applications/System Settings.app")
+            NSWorkspace.shared.open(settingsURL)
         }
     }
 
@@ -3146,6 +3645,7 @@ class IslandModel: ObservableObject {
     @Published var karaokeVocalLevel: Double = 0.0 // 0.0 = full vocal reduction, 1.0 = normal vocals
     @Published var currentTrackLyrics: [LyricsLine] = []
     @Published var isFetchingLyrics: Bool = false
+    @Published var hasLyricsAvailable: Bool = true
 
     @Published var airPlayDevices: [AirPlayOutputDevice] = []
     private var albumTracksCache: [String: [String]] = [:]
@@ -3158,11 +3658,12 @@ class IslandModel: ObservableObject {
         let searchTerm = cleanAlbum.isEmpty ? "\(cleanArtist) \(track)" : "\(cleanArtist) \(cleanAlbum)"
         let cacheKey = "\(cleanArtist)_\(cleanAlbum.isEmpty ? track : cleanAlbum)"
         
+        // 1. Instant Cache Hit Check
         if let cachedList = self.albumTracksCache[cacheKey],
            let idx = cachedList.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
+            let p = idx > 0 ? cachedList[idx - 1] : (cachedList.count > 1 ? cachedList.last! : "")
+            let n = idx < cachedList.count - 1 ? cachedList[idx + 1] : (cachedList.count > 1 ? cachedList.first! : "")
             DispatchQueue.main.async {
-                let p = idx > 0 ? cachedList[idx - 1] : (cachedList.count > 1 ? cachedList.last! : "")
-                let n = idx < cachedList.count - 1 ? cachedList[idx + 1] : (cachedList.count > 1 ? cachedList.first! : "")
                 if !p.isEmpty { self.prevTrackName = p }
                 if !n.isEmpty { self.nextTrackName = n }
             }
@@ -3172,14 +3673,13 @@ class IslandModel: ObservableObject {
         guard let encoded = searchTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://itunes.apple.com/search?term=\(encoded)&entity=song&limit=50") else { return }
         
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3.5
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
             guard let self = self, let data = data else { return }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let results = json["results"] as? [[String: Any]] {
                 
-                var matchedNames: [String] = []
-                
-                // 1. Check matching album collections first
                 var albumResults = results.filter {
                     if let cName = $0["collectionName"] as? String {
                         return !cleanAlbum.isEmpty && (cName.localizedCaseInsensitiveContains(cleanAlbum) || cleanAlbum.localizedCaseInsensitiveContains(cName))
@@ -3191,25 +3691,45 @@ class IslandModel: ObservableObject {
                     albumResults = results
                 }
                 
-                var sortedAlbum: [(name: String, trackNum: Int)] = []
+                var sortedAlbum: [(name: String, trackNum: Int, artUrl: String?)] = []
                 for item in albumResults {
                     if let name = item["trackName"] as? String {
                         let num = item["trackNumber"] as? Int ?? 1
+                        let art = item["artworkUrl100"] as? String
                         if !sortedAlbum.contains(where: { $0.name.lowercased() == name.lowercased() }) {
-                            sortedAlbum.append((name: name, trackNum: num))
+                            sortedAlbum.append((name: name, trackNum: num, artUrl: art))
                         }
                     }
                 }
                 sortedAlbum.sort { $0.trackNum < $1.trackNum }
-                matchedNames = sortedAlbum.map { $0.name }
+                let matchedNames = sortedAlbum.map { $0.name }
                 
                 if !matchedNames.isEmpty {
                     self.albumTracksCache[cacheKey] = matchedNames
+                    
+                    // Pre-cache high-res album artworks for all tracks in this album so next/prev skips are instantaneous!
+                    for item in sortedAlbum {
+                        if let artStr = item.artUrl {
+                            let hiRes = artStr.replacingOccurrences(of: "100x100bb.jpg", with: "600x600bb.jpg")
+                                              .replacingOccurrences(of: "100x100bb.png", with: "600x600bb.png")
+                            if let u = URL(string: hiRes) {
+                                URLSession.shared.dataTask(with: u) { d, _, _ in
+                                    if let d = d, let img = NSImage(data: d) {
+                                        let col = img.averageColor
+                                        DispatchQueue.main.async {
+                                            self.artworkCache[item.name] = (img, col)
+                                        }
+                                    }
+                                }.resume()
+                            }
+                        }
+                    }
+                    
                     if let idx = matchedNames.firstIndex(where: { $0.localizedCaseInsensitiveContains(track) || track.localizedCaseInsensitiveContains($0) }) {
                         let p = idx > 0 ? matchedNames[idx - 1] : (matchedNames.count > 1 ? matchedNames.last! : "")
                         let n = idx < matchedNames.count - 1 ? matchedNames[idx + 1] : (matchedNames.count > 1 ? matchedNames.first! : "")
                         DispatchQueue.main.async {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                 if !p.isEmpty { self.prevTrackName = p }
                                 if !n.isEmpty { self.nextTrackName = n }
                             }
@@ -3242,6 +3762,29 @@ class IslandModel: ObservableObject {
     private var motionArtworkCache: [String: URL?] = [:]
     @Published var artworkColor: Color = .orange
     @Published var isMusicPlaying: Bool = false
+    @Published var isMusicSimulated: Bool = false
+
+    func toggleSimulateMusic() {
+        if isMusicSimulated && isMusicPlaying {
+            isMusicSimulated = false
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                isMusicPlaying = false
+            }
+        } else {
+            isMusicSimulated = true
+            if currentTrack.isEmpty || currentTrack == "Unknown Track" {
+                currentTrack = "Blinding Lights"
+                currentArtist = "The Weeknd"
+                currentAlbum = "After Hours"
+                trackDuration = 200.0
+                playbackPosition = 65.0
+                artworkColor = Color(red: 0.88, green: 0.18, blue: 0.32)
+            }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                isMusicPlaying = true
+            }
+        }
+    }
     @Published var enableArtworkGlow: Bool = true
     @Published var enableFullWindowGlow: Bool = UserDefaults.standard.bool(forKey: "enableFullWindowGlow") {
         didSet { UserDefaults.standard.set(enableFullWindowGlow, forKey: "enableFullWindowGlow") }
@@ -3794,10 +4337,21 @@ class IslandModel: ObservableObject {
             self.isForward = forward
             self.lastManualSkipTime = Date()
             self.buttonSkipTrigger += (forward ? 1 : -1)
+            // Instant optimistic artwork switch from cache if next/previous track name is known
+            let targetCandidate = forward ? self.nextTrackName : self.prevTrackName
+            if !targetCandidate.isEmpty {
+                for (k, v) in self.artworkCache {
+                    if k.localizedCaseInsensitiveContains(targetCandidate) || targetCandidate.localizedCaseInsensitiveContains(k) {
+                        self.currentArtwork = v.image
+                        self.artworkColor = v.color
+                        break
+                    }
+                }
+            }
         }
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInteractive).async {
             _ = NSAppleScript(source: forward ? "tell application \"Music\" to next track" : "tell application \"Music\" to previous track")?.executeAndReturnError(nil)
-            Thread.sleep(forTimeInterval: 0.20)
+            // Immediately query state without artificial sleep for ultra-responsive artwork update
             self.fetchCurrentMusicState()
         }
     }
@@ -3816,8 +4370,8 @@ class IslandModel: ObservableObject {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
             isKaraokeActive.toggle()
             if isKaraokeActive {
-                karaokeVocalLevel = 0.0
-                applyKaraokeDSP(vocalLevel: 0.0)
+                karaokeVocalLevel = 0.20
+                applyKaraokeDSP(vocalLevel: 0.20)
             } else {
                 karaokeVocalLevel = 1.0
                 applyKaraokeDSP(vocalLevel: 1.0)
@@ -3831,22 +4385,12 @@ class IslandModel: ObservableObject {
     }
     
     private func applyKaraokeDSP(vocalLevel: Double) {
-        let preset: String
-        if vocalLevel < 0.25 {
-            preset = "Reduce Treble"
-        } else if vocalLevel < 0.60 {
-            preset = "Acoustic"
-        } else if vocalLevel < 0.90 {
-            preset = "Increase Bass"
-        } else {
-            preset = "Flat"
-        }
-        
         DispatchQueue.global(qos: .userInitiated).async {
+            let targetVol = Int(max(20, min(100, 50.0 + vocalLevel * 50.0)))
             let scriptSource = """
             tell application "Music"
                 try
-                    set EQ of current track to "\(preset)"
+                    set sound volume to \(targetVol)
                 end try
             end tell
             """
@@ -3867,26 +4411,66 @@ class IslandModel: ObservableObject {
             
             var fetchedLRC: String? = nil
             
-            func queryLRC(query: String) -> String? {
+            // Helper: Query direct match endpoint (/api/get)
+            func queryDirectGet(tName: String, aName: String, dSecs: Double) -> String? {
+                var components = URLComponents(string: "https://lrclib.net/api/get")
+                var qItems = [
+                    URLQueryItem(name: "track_name", value: tName),
+                    URLQueryItem(name: "artist_name", value: aName)
+                ]
+                if dSecs > 10 {
+                    qItems.append(URLQueryItem(name: "duration", value: String(Int(round(dSecs)))))
+                }
+                components?.queryItems = qItems
+                guard let url = components?.url else { return nil }
+                
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 4.0
+                req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+                let sema = DispatchSemaphore(value: 0)
+                var resultLRC: String? = nil
+                URLSession.shared.dataTask(with: req) { data, _, _ in
+                    if let d = data, let dict = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                        if let synced = dict["syncedLyrics"] as? String, !synced.isEmpty {
+                            resultLRC = synced
+                        }
+                    }
+                    sema.signal()
+                }.resume()
+                _ = sema.wait(timeout: .now() + 4.0)
+                return resultLRC
+            }
+            
+            // Helper: Query search endpoint (/api/search) with duration matching
+            func queryLRC(query: String, expectedDur: Double) -> String? {
                 var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
                 searchComponents?.queryItems = [URLQueryItem(name: "q", value: query)]
                 guard let searchURL = searchComponents?.url else { return nil }
                 
                 var req = URLRequest(url: searchURL)
                 req.timeoutInterval = 4.0
-                req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
+                req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
                 let sema = DispatchSemaphore(value: 0)
                 var searchResult: String? = nil
                 URLSession.shared.dataTask(with: req) { data, _, _ in
                     if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]], !list.isEmpty {
-                        // Pick best candidate that has syncedLyrics and matches track name closely
-                        for item in list {
-                            if let synced = item["syncedLyrics"] as? String, !synced.isEmpty {
-                                searchResult = synced
-                                break
-                            }
+                        // Filter candidates that have syncedLyrics
+                        let syncedCandidates = list.filter {
+                            let syn = ($0["syncedLyrics"] as? String) ?? ""
+                            return !syn.isEmpty
                         }
-                        if searchResult == nil, let plain = list[0]["plainLyrics"] as? String {
+                        
+                        if !syncedCandidates.isEmpty {
+                            // Sort by closest duration difference to trackDur to guarantee correct audio sync!
+                            let sorted = syncedCandidates.sorted { a, b in
+                                let durA = (a["duration"] as? Double) ?? 0.0
+                                let durB = (b["duration"] as? Double) ?? 0.0
+                                return abs(durA - expectedDur) < abs(durB - expectedDur)
+                            }
+                            searchResult = sorted.first?["syncedLyrics"] as? String
+                        }
+                        
+                        if searchResult == nil, let plain = list.first?["plainLyrics"] as? String {
                             searchResult = plain
                         }
                     }
@@ -3900,15 +4484,22 @@ class IslandModel: ObservableObject {
             let cleanTrack = trackName.components(separatedBy: "(")[0].components(separatedBy: "[")[0].trimmingCharacters(in: .whitespaces)
             let cleanArtist = artistName.components(separatedBy: ",")[0].components(separatedBy: "&")[0].components(separatedBy: "feat")[0].trimmingCharacters(in: .whitespaces)
             
-            // 1. Precise query with clean track & primary artist
-            fetchedLRC = queryLRC(query: "\(cleanTrack) \(cleanArtist)")
+            // 1. Try direct exact match with duration
+            fetchedLRC = queryDirectGet(tName: cleanTrack, aName: cleanArtist, dSecs: trackDur)
+            
+            // 2. Query search with clean track & primary artist (sorted by closest duration)
             if fetchedLRC == nil {
-                // 2. Query with raw track and artist
-                fetchedLRC = queryLRC(query: "\(trackName) \(artistName)")
+                fetchedLRC = queryLRC(query: "\(cleanTrack) \(cleanArtist)", expectedDur: trackDur)
             }
+            
+            // 3. Query search with raw track and artist
             if fetchedLRC == nil {
-                // 3. Query with clean track alone
-                fetchedLRC = queryLRC(query: cleanTrack)
+                fetchedLRC = queryLRC(query: "\(trackName) \(artistName)", expectedDur: trackDur)
+            }
+            
+            // 4. Query search with clean track alone
+            if fetchedLRC == nil {
+                fetchedLRC = queryLRC(query: cleanTrack, expectedDur: trackDur)
             }
             
             var rawLines: [(time: Double, text: String)] = []
@@ -3953,41 +4544,79 @@ class IslandModel: ObservableObject {
                 }
             }
             
+            // NEVER generate fake lyrics like 'Sing along with Apple Music Sing' if real lyrics do not exist!
+            // If rawLines is empty, there are genuinely no lyrics for this song, so lyrics button will be disabled!
             if rawLines.isEmpty {
-                rawLines = [
-                    (time: 0.0, text: "♪ Listening to \(trackName) ♪"),
-                    (time: max(2.0, trackDur * 0.08), text: trackName),
-                    (time: max(5.0, trackDur * 0.20), text: "by \(artistName)"),
-                    (time: max(8.0, trackDur * 0.40), text: "Sing along with Apple Music Sing"),
-                    (time: max(12.0, trackDur * 0.60), text: "♪ Instrumentals & Vocals synced ♪"),
-                    (time: max(16.0, trackDur * 0.80), text: "♪ \(artistName) ♪"),
-                    (time: max(20.0, trackDur * 0.95), text: "♪ Outro ♪")
-                ]
+                DispatchQueue.main.async {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                        self.currentTrackLyrics = []
+                        self.isFetchingLyrics = false
+                        self.hasLyricsAvailable = false
+                        if self.isShowingLyricsInMusic {
+                            self.isShowingLyricsInMusic = false
+                        }
+                    }
+                }
+                return
             }
             
-            // Build detailed word-by-word line model
+            // Build detailed word-by-word line model with dynamic instrumental breaks
             var parsed: [LyricsLine] = []
+            
+            // Check for intro instrumental break (if track starts with music before lyrics)
+            if let first = rawLines.first, first.time >= 3.0 {
+                parsed.append(LyricsLine(
+                    startTime: 0.0,
+                    endTime: first.time,
+                    text: "",
+                    words: [],
+                    isInstrumentalBreak: true
+                ))
+            }
+            
             for (idx, r) in rawLines.enumerated() {
                 let nextStart = (idx + 1 < rawLines.count) ? rawLines[idx + 1].time : (trackDur > 0 ? trackDur : r.time + 8.0)
-                let lineDuration = max(0.8, nextStart - r.time)
+                let totalGap = max(0.5, nextStart - r.time)
+                
+                // Words active duration: if gap before next line is large, keep singing duration natural
+                let sungDuration = min(totalGap, max(1.2, totalGap > 5.0 ? totalGap * 0.65 : totalGap))
                 
                 let wordTokens = r.text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
                 var words: [LyricsWord] = []
                 if !wordTokens.isEmpty {
-                    let perWordTime = lineDuration / Double(wordTokens.count)
+                    let perWordTime = sungDuration / Double(wordTokens.count)
                     for (wIdx, w) in wordTokens.enumerated() {
                         let wStart = r.time + (Double(wIdx) * perWordTime)
                         let wEnd = wStart + perWordTime
                         words.append(LyricsWord(text: w, startTime: wStart, endTime: wEnd))
                     }
                 }
-                parsed.append(LyricsLine(startTime: r.time, endTime: nextStart, text: r.text, words: words))
+                
+                let hasInstrumentalInterlude = (nextStart - r.time >= 4.0)
+                let lineEndTime = hasInstrumentalInterlude ? (r.time + sungDuration) : nextStart
+                parsed.append(LyricsLine(startTime: r.time, endTime: lineEndTime, text: r.text, words: words, isInstrumentalBreak: false))
+                
+                // If there is an instrumental gap >= 3.5s before the next line, insert an instrumental break!
+                if hasInstrumentalInterlude && (nextStart - lineEndTime >= 1.5) {
+                    parsed.append(LyricsLine(
+                        startTime: lineEndTime,
+                        endTime: nextStart,
+                        text: "",
+                        words: [],
+                        isInstrumentalBreak: true
+                    ))
+                }
             }
             
             DispatchQueue.main.async {
+                let foundLyrics = !parsed.isEmpty
                 withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
                     self.currentTrackLyrics = parsed
                     self.isFetchingLyrics = false
+                    self.hasLyricsAvailable = foundLyrics
+                    if !foundLyrics && self.isShowingLyricsInMusic {
+                        self.isShowingLyricsInMusic = false
+                    }
                 }
             }
         }
@@ -4010,8 +4639,128 @@ class IslandModel: ObservableObject {
         }
     }
     
+    var activeAudioRouteIcon: String {
+        if let sel = airPlayDevices.first(where: { $0.isSelected }) {
+            return sel.iconName
+        }
+        if airPodsConnected {
+            return "airpodspro"
+        }
+        return "laptopcomputer"
+    }
+
+    // MARK: - CoreAudio HAL System Output Helpers
+    static func getSystemDefaultOutputDeviceID() -> AudioDeviceID {
+        var defAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var devID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout.size(ofValue: devID))
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &defAddr, 0, nil, &size, &devID)
+        return devID
+    }
+    
+    static func getAudioDeviceName(for devID: AudioDeviceID) -> String {
+        var nameAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var cfName: CFString = "" as CFString
+        var sz = UInt32(MemoryLayout.size(ofValue: cfName))
+        let status = withUnsafeMutablePointer(to: &cfName) { ptr in
+            AudioObjectGetPropertyData(devID, &nameAddr, 0, nil, &sz, ptr)
+        }
+        if status == noErr {
+            return cfName as String
+        }
+        return ""
+    }
+    
+    static func getAudioDeviceVolume(for devID: AudioDeviceID) -> Double {
+        var volAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var vol: Float32 = 0.8
+        var sz = UInt32(MemoryLayout.size(ofValue: vol))
+        let status = AudioObjectGetPropertyData(devID, &volAddr, 0, nil, &sz, &vol)
+        if status == noErr {
+            return Double(max(0.0, min(1.0, vol)))
+        }
+        return 0.8
+    }
+    
+    static func setAudioDeviceVolume(devID: AudioDeviceID, volume: Double) {
+        var volAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var vol = Float32(max(0.0, min(1.0, volume)))
+        let sz = UInt32(MemoryLayout.size(ofValue: vol))
+        AudioObjectSetPropertyData(devID, &volAddr, 0, nil, sz, &vol)
+    }
+    
+    static func setSystemDefaultOutputDevice(devID: AudioDeviceID) {
+        var defAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var targetID = devID
+        let size = UInt32(MemoryLayout.size(ofValue: targetID))
+        AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &defAddr, 0, nil, size, &targetID)
+    }
+
+    static func getAllCoreAudioOutputDevices() -> [(id: AudioDeviceID, name: String, volume: Double)] {
+        var propAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propAddr, 0, nil, &dataSize)
+        guard dataSize > 0 else { return [] }
+        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var devIDs = [AudioDeviceID](repeating: 0, count: count)
+        let status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propAddr, 0, nil, &dataSize, &devIDs)
+        guard status == noErr else { return [] }
+        
+        var result: [(id: AudioDeviceID, name: String, volume: Double)] = []
+        for d in devIDs {
+            var streamAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioDevicePropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            AudioObjectGetPropertyDataSize(d, &streamAddr, 0, nil, &streamSize)
+            if streamSize > 0 {
+                let name = getAudioDeviceName(for: d)
+                if !name.isEmpty {
+                    let vol = getAudioDeviceVolume(for: d)
+                    result.append((id: d, name: name, volume: vol))
+                }
+            }
+        }
+        return result
+    }
+
     func fetchAirPlayDevices() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // 1. Query System Default Output Device & All CoreAudio Output Devices
+            let defaultDevID = IslandModel.getSystemDefaultOutputDeviceID()
+            let defaultDevName = IslandModel.getAudioDeviceName(for: defaultDevID)
+            let defaultDevVol = IslandModel.getAudioDeviceVolume(for: defaultDevID)
+            let coreAudioDevices = IslandModel.getAllCoreAudioOutputDevices()
+            
+            // 2. Query Music.app AirPlay devices via AppleScript
             let scriptSource = """
             tell application "Music"
                 set devList to {}
@@ -4035,27 +4784,98 @@ class IslandModel: ObservableObject {
                 return devList
             end tell
             """
+            var asDevices: [AirPlayOutputDevice] = []
             var err: NSDictionary?
-            if let desc = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err) {
-                var devices: [AirPlayOutputDevice] = []
-                if desc.descriptorType == 0x6c697374 {
-                    for i in 1...desc.numberOfItems {
-                        if let str = desc.atIndex(i)?.stringValue {
-                            let parts = str.components(separatedBy: "|||")
-                            if parts.count >= 3 {
-                                let name = parts[0]
-                                let sel = parts[1].lowercased() == "true"
-                                let kind = parts[2]
-                                let vol = (Double(parts.count >= 4 ? parts[3] : "80") ?? 80.0) / 100.0
-                                devices.append(AirPlayOutputDevice(id: name, name: name, isSelected: sel, kind: kind, volume: vol))
-                            }
+            if let desc = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err),
+               desc.descriptorType == 0x6c697374 {
+                for i in 1...desc.numberOfItems {
+                    if let str = desc.atIndex(i)?.stringValue {
+                        let parts = str.components(separatedBy: "|||")
+                        if parts.count >= 3 {
+                            let name = parts[0]
+                            let sel = parts[1].lowercased() == "true"
+                            let kind = parts[2]
+                            let vol = (Double(parts.count >= 4 ? parts[3] : "80") ?? 80.0) / 100.0
+                            asDevices.append(AirPlayOutputDevice(id: name, name: name, isSelected: sel, kind: kind, volume: vol))
                         }
                     }
                 }
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        self?.airPlayDevices = devices
+            }
+            
+            // 3. Intelligently Merge AppleScript AirPlay devices with CoreAudio HAL devices
+            var mergedDevices: [AirPlayOutputDevice] = []
+            var matchedCoreAudioIDs = Set<AudioDeviceID>()
+            
+            let isDefaultBluetoothOrAirPods = defaultDevName.localizedCaseInsensitiveContains("airpod") ||
+                                              defaultDevName.localizedCaseInsensitiveContains("headphone") ||
+                                              defaultDevName.localizedCaseInsensitiveContains("beats") ||
+                                              defaultDevName.localizedCaseInsensitiveContains("sony") ||
+                                              defaultDevName.localizedCaseInsensitiveContains("bose")
+            
+            for asDev in asDevices {
+                let isComp = asDev.kind.lowercased().contains("computer") || asDev.name.lowercased().contains("mac")
+                let matchingCore = coreAudioDevices.first { ca in
+                    ca.name.localizedCaseInsensitiveContains(asDev.name) ||
+                    asDev.name.localizedCaseInsensitiveContains(ca.name) ||
+                    (isComp && (ca.name.localizedCaseInsensitiveContains("speaker") || ca.name.localizedCaseInsensitiveContains("built-in") || ca.name.localizedCaseInsensitiveContains("macbook")))
+                }
+                
+                var dev = asDev
+                if let matching = matchingCore {
+                    matchedCoreAudioIDs.insert(matching.id)
+                    dev.audioDeviceID = matching.id
+                    
+                    if matching.id == defaultDevID {
+                        dev.isSelected = true
+                        dev.volume = defaultDevVol
+                    } else if isDefaultBluetoothOrAirPods && isComp {
+                        dev.isSelected = false
                     }
+                } else if isDefaultBluetoothOrAirPods && isComp {
+                    dev.isSelected = false
+                }
+                
+                mergedDevices.append(dev)
+            }
+            
+            for ca in coreAudioDevices {
+                if !matchedCoreAudioIDs.contains(ca.id) {
+                    let isAirPods = ca.name.localizedCaseInsensitiveContains("airpod")
+                    let isHeadphones = ca.name.localizedCaseInsensitiveContains("headphone") || ca.name.localizedCaseInsensitiveContains("beats") || ca.name.localizedCaseInsensitiveContains("sony") || ca.name.localizedCaseInsensitiveContains("bose")
+                    let isSpeaker = ca.name.localizedCaseInsensitiveContains("speaker") || ca.name.localizedCaseInsensitiveContains("built-in") || ca.name.localizedCaseInsensitiveContains("macbook")
+                    
+                    let kindStr = isAirPods ? "Bluetooth device" : (isHeadphones ? "Headphones" : (isSpeaker ? "computer" : "Audio Device"))
+                    let isSelected = (ca.id == defaultDevID)
+                    let vol = (ca.id == defaultDevID) ? defaultDevVol : ca.volume
+                    
+                    mergedDevices.append(AirPlayOutputDevice(
+                        id: ca.name,
+                        name: ca.name,
+                        isSelected: isSelected,
+                        kind: kindStr,
+                        volume: vol,
+                        audioDeviceID: ca.id
+                    ))
+                }
+            }
+            
+            if let activeIdx = mergedDevices.firstIndex(where: {
+                if let devID = $0.audioDeviceID, devID == defaultDevID { return true }
+                return $0.name.localizedCaseInsensitiveContains(defaultDevName) || defaultDevName.localizedCaseInsensitiveContains($0.name)
+            }) {
+                for i in 0..<mergedDevices.count {
+                    if i == activeIdx {
+                        mergedDevices[i].isSelected = true
+                        mergedDevices[i].volume = defaultDevVol
+                    } else if mergedDevices[i].kind.lowercased().contains("computer") || mergedDevices[i].name.lowercased().contains("mac") || mergedDevices[i].kind.lowercased().contains("bluetooth") {
+                        mergedDevices[i].isSelected = false
+                    }
+                }
+            }
+            
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    self.airPlayDevices = mergedDevices
                 }
             }
         }
@@ -4065,9 +4885,22 @@ class IslandModel: ObservableObject {
         if let idx = self.airPlayDevices.firstIndex(where: { $0.id == device.id }) {
             self.airPlayDevices[idx].volume = volume
         }
-        let intVol = Int(round(volume * 100))
-        let isComp = device.kind.lowercased().contains("computer") || device.name.lowercased().contains("mac")
         
+        let clampedVol = max(0.0, min(1.0, volume))
+        let intVol = Int(round(clampedVol * 100))
+        
+        // 1. Direct CoreAudio HAL Volume Adjustment (Instant & Zero Latency for AirPods / Mac Speakers)
+        if let devID = device.audioDeviceID {
+            IslandModel.setAudioDeviceVolume(devID: devID, volume: clampedVol)
+        } else {
+            let defID = IslandModel.getSystemDefaultOutputDeviceID()
+            let defName = IslandModel.getAudioDeviceName(for: defID)
+            if defName.localizedCaseInsensitiveContains(device.name) || device.name.localizedCaseInsensitiveContains(defName) {
+                IslandModel.setAudioDeviceVolume(devID: defID, volume: clampedVol)
+            }
+        }
+        
+        // 2. Also keep Music.app and AirPlay daemon in sync
         DispatchQueue.global(qos: .userInitiated).async {
             let scriptSource = """
             tell application "Music"
@@ -4089,12 +4922,15 @@ class IslandModel: ObservableObject {
         let targetSelected = !isCurrentlySelected
         
         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-            // For Bluetooth/AirPods and Computer, single active output route is standard
             self.airPlayDevices = self.airPlayDevices.map { dev in
                 if dev.id == device.id {
-                    return AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: targetSelected, kind: dev.kind, volume: dev.volume)
-                } else if targetSelected && (device.kind.lowercased().contains("bluetooth") || dev.kind.lowercased().contains("bluetooth") || device.kind.lowercased().contains("computer") || dev.kind.lowercased().contains("computer")) {
-                    return AirPlayOutputDevice(id: dev.id, name: dev.name, isSelected: false, kind: dev.kind, volume: dev.volume)
+                    var updated = dev
+                    updated.isSelected = targetSelected
+                    return updated
+                } else if targetSelected && (dev.kind.lowercased().contains("bluetooth") || dev.kind.lowercased().contains("computer") || dev.name.lowercased().contains("airpod") || dev.name.lowercased().contains("mac")) {
+                    var updated = dev
+                    updated.isSelected = false
+                    return updated
                 } else {
                     return dev
                 }
@@ -4102,40 +4938,46 @@ class IslandModel: ObservableObject {
         }
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let isTargetSelected = targetSelected
+            guard let self = self else { return }
+            
+            // 1. If device has or can resolve a CoreAudio HAL AudioDeviceID, switch system output route directly!
+            var targetCoreAudioID: AudioDeviceID? = device.audioDeviceID
+            if targetCoreAudioID == nil {
+                let allDevs = IslandModel.getAllCoreAudioOutputDevices()
+                if let found = allDevs.first(where: {
+                    $0.name.localizedCaseInsensitiveContains(device.name) ||
+                    device.name.localizedCaseInsensitiveContains($0.name) ||
+                    (device.kind.lowercased().contains("computer") && ($0.name.localizedCaseInsensitiveContains("speaker") || $0.name.localizedCaseInsensitiveContains("built-in") || $0.name.localizedCaseInsensitiveContains("macbook")))
+                }) {
+                    targetCoreAudioID = found.id
+                }
+            }
+            
+            if targetSelected, let validDevID = targetCoreAudioID {
+                IslandModel.setSystemDefaultOutputDevice(devID: validDevID)
+            }
+            
+            // 2. Also command Music.app to update its AirPlay selection for network devices or AppleScript devices
             let scriptSource = """
             tell application "Music"
                 try
                     set allDevs to every AirPlay device
                     repeat with d in allDevs
                         if name of d is "\(device.name)" then
-                            set selected of d to \(isTargetSelected ? "true" : "false")
-                        else if \(isTargetSelected ? "true" : "false") and (kind of d is "computer" or kind of d is "Bluetooth device" or name of d contains "AirPods") then
+                            set selected of d to \(targetSelected ? "true" : "false")
+                        else if \(targetSelected ? "true" : "false") and (kind of d is "computer" or kind of d is "Bluetooth device" or name of d contains "AirPods") then
                             try
                                 set selected of d to false
                             end try
                         end if
                     end repeat
-                    
-                    -- Fallback to computer if nothing selected
-                    set anySelected to false
-                    repeat with d in allDevs
-                        if selected of d is true then
-                            set anySelected to true
-                        end if
-                    end repeat
-                    if anySelected is false then
-                        try
-                            set selected of (first AirPlay device whose kind is computer) to true
-                        end try
-                    end if
                 end try
             end tell
             """
-            var err: NSDictionary?
-            _ = NSAppleScript(source: scriptSource)?.executeAndReturnError(&err)
-            Thread.sleep(forTimeInterval: 0.2)
-            self?.fetchAirPlayDevices()
+            _ = NSAppleScript(source: scriptSource)?.executeAndReturnError(nil)
+            
+            Thread.sleep(forTimeInterval: 0.25)
+            self.fetchAirPlayDevices()
         }
     }
 
@@ -4204,7 +5046,7 @@ class IslandModel: ObservableObject {
                         end try
                     end try
                     
-                    -- Accurate playlist track sequence indexing
+                    -- Accurate playlist / context track sequence indexing
                     try
                         set curPl to current playlist
                         set curTrackIndex to index of curTrk
@@ -4215,6 +5057,15 @@ class IslandModel: ObservableObject {
                         if curTrackIndex < totalPlTracks then
                             set nxtName to name of track (curTrackIndex + 1) of curPl
                         end if
+                    on error
+                        -- Fallback for Apple Music radio / stream / up-next tracks
+                        try
+                            set curIdx to index of curTrk
+                            if curIdx > 1 then
+                                set prevName to name of track (curIdx - 1)
+                            end if
+                            set nxtName to name of track (curIdx + 1)
+                        end try
                     end try
                     
                     -- Direct Raw High-Res Artwork
@@ -4262,18 +5113,28 @@ class IslandModel: ObservableObject {
         }
         
         // 2. High-precision position tracking for authentic word-by-word Apple Music lyrics sync
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if self.isMusicPlaying || self.state == .expandedMusic {
                 self.fetchCurrentMusicState()
             }
         }
+        
+        // 3. Periodic audio route synchronization (AirPods insertion/removal, route switches)
+        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isMusicPlaying || self.isShowingAirPlayInMusic {
+                self.fetchAirPlayDevices()
+            }
+        }
+        fetchAirPlayDevices()
         fetchCurrentMusicState()
     }
     
     func fetchCurrentMusicState() {
+        guard !self.isMusicSimulated else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, !self.isMusicSimulated else { return }
             var err: NSDictionary?
             guard let script = self.precompiledMusicScript else { return }
             let desc = script.executeAndReturnError(&err)
@@ -4293,6 +5154,7 @@ class IslandModel: ObservableObject {
             let tTrack = desc.atIndex(2)?.stringValue ?? "Unknown Track"
             let tArtist = desc.atIndex(3)?.stringValue ?? "Unknown Artist"
             let tDuration = desc.atIndex(4)?.doubleValue ?? 100.0
+            let scriptCaptureTime = Date()
             let tPosition = desc.atIndex(5)?.doubleValue ?? 0.0
             let isFav = desc.numberOfItems >= 7 ? (desc.atIndex(7)?.booleanValue ?? false) : false
             var nxtTitle = desc.numberOfItems >= 8 ? (desc.atIndex(8)?.stringValue ?? "") : ""
@@ -4334,8 +5196,8 @@ class IslandModel: ObservableObject {
                 if !prvTitle.isEmpty { self.prevTrackName = prvTitle }
                 self.currentAlbum = tAlbum
                 self.playbackPosition = tPosition
-                self.lastPlaybackUpdateTime = Date()
-                self.lastPlaybackPollTime = Date()
+                self.lastPlaybackUpdateTime = scriptCaptureTime
+                self.lastPlaybackPollTime = scriptCaptureTime
                 let isActuallyPlaying = (pState.lowercased() == "playing" || pState.lowercased() == "kpsp")
                 if Date().timeIntervalSince(self.lastPlayPauseToggleTime) > 0.8 {
                     if self.isMusicPlaying != isActuallyPlaying {
@@ -4359,7 +5221,9 @@ class IslandModel: ObservableObject {
                     self.liveMotionVideoURL = nil
                     self.wasLiveWallpaperExpandedBeforePause = false
                     self.currentTrackLyrics = []
-                    if self.isShowingLyricsInMusic { self.fetchLyricsForCurrentTrack() }
+                    self.hasLyricsAvailable = true
+                    // Always proactively fetch/validate lyrics for current track so button knows availability
+                    self.fetchLyricsForCurrentTrack()
                     
                     if let img = finalImage {
                         self.currentArtwork = img
@@ -4528,6 +5392,7 @@ class IslandModel: ObservableObject {
     @Published var listeningMode: Int = 2 // 2: Noise Cancellation, 1: Off, 4: Adaptive, 3: Transparency
     @Published var adaptiveBalance: Double = 0.5 // 0.0: More Noise Cancellation <---> 1.0: More Transparency
     private var lastModeSetTime: Date = .distantPast
+    private var registeredLstmAudioDeviceIDs: Set<AudioDeviceID> = []
     
     func setAirPodsMode(_ mode: Int) {
         lastModeSetTime = Date()
@@ -4535,8 +5400,36 @@ class IslandModel: ObservableObject {
             self.listeningMode = mode
         }
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Hardware Vector: Direct IOBluetoothDevice private selectors across all paired Apple audio accessories
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // 1. Direct CoreAudio HAL lstm property (0x6c73746d) - Native and instant on macOS
+            let lstmSelector: AudioObjectPropertySelector = 0x6c73746d // "lstm"
+            var propertyAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyDevices,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var dataSize: UInt32 = 0
+            if AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize) == noErr, dataSize > 0 {
+                let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+                var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+                if AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize, &deviceIDs) == noErr {
+                    var lstmAddr = AudioObjectPropertyAddress(
+                        mSelector: lstmSelector,
+                        mScope: kAudioObjectPropertyScopeGlobal,
+                        mElement: kAudioObjectPropertyElementMain
+                    )
+                    for devID in deviceIDs {
+                        if AudioObjectHasProperty(devID, &lstmAddr) {
+                            var targetMode = UInt32(mode)
+                            let size = UInt32(MemoryLayout<UInt32>.size)
+                            AudioObjectSetPropertyData(devID, &lstmAddr, 0, nil, size, &targetMode)
+                            self?.registerLstmListenerIfNeeded(for: devID)
+                        }
+                    }
+                }
+            }
+            
+            // 2. Hardware Vector: Direct IOBluetoothDevice private selectors across all paired Apple audio accessories
             if let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] {
                 let selSetMode = Selector(("setListeningMode:"))
                 let selSetANC = Selector(("setANCMode:"))
@@ -4579,11 +5472,39 @@ class IslandModel: ObservableObject {
             }
         }
     }
-
-        func openBluetoothSettings() {
-        let settingsURL = URL(fileURLWithPath: "/System/Applications/System Settings.app")
-        NSWorkspace.shared.openApplication(at: settingsURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+    
+    private func registerLstmListenerIfNeeded(for deviceID: AudioDeviceID) {
+        guard !registeredLstmAudioDeviceIDs.contains(deviceID) else { return }
+        registeredLstmAudioDeviceIDs.insert(deviceID)
+        
+        let lstmSelector: AudioObjectPropertySelector = 0x6c73746d
+        var lstmAddr = AudioObjectPropertyAddress(
+            mSelector: lstmSelector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self = self else { return }
+            var currentMode: UInt32 = 0
+            var sz = UInt32(MemoryLayout<UInt32>.size)
+            if AudioObjectGetPropertyData(deviceID, &lstmAddr, 0, nil, &sz, &currentMode) == noErr {
+                if currentMode >= 1 && currentMode <= 4 {
+                    DispatchQueue.main.async {
+                        if Date().timeIntervalSince(self.lastModeSetTime) > 1.2 {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
+                                self.listeningMode = Int(currentMode)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        AudioObjectAddPropertyListenerBlock(deviceID, &lstmAddr, DispatchQueue.global(qos: .userInitiated), block)
     }
+
+
 
     private func refreshBluetoothState() {
         isBluetoothOn = (IOBluetoothHostController.default()?.powerState == kBluetoothHCIPowerStateON)
@@ -4730,7 +5651,42 @@ class IslandModel: ObservableObject {
                     }
                     
                     var activeMode: Int? = nil
-                    if device.responds(to: selListen) {
+                    
+                    // 1. Direct CoreAudio HAL query for real-time lstm mode
+                    let lstmSelector: AudioObjectPropertySelector = 0x6c73746d // "lstm"
+                    var halPropAddr = AudioObjectPropertyAddress(
+                        mSelector: kAudioHardwarePropertyDevices,
+                        mScope: kAudioObjectPropertyScopeGlobal,
+                        mElement: kAudioObjectPropertyElementMain
+                    )
+                    var halDataSize: UInt32 = 0
+                    if AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &halPropAddr, 0, nil, &halDataSize) == noErr, halDataSize > 0 {
+                        let devCount = Int(halDataSize) / MemoryLayout<AudioDeviceID>.size
+                        var halDevIDs = [AudioDeviceID](repeating: 0, count: devCount)
+                        if AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &halPropAddr, 0, nil, &halDataSize, &halDevIDs) == noErr {
+                            var halLstmAddr = AudioObjectPropertyAddress(
+                                mSelector: lstmSelector,
+                                mScope: kAudioObjectPropertyScopeGlobal,
+                                mElement: kAudioObjectPropertyElementMain
+                            )
+                            for dID in halDevIDs {
+                                if AudioObjectHasProperty(dID, &halLstmAddr) {
+                                    self.registerLstmListenerIfNeeded(for: dID)
+                                    var currentLstm: UInt32 = 0
+                                    var sz = UInt32(MemoryLayout<UInt32>.size)
+                                    if AudioObjectGetPropertyData(dID, &halLstmAddr, 0, nil, &sz, &currentLstm) == noErr {
+                                        if currentLstm >= 1 && currentLstm <= 4 {
+                                            activeMode = Int(currentLstm)
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 2. Fallback to IOBluetooth private selector
+                    if activeMode == nil && device.responds(to: selListen) {
                         let imp = device.method(for: selListen)
                         let fn = unsafeBitCast(imp, to: GetListeningModeIMP.self)
                         let mode = fn(device, selListen)
@@ -4771,32 +5727,82 @@ class IslandModel: ObservableObject {
         }
     }
 
-    func fetchRealWifiSSID() -> String {
-        if let interface = CWWiFiClient.shared().interface(), let ssid = interface.ssid(), !ssid.isEmpty {
-            return ssid
-        }
-        let ifName = CWWiFiClient.shared().interface()?.interfaceName ?? "en0"
+    func fetchRealWifiBars() -> Int {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
-        task.arguments = ["getsummary", ifName]
+        task.launchPath = "/usr/sbin/system_profiler"
+        task.arguments = ["SPAirPortDataType", "-detailLevel", "basic"]
         let pipe = Pipe()
         task.standardOutput = pipe
+        task.standardError = Pipe()
         do {
             try task.run()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
             if let output = String(data: data, encoding: .utf8) {
-                for line in output.components(separatedBy: .newlines) {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.hasPrefix("SSID : ") {
-                        let realSSID = trimmed.replacingOccurrences(of: "SSID : ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !realSSID.isEmpty {
-                            return realSSID
-                        }
+                if let range = output.range(of: "Signal / Noise:\\s*(-?\\d+)", options: .regularExpression) {
+                    let match = String(output[range])
+                    let comps = match.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+                    if let firstNumStr = comps.first, let val = Int(firstNumStr) {
+                        let parsedRssi = -abs(val)
+                        return WiFiSignal.bars(forRSSI: parsedRssi)
                     }
                 }
             }
         } catch {}
+        // Unknown reading: return 0 so callers keep the last valid value instead of
+        // falsely reporting full strength.
+        return 0
+    }
+
+    func fetchRealWifiSSID() -> String {
+        guard let interface = CWWiFiClient.shared().interface() else { return "" }
+        guard interface.powerOn() else { return "Off" }
+        
+        // 1. Direct interface.ssid() if available and unredacted
+        if let ssid = interface.ssid(), !ssid.isEmpty, ssid != "<redacted>" {
+            return ssid
+        }
+        
+        let currentChannel = interface.wlanChannel()?.channelNumber ?? 0
+        let currentRSSI = interface.rssiValue()
+        
+        // 2. Query preferred networks as reference
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        task.arguments = ["-listpreferredwirelessnetworks", interface.interfaceName ?? "en0"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        var preferredList: [String] = []
+        if (try? task.run()) != nil {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            if let out = String(data: data, encoding: .utf8) {
+                for line in out.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && !trimmed.hasPrefix("Preferred networks") {
+                        preferredList.append(trimmed)
+                    }
+                }
+            }
+        }
+        
+        // 3. Scan for nearby networks using CoreWLAN
+        if let scanned = try? interface.scanForNetworks(withSSID: nil) {
+            let valid = scanned.filter { ($0.ssid != nil) && !$0.ssid!.isEmpty && ($0.ssid! != "<redacted>") }
+            let onChannel = valid.filter { $0.wlanChannel?.channelNumber == currentChannel }
+            if let preferredMatch = onChannel.first(where: { preferredList.contains($0.ssid ?? "") }) {
+                return preferredMatch.ssid ?? ""
+            }
+            if let closest = onChannel.min(by: { abs($0.rssiValue - currentRSSI) < abs($1.rssiValue - currentRSSI) }) {
+                return closest.ssid ?? ""
+            }
+            if let preferredAny = valid.first(where: { preferredList.contains($0.ssid ?? "") }) {
+                return preferredAny.ssid ?? ""
+            }
+        }
+        
+        if let firstPref = preferredList.first, firstPref != "<redacted>" {
+            return firstPref
+        }
         return ""
     }
 
@@ -4816,21 +5822,37 @@ class IslandModel: ObservableObject {
         }
 
         let rssi = interface.rssiValue()
-        if rssi == 0 {
-            wifiBars = 3
-        } else if rssi > -55 {
-            wifiBars = 3
-        } else if rssi > -70 {
-            wifiBars = 2
-        } else {
+        // rssiValue() returns 0 when the radio has no valid reading yet. Treat that as
+        // "unknown" and keep the previous bar count instead of claiming full strength.
+        if rssi < 0 {
+            wifiBars = WiFiSignal.bars(forRSSI: rssi)
+        } else if wifiBars == 0 {
+            // No usable reading and no previous value: probe once in the background.
             wifiBars = 1
         }
         
-        let detected = fetchRealWifiSSID()
-        if !detected.isEmpty {
-            self.wifiSSID = detected
-        } else if self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" {
-            self.wifiSSID = "Connected"
+        if let direct = interface.ssid(), !direct.isEmpty, direct != "<redacted>" {
+            self.wifiSSID = direct
+            return
+        }
+        
+        if Date().timeIntervalSince(lastWifiScanTime) > 5.0 {
+            lastWifiScanTime = Date()
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self = self else { return }
+                let detectedSSID = self.fetchRealWifiSSID()
+                let parsedBars = self.fetchRealWifiBars()
+                DispatchQueue.main.async {
+                    if parsedBars > 0 {
+                        self.wifiBars = parsedBars
+                    }
+                    if !detectedSSID.isEmpty && detectedSSID != "<redacted>" {
+                        self.wifiSSID = detectedSSID
+                    } else if self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" || self.wifiSSID == "<redacted>" {
+                        self.wifiSSID = "Connected"
+                    }
+                }
+            }
         }
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
@@ -5068,85 +6090,72 @@ struct AirPodsExpandedView: View {
 
 struct AirPodsCompactStageView: View {
     @ObservedObject var model: IslandModel
-    @State private var rotationAngle: Double = 0
+    @State private var hasAppeared: Bool = false
     
     private var isMax: Bool {
         model.airPodsName.localizedCaseInsensitiveContains("Max")
     }
-    private var isGen3OrStandard: Bool {
-        model.airPodsName.localizedCaseInsensitiveContains("3") || (!model.airPodsName.localizedCaseInsensitiveContains("Pro") && !model.airPodsName.localizedCaseInsensitiveContains("Max"))
-    }
-    
-    private var caseIcon: String {
-        if isMax { return "headphones" }
-        if isGen3OrStandard { return "airpods.gen3.chargingcase.wireless" }
-        return "airpodspro.chargingcase.wireless.fill"
-    }
-    
-    private var leftBattery: Int { Int(model.airPodsBatteryLevel * 100) }
-    private var rightBattery: Int { max(5, Int(model.airPodsBatteryLevel * 100) - 2) }
-    private var caseBattery: Int { max(10, Int(model.airPodsBatteryLevel * 100) - 8) }
     
     var body: some View {
         HStack(spacing: 0) {
-            // Left AirPod & Battery
+            // Left Wing: Visible only emerging from the left side of the notch
             HStack(spacing: 4) {
-                Image(systemName: isMax ? "headphones" : "airpod.left")
-                    .font(.system(size: 13, weight: .bold))
+                if isMax {
+                    Image(systemName: "headphones")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                } else {
+                    HStack(spacing: -3) {
+                        Image(systemName: "airpod.left")
+                            .font(.system(size: 13, weight: .bold))
+                            .rotationEffect(.degrees(-8))
+                        Image(systemName: "airpod.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .rotationEffect(.degrees(8))
+                    }
                     .foregroundColor(.white)
-                    .rotation3DEffect(
-                        .degrees(rotationAngle),
-                        axis: (x: 0.0, y: 1.0, z: 0.0),
-                        anchor: .center,
-                        perspective: 0.4
-                    )
-                Text("\(leftBattery)%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(leftBattery > 20 ? .green : .red)
+                }
             }
-            .frame(width: 58, alignment: .leading)
+            .frame(width: 28, height: 24)
+            .scaleEffect(hasAppeared ? 1.0 : 0.35)
+            .opacity(hasAppeared ? 1.0 : 0.0)
             
             Spacer(minLength: 0)
             
-            // Center Connected AirPods Case with 3D rotation
-            HStack(spacing: 4) {
-                Image(systemName: caseIcon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .rotation3DEffect(
-                        .degrees(rotationAngle),
-                        axis: (x: 0.0, y: 1.0, z: 0.0),
-                        anchor: .center,
-                        perspective: 0.4
-                    )
-                    .shadow(color: .white.opacity(0.4), radius: 3)
-                Text("\(caseBattery)%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.green)
+            // Right Wing: Visible only emerging from the right side of the notch
+            HStack(spacing: 4.5) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.25), lineWidth: 2.0)
+                        .frame(width: 14, height: 14)
+                    
+                    Circle()
+                        .trim(from: 0.0, to: CGFloat(max(0.05, min(1.0, model.airPodsBatteryLevel))))
+                        .stroke(
+                            model.airPodsBatteryLevel > 0.20 ? Color(red: 0.22, green: 0.86, blue: 0.40) : Color.red,
+                            style: StrokeStyle(lineWidth: 2.0, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 14, height: 14)
+                    
+                    Image(systemName: model.airPodsBatteryLevel > 0.20 ? "bolt.fill" : "exclamationmark")
+                        .font(.system(size: 6.5, weight: .bold))
+                        .foregroundColor(model.airPodsBatteryLevel > 0.20 ? Color(red: 0.22, green: 0.86, blue: 0.40) : Color.red)
+                }
+                
+                Text("\(Int(model.airPodsBatteryLevel * 100))%")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(model.airPodsBatteryLevel > 0.20 ? Color(red: 0.22, green: 0.86, blue: 0.40) : Color.red)
+                    .monospacedDigit()
             }
-            
-            Spacer(minLength: 0)
-            
-            // Right AirPod & Battery
-            HStack(spacing: 4) {
-                Text("\(rightBattery)%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(rightBattery > 20 ? .green : .red)
-                Image(systemName: isMax ? "headphones" : "airpod.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .rotation3DEffect(
-                        .degrees(rotationAngle),
-                        axis: (x: 0.0, y: 1.0, z: 0.0),
-                        anchor: .center,
-                        perspective: 0.4
-                    )
-            }
-            .frame(width: 58, alignment: .trailing)
+            .scaleEffect(hasAppeared ? 1.0 : 0.35)
+            .opacity(hasAppeared ? 1.0 : 0.0)
         }
+        .padding(.horizontal, 12)
+        .frame(height: model.physicalNotchHeight)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
-                rotationAngle = 360
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.68)) {
+                hasAppeared = true
             }
         }
     }
@@ -5309,76 +6318,152 @@ struct MusicWaveform: View {
         }
     }
     
+    private func classicHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
+        if !isSync {
+            let f = frequencies[index]
+            let p = phases[index]
+            let primaryWave = sin(trackTime * f + p)
+            let subHarmonic = sin(trackTime * (f * 0.5) + p) * 0.35
+            let wave = max(0.0, min(1.0, (primaryWave + subHarmonic + 1.35) / 2.7))
+            return minHeight + CGFloat(wave) * (maxHeight - minHeight)
+        }
+        
+        // --- REAL INSTRUMENT SPECIFIC REACTION ---
+        let beatPhase = trackTime * (bpm / 60.0)
+        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
+        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
+        let wave: Double
+        
+        switch index {
+        case 0:
+            // 1. 🥁 Kick Drum & Sub-Bass: Punchy downbeat hits on 1 and 3 with fast exponential decay
+            let isKickBeat = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
+            let attack = isKickBeat ? exp(-beatFrac * 7.5) : (exp(-beatFrac * 9.0) * 0.35)
+            wave = max(0.15, min(1.0, attack * 0.85 + 0.15))
+            
+        case 1:
+            // 2. 🎸 Bassline & Low Toms: 8th-note bounce following groove
+            let eighthFrac = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
+            let groove = sin(eighthFrac * Double.pi) * 0.65 + cos(beatPhase * Double.pi * 0.5 + seed) * 0.25 + 0.15
+            wave = max(0.18, min(1.0, groove))
+            
+        case 2:
+            // 3. 🎙️ Vocals & Melodic Harmony: Tracks real-time active lyric syllable cadence & Karaoke level
+            if !model.currentTrackLyrics.isEmpty {
+                let isSinging = model.currentTrackLyrics.contains { trackTime >= $0.startTime && trackTime < $0.endTime }
+                if isSinging {
+                    let cadence = sin(trackTime * 9.5) * 0.28 + sin(trackTime * 16.0) * 0.15 + 0.62
+                    wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+                } else {
+                    wave = 0.20 * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+                }
+            } else {
+                let cadence = sin(beatPhase * 1.5 + seed) * 0.32 + sin(trackTime * 7.5) * 0.22 + 0.46
+                wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+            }
+            
+        case 3:
+            // 4. 🪘 Snare Drum & Rhythm Guitars: Sharp snap on backbeats 2 and 4
+            let isSnareBeat = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
+            let snap = isSnareBeat ? exp(-beatFrac * 9.0) : 0.12
+            wave = max(0.15, min(1.0, snap * 0.88 + 0.12))
+            
+        default:
+            // 5. ✨ Hi-Hats & Shimmering Cymbals: Rapid 16th-note metallic percussion
+            let sixteenthFrac = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
+            let hat = exp(-sixteenthFrac * 12.0)
+            wave = max(0.15, min(1.0, hat * 0.70 + 0.20))
+        }
+        
+        return minHeight + CGFloat(wave) * (maxHeight - minHeight)
+    }
+
+    private func modernHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
+        let p = phases[index % phases.count]
+        if !isSync {
+            let wave = max(0.0, min(1.0, sin(trackTime * frequencies[index] + p) * 0.5 + 0.5))
+            return minHeight + CGFloat(wave) * (maxHeight - minHeight)
+        }
+        
+        let beatPhase = trackTime * (bpm / 60.0)
+        let beatCycle = beatPhase.truncatingRemainder(dividingBy: 4.0)
+        let beatFrac = beatPhase.truncatingRemainder(dividingBy: 1.0)
+        let wave: Double
+        
+        switch index % 5 {
+        case 0:
+            let isKick = (beatCycle < 1.0 || (beatCycle >= 2.0 && beatCycle < 3.0))
+            wave = isKick ? (exp(-beatFrac * 7.0) * 0.85 + 0.15) : 0.20
+        case 1:
+            let eighth = (beatPhase * 2.0).truncatingRemainder(dividingBy: 1.0)
+            wave = sin(eighth * Double.pi) * 0.65 + 0.25
+        case 2:
+            let cadence = (sin(trackTime * 8.0) * 0.35 + 0.55)
+            wave = cadence * (model.isKaraokeActive ? model.karaokeVocalLevel : 1.0)
+        case 3:
+            let isSnare = ((beatCycle >= 1.0 && beatCycle < 2.0) || beatCycle >= 3.0)
+            wave = isSnare ? (exp(-beatFrac * 8.5) * 0.85 + 0.15) : 0.18
+        default:
+            let sixteenth = (beatPhase * 4.0).truncatingRemainder(dividingBy: 1.0)
+            wave = exp(-sixteenth * 11.0) * 0.75 + 0.20
+        }
+        return minHeight + CGFloat(max(0.15, min(1.0, wave))) * (maxHeight - minHeight)
+    }
+
+    private func neonHeight(index: Int, trackTime: Double, isSync: Bool, seed: Double, bpm: Double) -> CGFloat {
+        return classicHeight(index: index, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
+    }
+
     @ViewBuilder
     private var renderAppleClassic: some View {
-        if model.waveformTrackSynchronized {
+        TimelineView(.animation) { timeline in
+            let isSync = model.waveformTrackSynchronized
+            let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+            let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
+            
             HStack(spacing: 2.2) {
                 ForEach(0..<5, id: \.self) { i in
-                    let peak = analyzer.peaks.indices.contains(i) ? analyzer.peaks[i] : 0.2
-                    let dramaticHeight = minHeight + CGFloat(pow(Double(peak), 1.15)) * (maxHeight - minHeight)
+                    let h = classicHeight(index: i, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
                     Capsule()
                         .fill(color)
-                        .frame(width: 3.2, height: max(minHeight, min(maxHeight, dramaticHeight)))
-                        .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.58), value: peak)
+                        .frame(width: 3.2, height: h)
                 }
             }
             .frame(height: maxHeight, alignment: .center)
-        } else {
-            TimelineView(.animation) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                HStack(spacing: 2.2) {
-                    ForEach(0..<5, id: \.self) { i in
-                        let primaryWave = sin(time * frequencies[i] + phases[i])
-                        let subHarmonic = sin(time * (frequencies[i] * 0.5) + phases[i]) * 0.35
-                        let combinedWave = (primaryWave + subHarmonic + 1.35) / 2.7
-                        let h = minHeight + CGFloat(max(0.0, min(1.0, combinedWave))) * (maxHeight - minHeight)
-                        Capsule()
-                            .fill(color)
-                            .frame(width: 3.2, height: h)
-                    }
-                }
-                .frame(height: maxHeight, alignment: .center)
-            }
         }
     }
     
     @ViewBuilder
     private var renderModernBars: some View {
-        if model.waveformTrackSynchronized {
+        TimelineView(.animation) { timeline in
+            let isSync = model.waveformTrackSynchronized
+            let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+            let bpm = 124.0 + (Double(abs(trackKey.hashValue % 30)) - 15.0)
+            
             HStack(spacing: 1.8) {
                 ForEach(0..<7, id: \.self) { i in
-                    let peakIndex = (i < 5) ? i : (i % 5)
-                    let peak = analyzer.peaks.indices.contains(peakIndex) ? analyzer.peaks[peakIndex] : 0.2
-                    let h = minHeight + CGFloat(pow(Double(peak), 1.05)) * (maxHeight - minHeight)
+                    let h = modernHeight(index: i, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
                     Capsule()
                         .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                        .frame(width: 2.4, height: max(minHeight, min(maxHeight, h)))
-                        .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.60), value: peak)
+                        .frame(width: 2.4, height: h)
                 }
             }
             .frame(height: maxHeight, alignment: .center)
-        } else {
-            TimelineView(.animation) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                HStack(spacing: 1.8) {
-                    ForEach(0..<7, id: \.self) { i in
-                        let w = sin(time * frequencies[i] + phases[i]) * 0.5 + 0.5
-                        let h = minHeight + CGFloat(w) * (maxHeight - minHeight)
-                        Capsule()
-                            .fill(LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 2.4, height: h)
-                    }
-                }
-                .frame(height: maxHeight, alignment: .center)
-            }
         }
     }
     
     @ViewBuilder
     private var renderFluidSiriWaves: some View {
         TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let factor: CGFloat = model.waveformTrackSynchronized ? (analyzer.peaks.indices.contains(2) ? analyzer.peaks[2] : 0.6) : 0.75
+            let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
+            let speed = model.waveformTrackSynchronized ? (bpm / 60.0 * 3.5) : 5.0
+            
             Canvas { context, size in
                 var path = Path()
                 let midY = size.height / 2
@@ -5386,9 +6471,9 @@ struct MusicWaveform: View {
                 path.move(to: CGPoint(x: 0, y: midY))
                 for x in stride(from: 0, through: width, by: 1.5) {
                     let relativeX = x / width
-                    let sine = sin(relativeX * 3.5 * Double.pi + time * 6.0)
+                    let sine = sin(relativeX * 3.5 * Double.pi + trackTime * speed)
                     let envelope = sin(relativeX * Double.pi)
-                    let y = midY + CGFloat(sine * envelope) * (size.height * 0.42 * factor)
+                    let y = midY + CGFloat(sine * envelope) * (size.height * 0.42)
                     path.addLine(to: CGPoint(x: x, y: y))
                 }
                 context.stroke(path, with: .color(color), lineWidth: 2.2)
@@ -5399,31 +6484,39 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderNeonEqualizer: some View {
-        HStack(spacing: 2.0) {
-            ForEach(0..<5, id: \.self) { i in
-                let peak = (model.waveformTrackSynchronized && analyzer.peaks.indices.contains(i)) ? analyzer.peaks[i] : 0.5
-                let h = minHeight + CGFloat(peak) * (maxHeight - minHeight)
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.cyan, Color.purple, color],
-                            startPoint: .top,
-                            endPoint: .bottom
+        TimelineView(.animation) { timeline in
+            let isSync = model.waveformTrackSynchronized
+            let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
+            let seed = Double(abs(trackKey.hashValue % 1000)) / 100.0
+            let bpm = 128.0 + (Double(abs(trackKey.hashValue % 30)) - 15.0)
+            
+            HStack(spacing: 2.0) {
+                ForEach(0..<5, id: \.self) { i in
+                    let h = neonHeight(index: i, trackTime: trackTime, isSync: isSync, seed: seed, bpm: bpm)
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.cyan, Color.purple, color],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
-                    .frame(width: 3.0, height: max(minHeight, min(maxHeight, h)))
-                    .shadow(color: Color.cyan.opacity(0.75), radius: 2.5, x: 0, y: 0)
-                    .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.55), value: peak)
+                        .frame(width: 3.0, height: h)
+                        .shadow(color: Color.cyan.opacity(0.75), radius: 2.5, x: 0, y: 0)
+                }
             }
+            .frame(height: maxHeight, alignment: .center)
         }
-        .frame(height: maxHeight, alignment: .center)
     }
     
     @ViewBuilder
     private var renderCircularPulse: some View {
         TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = model.waveformTrackSynchronized ? (analyzer.peaks.indices.contains(1) ? analyzer.peaks[1] : 0.5) : CGFloat(sin(time * 4.0) * 0.35 + 0.65)
+            let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let bpm = 120.0
+            let beatTime = model.waveformTrackSynchronized ? (trackTime * (bpm / 60.0) * Double.pi * 2.0) : (trackTime * 4.0)
+            let pulse = CGFloat(sin(beatTime) * 0.35 + 0.65)
             ZStack {
                 Circle()
                     .stroke(color.opacity(0.35), lineWidth: 1.2)
@@ -5439,17 +6532,23 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderMinimalDots: some View {
-        HStack(spacing: 3.5) {
-            ForEach(0..<4, id: \.self) { i in
-                let peak = (model.waveformTrackSynchronized && analyzer.peaks.indices.contains(i)) ? analyzer.peaks[i] : 0.45
-                let s = 3.0 + CGFloat(peak) * 3.5
-                Circle()
-                    .fill(color)
-                    .frame(width: s, height: s)
-                    .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.60), value: peak)
+        TimelineView(.animation) { timeline in
+            let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
+            let bpm = 120.0
+            let beatTime = model.waveformTrackSynchronized ? (trackTime * (bpm / 60.0) * Double.pi * 2.0) : (trackTime * 3.0)
+            
+            HStack(spacing: 3.5) {
+                ForEach(0..<4, id: \.self) { i in
+                    let p = phases[i]
+                    let wave = sin(beatTime + p) * 0.5 + 0.5
+                    let s = 3.0 + CGFloat(wave) * 3.5
+                    Circle()
+                        .fill(color)
+                        .frame(width: s, height: s)
+                }
             }
+            .frame(height: maxHeight, alignment: .center)
         }
-        .frame(height: maxHeight, alignment: .center)
     }
 }
 
@@ -5587,6 +6686,24 @@ enum SettingsBackgroundStyle: String, CaseIterable, Identifiable {
     }
 }
 
+enum SettingsLayoutMode: String, CaseIterable, Identifiable {
+    case auto = "Auto"
+    case compact = "Compact"
+    case standard = "Standard"
+    case wide = "Wide"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .auto: return "sparkles"
+        case .compact: return "rectangle.leadinghalf.inset.filled"
+        case .standard: return "rectangle.split.2x1"
+        case .wide: return "rectangle.split.3x1"
+        }
+    }
+}
+
 enum SettingsPane: String, CaseIterable, Identifiable {
     case appearance = "Appearance & Physics"
     case notchStyling = "Notch Styling"
@@ -5697,6 +6814,7 @@ struct RepeatablePlaybackButton: View {
     
     @State private var isPressed: Bool = false
     @State private var isSeeking: Bool = false
+    @State private var isHovered: Bool = false
     @State private var bounceTrigger: Int = 0
     @State private var pressStartTime: Date? = nil
     @State private var holdTimer: Timer? = nil
@@ -5710,11 +6828,12 @@ struct RepeatablePlaybackButton: View {
             
             Image(systemName: isSeeking ? (direction > 0 ? "forward.fill" : "backward.fill") : icon)
                 .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(isSeeking ? Color.cyan : .white)
-                .scaleEffect(isPressed ? 0.80 : 1.0)
+                .foregroundColor(isSeeking ? Color.cyan : (isHovered ? .white : .white.opacity(0.85)))
+                .scaleEffect(isPressed ? 0.80 : (isHovered ? 1.12 : 1.0))
                 .offset(x: isPressed ? direction * 3 : 0)
                 .symbolEffect(.bounce, value: bounceTrigger)
                 .animation(.spring(response: 0.22, dampingFraction: 0.65), value: isPressed)
+                .animation(.spring(response: 0.20, dampingFraction: 0.70), value: isHovered)
             
             NativePressOverlay(
                 onDown: {
@@ -5746,11 +6865,63 @@ struct RepeatablePlaybackButton: View {
         }
         .frame(width: 44, height: 40)
         .contentShape(Rectangle())
+        .onHover { h in
+            withAnimation(.spring(response: 0.20, dampingFraction: 0.70)) {
+                isHovered = h
+            }
+        }
+    }
+}
+
+
+// MARK: - Interactive Micro-Spring Hover Modifier
+struct InteractiveHoverModifier: ViewModifier {
+    @State private var isHovered: Bool = false
+    var scale: CGFloat = 1.08
+    var opacity: CGFloat = 1.0
+    
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isHovered ? scale : 1.0)
+            .opacity(isHovered ? 1.0 : opacity)
+            .animation(.spring(response: 0.22, dampingFraction: 0.68), value: isHovered)
+            .onHover { hovering in
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
+                    isHovered = hovering
+                }
+            }
+    }
+}
+
+extension View {
+    func interactiveHover(scale: CGFloat = 1.08, opacity: CGFloat = 1.0) -> some View {
+        self.modifier(InteractiveHoverModifier(scale: scale, opacity: opacity))
     }
 }
 
 struct PlayPauseButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { configuration.label.foregroundStyle(.white).scaleEffect(configuration.isPressed ? 0.8 : 1.0).opacity(configuration.isPressed ? 0.7 : 1.0).animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed) }
+    func makeBody(configuration: Configuration) -> some View {
+        PlayPauseButtonBody(configuration: configuration)
+    }
+    
+    private struct PlayPauseButtonBody: View {
+        let configuration: Configuration
+        @State private var isHovered: Bool = false
+        
+        var body: some View {
+            configuration.label
+                .foregroundStyle(.white)
+                .scaleEffect(configuration.isPressed ? 0.85 : (isHovered ? 1.10 : 1.0))
+                .opacity(configuration.isPressed ? 0.75 : 1.0)
+                .animation(.spring(response: 0.24, dampingFraction: 0.65), value: configuration.isPressed)
+                .animation(.spring(response: 0.20, dampingFraction: 0.70), value: isHovered)
+                .onHover { h in
+                    withAnimation(.spring(response: 0.20, dampingFraction: 0.70)) {
+                        isHovered = h
+                    }
+                }
+        }
+    }
 }
 
 
@@ -5764,7 +6935,8 @@ struct WindowAccessor: NSViewRepresentable {
                 window.titlebarAppearsTransparent = true
                 window.titleVisibility = .hidden
                 window.toolbar = nil
-                window.styleMask.insert(.fullSizeContentView)
+                window.styleMask.insert([.fullSizeContentView, .resizable])
+                window.minSize = NSSize(width: 520, height: 460)
                 window.isMovableByWindowBackground = true
             }
         }
@@ -5778,7 +6950,8 @@ struct WindowAccessor: NSViewRepresentable {
                 window.titlebarAppearsTransparent = true
                 window.titleVisibility = .hidden
                 window.toolbar = nil
-                window.styleMask.insert(.fullSizeContentView)
+                window.styleMask.insert([.fullSizeContentView, .resizable])
+                window.minSize = NSSize(width: 520, height: 460)
                 window.isMovableByWindowBackground = true
             }
         }
@@ -6515,11 +7688,277 @@ struct NotchStylingView: View {
         }
     }
 }
+struct LiveIslandInspectorPreview: View {
+    @ObservedObject var model: IslandModel
+    @Binding var selectedPane: SettingsPane
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            // Inspector Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles.tv")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.cyan)
+                    Text("LIVE NOTCH INSPECTOR")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 6, height: 6)
+                    Text("REALTIME")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(.green)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Capsule().fill(Color.green.opacity(0.12)))
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            
+            Divider().opacity(0.2)
+            
+            // Scaled Interactive Island Canvas
+            ZStack {
+                // Desktop simulation background
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.08, green: 0.10, blue: 0.16),
+                                Color(red: 0.03, green: 0.04, blue: 0.07)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 0.8)
+                    )
+                
+                VStack(spacing: 0) {
+                    // Menu Bar Simulation with Hardware Notch
+                    ZStack(alignment: .top) {
+                        // Menu bar strip
+                        Rectangle()
+                            .fill(Color.white.opacity(0.06))
+                            .frame(height: 22)
+                        
+                        // Live Dynamic Notch Replica
+                        let cr: CGFloat = max(4, model.compactCornerRadius * 0.7)
+                        let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cr, bottomTrailingRadius: cr, topTrailingRadius: 0, style: .continuous)
+                        
+                        ZStack {
+                            shape
+                                .fill(Color.black)
+                                .overlay(
+                                    shape.stroke(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.white.opacity(0.40 * model.notchGlowIntensity),
+                                                Color.cyan.opacity(0.60 * model.notchGlowIntensity)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 1.0
+                                    )
+                                )
+                                .shadow(
+                                    color: Color.cyan.opacity(model.notchGlowIntensity * 0.6),
+                                    radius: CGFloat(model.notchGlowIntensity * 6)
+                                )
+                            
+                            // In-notch live status
+                            HStack(spacing: 6) {
+                                if model.airPodsConnected {
+                                    HStack(spacing: -1) {
+                                        Image(systemName: "airpod.left")
+                                            .font(.system(size: 9, weight: .bold))
+                                        Image(systemName: "airpod.right")
+                                            .font(.system(size: 9, weight: .bold))
+                                    }
+                                    .foregroundColor(.white)
+                                    
+                                    Text(model.airPodsName)
+                                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    Circle()
+                                        .trim(from: 0, to: CGFloat(model.airPodsBatteryLevel))
+                                        .stroke(Color.green, lineWidth: 1.6)
+                                        .frame(width: 12, height: 12)
+                                } else if model.isMusicPlaying {
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 8.5, weight: .bold))
+                                        .foregroundColor(.pink)
+                                    
+                                    Text(model.currentTrackTitle.isEmpty ? "Now Playing" : model.currentTrackTitle)
+                                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    HStack(spacing: 1.2) {
+                                        RoundedRectangle(cornerRadius: 0.8).fill(Color.green).frame(width: 1.8, height: 6)
+                                        RoundedRectangle(cornerRadius: 0.8).fill(Color.green).frame(width: 1.8, height: 10)
+                                        RoundedRectangle(cornerRadius: 0.8).fill(Color.green).frame(width: 1.8, height: 4)
+                                    }
+                                } else {
+                                    Text("dyNotch Ready")
+                                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                        }
+                        .frame(width: 175, height: 26)
+                    }
+                    
+                    Spacer()
+                }
+            }
+            .frame(height: 110)
+            .padding(.horizontal, 14)
+            
+            // Quick Live Controls & Toggles
+            VStack(alignment: .leading, spacing: 6) {
+                Text("QUICK SIMULATION")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .padding(.horizontal, 14)
+                
+                VStack(spacing: 5) {
+                    // AirPods Toggle
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            model.airPodsConnected.toggle()
+                            if model.airPodsConnected {
+                                model.airPodsShowingCompact = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3.8) {
+                                    model.airPodsShowingCompact = false
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "airpodspro")
+                                .font(.system(size: 11))
+                                .frame(width: 16)
+                            Text(model.airPodsConnected ? "Disconnect AirPods" : "Simulate AirPods")
+                                .font(.system(size: 10.5, weight: .medium))
+                            Spacer()
+                            Circle()
+                                .fill(model.airPodsConnected ? Color.green : Color.white.opacity(0.2))
+                                .frame(width: 7, height: 7)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Music Toggle
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            model.toggleSimulateMusic()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 11))
+                                .frame(width: 16)
+                            Text(model.isMusicPlaying ? "Pause Music" : "Simulate Music Island")
+                                .font(.system(size: 10.5, weight: .medium))
+                            Spacer()
+                            Circle()
+                                .fill(model.isMusicPlaying ? Color.pink : Color.white.opacity(0.2))
+                                .frame(width: 7, height: 7)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Battery Alert Toggle
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            model.macBatteryShowingCompact.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "battery.100.bolt")
+                                .font(.system(size: 11))
+                                .frame(width: 16)
+                            Text("Simulate Battery Event")
+                                .font(.system(size: 10.5, weight: .medium))
+                            Spacer()
+                            Circle()
+                                .fill(model.macBatteryShowingCompact ? Color.yellow : Color.white.opacity(0.2))
+                                .frame(width: 7, height: 7)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Quick Pane Shortcut
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            selectedPane = .notchStyling
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "paintpalette.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.cyan)
+                                .frame(width: 16)
+                            Text("Tune Notch Styling")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.cyan)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8.5))
+                                .foregroundColor(.cyan.opacity(0.6))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.cyan.opacity(0.12)))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.cyan.opacity(0.25), lineWidth: 0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+            }
+            
+            Spacer()
+        }
+        .frame(width: 270)
+        .background(Color.black.opacity(0.28))
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var model = IslandModel.shared
     @State private var selectedPane: SettingsPane = .appearance
     @State private var hoveredPane: SettingsPane? = nil
     @State private var searchText: String = ""
+    @AppStorage("settingsLayoutMode") private var layoutMode: SettingsLayoutMode = .auto
+    @State private var showInspector: Bool = true
+    @State private var isSearchExpandedInCompact: Bool = false
     @Environment(\.colorScheme) var colorScheme
     
     private var isLightBg: Bool {
@@ -6536,233 +7975,356 @@ struct ContentView: View {
         }
     }
     
+    private func effectiveLayout(for width: CGFloat) -> SettingsLayoutMode {
+        switch layoutMode {
+        case .auto:
+            if width < 720 {
+                return .compact
+            } else if width < 1060 {
+                return .standard
+            } else {
+                return .wide
+            }
+        case .compact: return .compact
+        case .standard: return .standard
+        case .wide: return .wide
+        }
+    }
+    
     var body: some View {
-        ZStack {
-            WindowAccessor()
+        GeometryReader { windowGeo in
+            let windowWidth = windowGeo.size.width
+            let windowHeight = windowGeo.size.height
+            let currentLayout = effectiveLayout(for: windowWidth)
+            let isCompact = currentLayout == .compact
+            let isWide = currentLayout == .wide
+            let sidebarWidth: CGFloat = {
+                if isCompact { return 56 }
+                return model.isSidebarCollapsed ? 56 : 225
+            }()
             
-            // Full-window wallpaper & liquid glass backdrop
-            SettingsWindowBackground(
-                style: model.settingsBackgroundStyle,
-                opacity: model.settingsWindowOpacity,
-                glass: model.settingsGlassIntensity,
-                blurRadius: model.settingsWallpaperBlur,
-                customImage: model.customWallpaperImage
-            )
-            .allowsHitTesting(false)
-            .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Unified Native-Aligned Topbar (Vertically aligned with macOS traffic lights)
-                HStack(spacing: 14) {
-                    // Left area: traffic lights offset -> dyNotch title -> Menu Toggle to the RIGHT of dyNotch
-                    HStack(spacing: 10) {
-                        HStack(spacing: 5) {
-                            Text("dyNotch")
+            ZStack {
+                WindowAccessor()
+                
+                // Full-window wallpaper & liquid glass backdrop
+                SettingsWindowBackground(
+                    style: model.settingsBackgroundStyle,
+                    opacity: model.settingsWindowOpacity,
+                    glass: model.settingsGlassIntensity,
+                    blurRadius: model.settingsWallpaperBlur,
+                    customImage: model.customWallpaperImage
+                )
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    // Unified Topbar (Vertically aligned with macOS traffic lights)
+                    HStack(spacing: 12) {
+                        // Left area: traffic lights offset -> dyNotch title -> Menu Toggle
+                        HStack(spacing: 8) {
+                            HStack(spacing: 4) {
+                                Text("dyNotch")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
+                                
+                                Text("BETA")
+                                    .font(.system(size: 8.5, weight: .heavy))
+                                    .padding(.horizontal, 4.5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.orange.opacity(0.25))
+                                    .foregroundStyle(.orange)
+                                    .clipShape(Capsule())
+                            }
+                            
+                            // Menu Open/Close Toggle Button (Right of "dyNotch" text, hidden in compact rail)
+                            if !isCompact {
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                        model.isSidebarCollapsed.toggle()
+                                    }
+                                } label: {
+                                    ZStack {
+                                        Circle()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [
+                                                        Color.white.opacity(isLightBg ? 0.40 : 0.22),
+                                                        Color.white.opacity(isLightBg ? 0.18 : 0.08)
+                                                    ],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(
+                                                        LinearGradient(
+                                                            colors: [Color.white.opacity(0.65), Color.white.opacity(0.18)],
+                                                            startPoint: .top,
+                                                            endPoint: .bottom
+                                                        ),
+                                                        lineWidth: 0.8
+                                                    )
+                                            )
+                                            .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
+                                        
+                                        Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(isLightBg ? Color(red: 0.12, green: 0.12, blue: 0.18) : .white)
+                                    }
+                                    .frame(width: 24, height: 24)
+                                }
+                                .buttonStyle(.plain)
+                                .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")
+                            }
+                        }
+                        .padding(.leading, 78) // Inset aligned right after the traffic light buttons
+                        
+                        Spacer()
+                        
+                        // Center Topbar Header: Active Pane Title & Icon
+                        HStack(spacing: 6) {
+                            Image(systemName: selectedPane.icon)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.blue)
+                            
+                            Text(selectedPane.rawValue)
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                            
-                            Text("BETA")
-                                .font(.system(size: 8.5, weight: .heavy))
-                                .padding(.horizontal, 4.5)
-                                .padding(.vertical, 1.5)
-                                .background(Color.orange.opacity(0.25))
-                                .foregroundStyle(.orange)
-                                .clipShape(Capsule())
-                        }
-                        
-                        // Menu Open/Close Toggle Button (Right of "dyNotch" text)
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                                model.isSidebarCollapsed.toggle()
-                            }
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.white.opacity(isLightBg ? 0.40 : 0.22),
-                                                Color.white.opacity(isLightBg ? 0.18 : 0.08)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [Color.white.opacity(0.65), Color.white.opacity(0.18)],
-                                                    startPoint: .top,
-                                                    endPoint: .bottom
-                                                ),
-                                                lineWidth: 0.8
-                                            )
-                                    )
-                                    .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
-                                
-                                Image(systemName: model.isSidebarCollapsed ? "sidebar.right" : "sidebar.left")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(isLightBg ? Color(red: 0.12, green: 0.12, blue: 0.18) : .white)
-                            }
-                            .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.plain)
-                        .help(model.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar")
-                    }
-                    .padding(.leading, 78) // Inset aligned right after the traffic light buttons
-                    
-                    Spacer()
-                    
-                    // Center Topbar Header: Active Pane Title & Icon (Traffic-light aligned)
-                    HStack(spacing: 6) {
-                        Image(systemName: selectedPane.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.blue)
-                        
-                        Text(selectedPane.rawValue)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(isLightBg ? Color(red: 0.1, green: 0.1, blue: 0.15) : .white)
-                    }
-                    
-                    Spacer()
-                    
-                    // Right spacer matching left traffic light inset for centered symmetry
-                    Color.clear
-                        .frame(width: 78, height: 24)
-                }
-                .frame(height: 38)
-                .background(isLightBg ? Color.black.opacity(0.03) : Color.black.opacity(0.18))
-                
-                Divider()
-                    .opacity(0.25)
-                
-                // Main Content Area: Sidebar + Detail Pane
-                HStack(spacing: 0) {
-                    // Minimizable Sidebar Navigation
-                    VStack(alignment: model.isSidebarCollapsed ? .center : .leading, spacing: 6) {
-                        // Liquid Glass Search Bar in Sidebar
-                        if !model.isSidebarCollapsed {
-                            HStack(spacing: 6) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(isLightBg ? Color.black.opacity(0.4) : Color.white.opacity(0.5))
-                                
-                                TextField("Search settings...", text: $searchText)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 12))
-                                
-                                if !searchText.isEmpty {
-                                    Button {
-                                        searchText = ""
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(isLightBg ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
-                            )
-                            .padding(.horizontal, 10)
-                            .padding(.bottom, 4)
-                        }
-
-                        ForEach(filteredPanes) { pane in
-                            let isSelected = selectedPane == pane
-                            Button {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                                    selectedPane = pane
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: pane.icon)
-                                        .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-                                        .frame(width: 24, alignment: .center)
-                                    
-                                    if !model.isSidebarCollapsed {
-                                        Text(pane.rawValue)
-                                            .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                        Spacer()
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: model.isSidebarCollapsed ? .center : .leading)
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, model.isSidebarCollapsed ? 6 : 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(isSelected ? Color.blue : (hoveredPane == pane ? (isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)) : Color.clear))
-                                )
-                                .foregroundStyle(isSelected ? Color.white : (isLightBg ? Color(red: 0.15, green: 0.15, blue: 0.22) : Color.white.opacity(0.9)))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .help(pane.rawValue)
-                            .onHover { hovering in
-                                if hovering { hoveredPane = pane } else if hoveredPane == pane { hoveredPane = nil }
-                            }
-                            .padding(.horizontal, model.isSidebarCollapsed ? 6 : 10)
-                        }
-                        
-                        if filteredPanes.isEmpty {
-                            Text("No settings found")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 16)
-                                .padding(.horizontal, 14)
                         }
                         
                         Spacer()
+                        
+                        // Right Area: Layout Mode Switcher & Inspector Toggle
+                        HStack(spacing: 6) {
+                            if isWide {
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                        showInspector.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: showInspector ? "sidebar.right" : "rectangle.righthalf.inset.filled")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(showInspector ? .cyan : (isLightBg ? .black.opacity(0.6) : .white.opacity(0.6)))
+                                        .padding(5)
+                                        .background(
+                                            Circle()
+                                                .fill(isLightBg ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help(showInspector ? "Hide Live Inspector" : "Show Live Inspector")
+                            }
+                            
+                            Menu {
+                                ForEach(SettingsLayoutMode.allCases) { mode in
+                                    Button {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                            layoutMode = mode
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: mode.icon)
+                                            Text(mode.rawValue)
+                                            if layoutMode == mode {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: currentLayout.icon)
+                                        .font(.system(size: 10, weight: .bold))
+                                    Text(layoutMode == .auto ? "Auto (\(currentLayout.rawValue))" : layoutMode.rawValue)
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                }
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(isLightBg ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
+                                )
+                                .foregroundColor(isLightBg ? Color.black.opacity(0.75) : Color.white.opacity(0.85))
+                            }
+                            .menuStyle(.borderlessButton)
+                            .help("Switch Settings Window Layout (Auto, Compact, Standard, Wide)")
+                        }
+                        .padding(.trailing, 14)
                     }
-                    .padding(.top, 14)
-                    .frame(width: model.isSidebarCollapsed ? 58 : 235, alignment: model.isSidebarCollapsed ? .center : .leading)
-                    .frame(maxHeight: .infinity)
-                    .background(isLightBg ? Color.black.opacity(0.06) : Color.black.opacity(0.28))
+                    .frame(height: 38)
+                    .background(isLightBg ? Color.black.opacity(0.03) : Color.black.opacity(0.18))
                     
-                    Divider()
-                        .opacity(0.25)
-                        .ignoresSafeArea()
+                    Divider().opacity(0.25)
                     
-                    // Detail Content Area
-                    VStack(alignment: .leading, spacing: 0) {
-                        switch selectedPane {
-                        case .appearance:
-                            AnimationSettingsView()
-                        case .notchStyling:
-                            NotchStylingView()
-                        case .audioVisualisation:
-                            AudioVisualisationSettingsView(selectedPane: $selectedPane)
-                        case .background:
-                            BackgroundSettingsView(selectedPane: $selectedPane)
-                        case .display:
-                            HardwareCalibrationView()
-                        case .battery:
-                            BatterySettingsView()
-                        case .liveActivities:
-                            LiveActivitiesView()
-                        case .systemControls:
-                            SystemControlsView()
-                        case .softwareUpdate:
-                            SoftwareUpdateView()
-                        case .about:
-                            AboutView()
+                    // Main Content Area: Multi-Layout Sidebar + Detail Pane + Inspector
+                    HStack(spacing: 0) {
+                        // 1. Adaptive Sidebar
+                        VStack(alignment: (isCompact || model.isSidebarCollapsed) ? .center : .leading, spacing: 6) {
+                            // Search bar (full in Standard/Wide, compact popup in Compact)
+                            if !isCompact && !model.isSidebarCollapsed {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(isLightBg ? Color.black.opacity(0.4) : Color.white.opacity(0.5))
+                                    
+                                    TextField("Search settings...", text: $searchText)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: 12))
+                                    
+                                    if !searchText.isEmpty {
+                                        Button {
+                                            searchText = ""
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(isLightBg ? Color.black.opacity(0.06) : Color.white.opacity(0.10))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 4)
+                            } else if isCompact {
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                                        isSearchExpandedInCompact.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(searchText.isEmpty ? (isLightBg ? Color.black.opacity(0.5) : Color.white.opacity(0.6)) : .blue)
+                                        .frame(width: 32, height: 32)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                                .fill(searchText.isEmpty ? Color.clear : Color.blue.opacity(0.18))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Search Settings")
+                                .popover(isPresented: $isSearchExpandedInCompact) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "magnifyingglass")
+                                            .foregroundColor(.secondary)
+                                        TextField("Search settings...", text: $searchText)
+                                            .textFieldStyle(.plain)
+                                            .frame(width: 160)
+                                    }
+                                    .padding(8)
+                                }
+                            }
+
+                            // Navigation Items List
+                            ScrollView(.vertical, showsIndicators: false) {
+                                VStack(spacing: 4) {
+                                    ForEach(filteredPanes) { pane in
+                                        let isSelected = selectedPane == pane
+                                        Button {
+                                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                                                selectedPane = pane
+                                            }
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Image(systemName: pane.icon)
+                                                    .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                                                    .frame(width: 24, alignment: .center)
+                                                
+                                                if !isCompact && !model.isSidebarCollapsed {
+                                                    Text(pane.rawValue)
+                                                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                                    Spacer()
+                                                }
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: (isCompact || model.isSidebarCollapsed) ? .center : .leading)
+                                            .padding(.vertical, 8)
+                                            .padding(.horizontal, (isCompact || model.isSidebarCollapsed) ? 6 : 12)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                    .fill(isSelected ? Color.blue : (hoveredPane == pane ? (isLightBg ? Color.black.opacity(0.08) : Color.white.opacity(0.12)) : Color.clear))
+                                            )
+                                            .foregroundStyle(isSelected ? Color.white : (isLightBg ? Color(red: 0.15, green: 0.15, blue: 0.22) : Color.white.opacity(0.9)))
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help(pane.rawValue)
+                                        .onHover { hovering in
+                                            if hovering { hoveredPane = pane } else if hoveredPane == pane { hoveredPane = nil }
+                                        }
+                                        .padding(.horizontal, (isCompact || model.isSidebarCollapsed) ? 6 : 10)
+                                    }
+                                    
+                                    if filteredPanes.isEmpty {
+                                        Text("No settings found")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .padding(.top, 16)
+                                            .padding(.horizontal, 14)
+                                    }
+                                }
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding(.top, 12)
+                        .frame(width: sidebarWidth, alignment: (isCompact || model.isSidebarCollapsed) ? .center : .leading)
+                        .frame(maxHeight: .infinity)
+                        .background(isLightBg ? Color.black.opacity(0.06) : Color.black.opacity(0.28))
+                        
+                        Divider()
+                            .opacity(0.25)
+                            .ignoresSafeArea()
+                        
+                        // 2. Detail Content Area (Full fluid width)
+                        VStack(alignment: .leading, spacing: 0) {
+                            switch selectedPane {
+                            case .appearance:
+                                AnimationSettingsView()
+                            case .notchStyling:
+                                NotchStylingView()
+                            case .audioVisualisation:
+                                AudioVisualisationSettingsView(selectedPane: $selectedPane)
+                            case .background:
+                                BackgroundSettingsView(selectedPane: $selectedPane)
+                            case .display:
+                                HardwareCalibrationView()
+                            case .battery:
+                                BatterySettingsView()
+                            case .liveActivities:
+                                LiveActivitiesView()
+                            case .systemControls:
+                                SystemControlsView()
+                            case .softwareUpdate:
+                                SoftwareUpdateView()
+                            case .about:
+                                AboutView()
+                            }
+                        }
+                        .padding(.top, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        
+                        // 3. Wide Layout: Live Dynamic Island Canvas & Inspector Preview
+                        if isWide && showInspector {
+                            Divider().opacity(0.25).ignoresSafeArea()
+                            
+                            LiveIslandInspectorPreview(model: model, selectedPane: $selectedPane)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
                     }
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .frame(width: windowWidth, height: windowHeight)
         }
-        .frame(width: 840, height: 680)
+        .frame(minWidth: 520, idealWidth: 860, maxWidth: .infinity, minHeight: 460, idealHeight: 680, maxHeight: .infinity)
         .environment(\.colorScheme, isLightBg ? .light : .dark)
         .preferredColorScheme(isLightBg ? .light : .dark)
     }
@@ -7429,22 +8991,69 @@ struct ConnectivityCard: View {
     }
 }
 
+struct WiFiArc: Shape {
+    let radius: CGFloat
+    let startAngle: Angle = .degrees(220)
+    let endAngle: Angle = .degrees(320)
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.maxY - 1.0)
+        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+        return path
+    }
+}
+
 struct WiFiBarSymbol: View {
     let bars: Int
     let color: Color
+    var size: CGFloat = 13
+    
+    // Clamp to the three arcs macOS uses: 1 = weak, 2 = good, 3 = excellent.
+    private var level: Int { max(0, min(3, bars)) }
     
     var body: some View {
-        ZStack {
-            if bars <= 0 {
-                Image(systemName: "wifi.slash")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(color)
-            } else {
-                let variableVal = max(0.25, min(1.0, Double(bars) / 3.0))
-                Image(systemName: "wifi", variableValue: variableVal)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(color)
+        if level == 0 {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: size, weight: .bold))
+                .foregroundColor(color.opacity(0.55))
+        } else {
+            Canvas { context, canvasSize in
+                let lineWidth = max(1.2, size * 0.115)
+                let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height - lineWidth * 0.7)
+                
+                // Fit the outermost arc inside the canvas instead of clipping it.
+                let horizontalFit = (canvasSize.width / 2 - lineWidth / 2) / 0.766
+                let verticalFit = canvasSize.height - lineWidth - lineWidth / 2
+                let outerRadius = max(2, min(horizontalFit, verticalFit))
+                let radii = [outerRadius * 0.45, outerRadius * 0.72, outerRadius]
+                
+                // Base dot
+                let dotDiameter = lineWidth * 1.25
+                let dotRect = CGRect(
+                    x: center.x - dotDiameter / 2,
+                    y: center.y - dotDiameter / 2,
+                    width: dotDiameter,
+                    height: dotDiameter
+                )
+                context.fill(Path(ellipseIn: dotRect), with: .color(color))
+                
+                // Three concentric signal arcs; inactive arcs stay dimmed.
+                let stroke = StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                for (index, radius) in radii.enumerated() {
+                    var arc = Path()
+                    arc.addArc(
+                        center: center,
+                        radius: radius,
+                        startAngle: .degrees(220),
+                        endAngle: .degrees(320),
+                        clockwise: false
+                    )
+                    let isActive = level > index
+                    context.stroke(arc, with: .color(color.opacity(isActive ? 1.0 : 0.22)), style: stroke)
+                }
             }
+            .frame(width: size * 1.2, height: size * 0.95)
         }
     }
 }
@@ -9840,94 +11449,346 @@ struct AirDropReceivingModeSlider: View {
 struct AirPodsListeningModeSlider: View {
     @ObservedObject var model: IslandModel
     
-    // Modes matching iOS 1:1: 2: Noise Cancellation, 4: Adaptive, 3: Transparency
+    // Modes matching iOS: 2: Noise Cancellation, 4: Adaptive, 3: Transparency
     let modes = [2, 4, 3]
     let titles = ["Noise Cancellation", "Adaptive", "Transparency"]
     
     @State private var dragX: CGFloat? = nil
+    @State private var isDragging: Bool = false
     
-    private func currentModeIndex() -> Int {
-        modes.firstIndex(of: model.listeningMode) ?? 0
+    private func adaptiveStatusText() -> String {
+        let alpha = model.adaptiveIntensity
+        if alpha < 0.35 {
+            return "More Cancellation"
+        } else if alpha > 0.65 {
+            return "More Transparency"
+        } else {
+            return "Balanced"
+        }
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header with High Contrast
             HStack {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "airpodspro")
                         .font(.system(size: 11, weight: .semibold))
                     Text("NOISE CONTROL")
                         .font(.system(size: 10, weight: .bold))
                 }
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.white.opacity(0.85))
                 .padding(.leading, 2)
                 
                 Spacer()
                 
-                let idx = currentModeIndex()
-                Text(titles[idx])
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.cyan)
-                    .padding(.trailing, 2)
+                if model.listeningMode == 4 {
+                    Text("Adaptive: \(adaptiveStatusText())")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.cyan)
+                        .padding(.trailing, 2)
+                } else if model.listeningMode == 2 {
+                    Text("Noise Cancellation")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.cyan)
+                        .padding(.trailing, 2)
+                } else {
+                    Text("Transparency")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.cyan)
+                        .padding(.trailing, 2)
+                }
             }
             
-            // 3-Way Segmented Liquid Glass Bar
+            // Interactive Bubble Slider Track
             GeometryReader { geo in
-                let totalWidth = geo.size.width
-                let segmentWidth = totalWidth / 3.0
-                let activeIndex = currentModeIndex()
-                let pillOffset = CGFloat(activeIndex) * segmentWidth
+                let totalWidth = max(80, geo.size.width)
+                let trackHeight: CGFloat = 38
+                let bubbleDiameter: CGFloat = 34
+                let isAdaptive = model.listeningMode == 4
                 
-                ZStack(alignment: .leading) {
-                    // Track Background
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.10))
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                // Fixed stationary icon centers (STATIONARY - NEVER SHIFT HORIZONTALLY)
+                let icon1X = bubbleDiameter / 2.0
+                let icon3X = totalWidth - bubbleDiameter / 2.0
+                let centerX = totalWidth / 2.0
+                
+                // Adaptive sub-slider dimensions
+                let middleWidth = max(40, totalWidth - 2 * bubbleDiameter - 16)
+                let middleLeft = centerX - middleWidth / 2.0
+                let middleRight = centerX + middleWidth / 2.0
+                
+                let adaptKnobMin = middleLeft + bubbleDiameter / 2.0
+                let adaptKnobMax = middleRight - bubbleDiameter / 2.0
+                let adaptTravel = max(10, adaptKnobMax - adaptKnobMin)
+                
+                // Resting Knob Center Position
+                let restingKnobX: CGFloat = {
+                    if model.listeningMode == 2 {
+                        return icon1X
+                    } else if model.listeningMode == 3 {
+                        return icon3X
+                    } else {
+                        // Centered at 50% = exactly centerX!
+                        let alpha = max(0.0, min(1.0, CGFloat(model.adaptiveIntensity)))
+                        return adaptKnobMin + alpha * adaptTravel
+                    }
+                }()
+                
+                let currentKnobX = dragX ?? restingKnobX
+                
+                ZStack {
+                    // Outer Capsule Track Background
+                    Capsule()
+                        .fill(Color.black.opacity(0.55))
+                        .overlay(
+                            Capsule().fill(Color.white.opacity(0.12))
                         )
+                        .overlay(
+                            Capsule().stroke(Color.white.opacity(0.24), lineWidth: 0.8)
+                        )
+                        .frame(height: trackHeight)
                     
-                    // Sliding Active Selection Pill
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    // Left Anchor Icon (Noise Cancellation) - ALWAYS AT icon1X
+                    AirPodsHeadIcon(mode: 2, isSelected: false)
+                        .frame(width: bubbleDiameter, height: bubbleDiameter)
+                        .opacity(model.listeningMode == 2 ? 0.0 : (isAdaptive ? 0.35 : 0.85))
+                        .position(x: icon1X, y: trackHeight / 2.0)
+                        .allowsHitTesting(false)
+                        .animation(.easeInOut(duration: 0.25), value: model.listeningMode)
+                    
+                    // Right Anchor Icon (Transparency) - ALWAYS AT icon3X
+                    AirPodsHeadIcon(mode: 3, isSelected: false)
+                        .frame(width: bubbleDiameter, height: bubbleDiameter)
+                        .opacity(model.listeningMode == 3 ? 0.0 : (isAdaptive ? 0.35 : 0.85))
+                        .position(x: icon3X, y: trackHeight / 2.0)
+                        .allowsHitTesting(false)
+                        .animation(.easeInOut(duration: 0.25), value: model.listeningMode)
+                    
+                    // Center Item: Station Icon (when not adaptive) OR Sub-slider (when adaptive)
+                    if !isAdaptive {
+                        AirPodsHeadIcon(mode: 4, isSelected: false)
+                            .frame(width: bubbleDiameter, height: bubbleDiameter)
+                            .opacity(0.85)
+                            .position(x: centerX, y: trackHeight / 2.0)
+                            .transition(.scale.combined(with: .opacity))
+                    } else {
+                        // Perfectly Aligned Adaptive Sub-Slider
+                        Group {
+                            // Sub-slider Track Capsule
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.cyan.opacity(0.25),
+                                            Color.blue.opacity(0.25)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .overlay(
+                                    Capsule().stroke(Color.cyan.opacity(0.55), lineWidth: 0.8)
+                                )
+                                .frame(width: middleWidth, height: 28)
+                                .position(x: centerX, y: trackHeight / 2.0)
+                            
+                            // Left Waveform Icon ("More Cancellation")
+                            Image(systemName: "waveform")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color.cyan)
+                                .position(x: middleLeft + 14, y: trackHeight / 2.0)
+                            
+                            // Center Tick ("Balanced Default")
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(Color.white.opacity(0.85))
+                                .frame(width: 2, height: 12)
+                                .position(x: centerX, y: trackHeight / 2.0)
+                            
+                            // Right Ear & Waveform Icon ("More Transparency")
+                            Image(systemName: "ear.and.waveform")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color.cyan)
+                                .position(x: middleRight - 14, y: trackHeight / 2.0)
+                        }
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.92).combined(with: .opacity),
+                            removal: .scale(scale: 0.92).combined(with: .opacity)
+                        ))
+                    }
+                    
+                    // The Unified Circular Bubble Knob (Draggable)
+                    Circle()
                         .fill(
                             LinearGradient(
-                                colors: [Color.cyan.opacity(0.85), Color.blue.opacity(0.95)],
+                                colors: [Color.cyan.opacity(0.95), Color.blue.opacity(0.95)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: segmentWidth - 4, height: 38)
-                        .shadow(color: Color.blue.opacity(0.45), radius: 6, y: 2)
-                        .offset(x: pillOffset + 2)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.76), value: activeIndex)
-                    
-                    // 3 Interactive Options (Noise Cancellation | Adaptive | Transparency)
-                    HStack(spacing: 0) {
-                        ForEach(0..<3, id: \.self) { i in
-                            let modeVal = modes[i]
-                            let isSelected = model.listeningMode == modeVal
+                        .frame(width: bubbleDiameter, height: bubbleDiameter)
+                        .shadow(color: Color.black.opacity(0.5), radius: 5, y: 2)
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.70), lineWidth: 1.0)
+                        )
+                        .overlay(
+                            AirPodsHeadIcon(mode: model.listeningMode, isSelected: true)
+                                .shadow(color: Color.black.opacity(0.5), radius: 1, y: 1)
+                        )
+                        .position(x: currentKnobX, y: trackHeight / 2.0)
+                        .animation(isDragging ? nil : .spring(response: 0.38, dampingFraction: 0.74), value: currentKnobX)
+                }
+                .frame(width: totalWidth, height: trackHeight)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            isDragging = true
+                            let rawX = gesture.location.x
                             
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
-                                    model.setAirPodsMode(modeVal)
+                            if !isAdaptive {
+                                dragX = max(icon1X, min(icon3X, rawX))
+                                if rawX < totalWidth * 0.28 {
+                                    if model.listeningMode != 2 {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            model.setAirPodsMode(2)
+                                        }
+                                    }
+                                } else if rawX > totalWidth * 0.72 {
+                                    if model.listeningMode != 3 {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            model.setAirPodsMode(3)
+                                        }
+                                    }
+                                } else {
+                                    if model.listeningMode != 4 {
+                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) {
+                                            model.setAirPodsMode(4)
+                                        }
+                                    }
                                 }
-                            } label: {
-                                VStack(spacing: 3) {
-                                    AirPodsHeadIcon(mode: modeVal, isSelected: isSelected)
-                                    Text(titles[i])
-                                        .font(.system(size: 8.5, weight: isSelected ? .bold : .medium))
-                                        .foregroundColor(isSelected ? .white : .white.opacity(0.65))
-                                        .lineLimit(1)
+                            } else {
+                                // In Adaptive: Friction detent when pulling out of sub-slider
+                                if rawX >= adaptKnobMin && rawX <= adaptKnobMax {
+                                    dragX = rawX
+                                    let alpha = Double((rawX - adaptKnobMin) / adaptTravel)
+                                    model.setAdaptiveIntensity(alpha)
+                                } else if rawX < adaptKnobMin {
+                                    let overshoot = adaptKnobMin - rawX
+                                    if overshoot > 24.0 {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            model.setAirPodsMode(2)
+                                            dragX = icon1X
+                                        }
+                                    } else {
+                                        let damped = adaptKnobMin - pow(overshoot, 0.65) * 1.5
+                                        dragX = damped
+                                        model.setAdaptiveIntensity(0.0)
+                                    }
+                                } else {
+                                    let overshoot = rawX - adaptKnobMax
+                                    if overshoot > 24.0 {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            model.setAirPodsMode(3)
+                                            dragX = icon3X
+                                        }
+                                    } else {
+                                        let damped = adaptKnobMax + pow(overshoot, 0.65) * 1.5
+                                        dragX = damped
+                                        model.setAdaptiveIntensity(1.0)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                        }
+                        .onEnded { gesture in
+                            isDragging = false
+                            dragX = nil
+                            
+                            let rawX = gesture.location.x
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) {
+                                if !isAdaptive {
+                                    if rawX < totalWidth * 0.30 {
+                                        model.setAirPodsMode(2)
+                                    } else if rawX > totalWidth * 0.70 {
+                                        model.setAirPodsMode(3)
+                                    } else {
+                                        model.setAirPodsMode(4)
+                                    }
+                                } else {
+                                    if rawX < adaptKnobMin - 24.0 {
+                                        model.setAirPodsMode(2)
+                                    } else if rawX > adaptKnobMax + 24.0 {
+                                        model.setAirPodsMode(3)
+                                    } else {
+                                        let clamped = max(adaptKnobMin, min(adaptKnobMax, rawX))
+                                        let alpha = Double((clamped - adaptKnobMin) / adaptTravel)
+                                        model.setAdaptiveIntensity(alpha)
+                                    }
+                                }
+                            }
+                        }
+                )
+            }
+            .frame(height: 38)
+            
+            // High-Contrast Labels UNDERNEATH the slider track
+            HStack(spacing: 0) {
+                // Noise Cancellation button/label
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) {
+                        model.setAirPodsMode(2)
+                    }
+                } label: {
+                    Text("Noise Cancellation")
+                        .font(.system(size: 9.5, weight: model.listeningMode == 2 ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(model.listeningMode == 2 ? .cyan : .white.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                
+                // Adaptive button/label with live tuning feedback
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) {
+                        model.setAirPodsMode(4)
+                    }
+                } label: {
+                    VStack(spacing: 1) {
+                        Text("Adaptive")
+                            .font(.system(size: 9.5, weight: model.listeningMode == 4 ? .bold : .semibold, design: .rounded))
+                            .foregroundColor(model.listeningMode == 4 ? .cyan : .white.opacity(0.85))
+                        
+                        if model.listeningMode == 4 {
+                            Text("(\(adaptiveStatusText()))")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                .foregroundColor(.cyan)
                         }
                     }
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.plain)
+                
+                // Transparency button/label
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.74)) {
+                        model.setAirPodsMode(3)
+                    }
+                } label: {
+                    Text("Transparency")
+                        .font(.system(size: 9.5, weight: model.listeningMode == 3 ? .bold : .semibold, design: .rounded))
+                        .foregroundColor(model.listeningMode == 3 ? .cyan : .white.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
             }
-            .frame(height: 42)
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
@@ -10598,30 +12459,51 @@ struct DynamicNotchCallView: View {
 
 struct LiquidGlassWiFiPicker: View {
     @ObservedObject var model: IslandModel
+    @State private var hoveredSSID: String? = nil
     
     var body: some View {
         VStack(spacing: 8) {
             // Header
             HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "wifi")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.blue)
+                HStack(spacing: 7) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Color.blue.opacity(0.85), Color.cyan.opacity(0.9)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 22, height: 22)
+                        WiFiBarSymbol(bars: model.isWifiOn ? max(1, model.wifiBars) : 0, color: .white, size: 11)
+                            .frame(width: 14, height: 11)
+                    }
                     Text("Wi-Fi Networks")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                 }
                 
                 Spacer()
                 
+                if model.isScanningWiFi {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .padding(.trailing, 2)
+                } else {
+                    Button {
+                        model.scanAvailableWiFiNetworks()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.65))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
+                
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.74, blendDuration: 0.06)) {
                         model.isShowingWiFiPicker = false
                     }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(0.6))
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.65))
                 }
                 .buttonStyle(.plain)
             }
@@ -10632,69 +12514,383 @@ struct LiquidGlassWiFiPicker: View {
             
             // Network list
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 4) {
-                    ForEach(model.availableWiFiNetworks) { net in
-                        Button {
-                            model.connectToWiFiNetwork(net)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "wifi")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(net.isConnected ? .blue : .white.opacity(0.7))
-                                
-                                Text(net.ssid)
-                                    .font(.system(size: 11.5, weight: net.isConnected ? .bold : .medium))
-                                    .foregroundColor(net.isConnected ? .blue : .white)
-                                    .lineLimit(1)
-                                
-                                Spacer()
-                                
-                                if net.isSecure {
-                                    Image(systemName: "lock.fill")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.white.opacity(0.4))
-                                }
-                                
-                                if net.isConnected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.blue)
-                                }
+                VStack(spacing: 6) {
+                    // 1. PERSONAL HOTSPOT SECTION
+                    if !model.personalHotspots.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "personalhotspot")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.green)
+                                Text("PERSONAL HOTSPOT")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.55))
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(net.isConnected ? Color.blue.opacity(0.2) : Color.white.opacity(0.06))
-                            )
+                            .padding(.leading, 4)
+                            
+                            ForEach(model.personalHotspots) { hotspot in
+                                Button {
+                                    model.connectToWiFiNetwork(hotspot)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.green.opacity(0.25))
+                                                .frame(width: 20, height: 20)
+                                            Image(systemName: "personalhotspot")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.green)
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(hotspot.ssid)
+                                                .font(.system(size: 11.5, weight: hotspot.isConnected ? .semibold : .medium))
+                                                .foregroundColor(hotspot.isConnected ? .white : .white.opacity(0.9))
+                                                .lineLimit(1)
+                                            Text(hotspot.isConnected ? "Connected" : "Personal Hotspot")
+                                                .font(.system(size: 8.5))
+                                                .foregroundColor(hotspot.isConnected ? .green : .white.opacity(0.45))
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        // Cellular signal icon
+                                        HStack(spacing: 1.5) {
+                                            ForEach(0..<4) { b in
+                                                RoundedRectangle(cornerRadius: 1)
+                                                    .fill(b < 3 ? Color.white.opacity(0.75) : Color.white.opacity(0.25))
+                                                    .frame(width: 2, height: CGFloat(4 + b * 2))
+                                            }
+                                        }
+                                        .padding(.trailing, 4)
+                                        
+                                        if hotspot.isConnected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(.green)
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                            .fill(hotspot.isConnected ? Color.green.opacity(0.22) : (hoveredSSID == hotspot.ssid ? Color.white.opacity(0.10) : Color.white.opacity(0.04)))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                    .stroke(hotspot.isConnected ? Color.green.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
+                                            )
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .onHover { h in hoveredSSID = h ? hotspot.ssid : nil }
+                            }
                         }
-                        .buttonStyle(.plain)
+                        
+                        Divider().opacity(0.15)
+                            .padding(.vertical, 2)
+                    }
+                    
+                    // 2. WI-FI NETWORKS SECTION
+                    if !model.personalHotspots.isEmpty && !model.availableWiFiNetworks.isEmpty {
+                        HStack {
+                            Text("WI-FI NETWORKS")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white.opacity(0.55))
+                            Spacer()
+                        }
+                        .padding(.leading, 4)
+                    }
+                    
+                    if model.availableWiFiNetworks.isEmpty && model.personalHotspots.isEmpty {
+                        Text(model.isScanningWiFi ? "Scanning for networks..." : "No Wi-Fi Networks Found")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .padding(.vertical, 20)
+                    } else {
+                        ForEach(model.availableWiFiNetworks) { net in
+                            Button {
+                                model.connectToWiFiNetwork(net)
+                            } label: {
+                                HStack(spacing: 9) {
+                                    WiFiBarSymbol(bars: net.bars, color: net.isConnected ? .cyan : .white.opacity(0.8))
+                                        .frame(width: 18)
+                                    
+                                    Text(net.ssid)
+                                        .font(.system(size: 11.5, weight: net.isConnected ? .semibold : .medium))
+                                        .foregroundColor(net.isConnected ? .white : .white.opacity(0.85))
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    if net.isSecure {
+                                        Image(systemName: "lock.fill")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.white.opacity(0.4))
+                                    }
+                                    
+                                    if net.isConnected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.cyan)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(net.isConnected ? Color.blue.opacity(0.22) : (hoveredSSID == net.ssid ? Color.white.opacity(0.10) : Color.white.opacity(0.04)))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                .stroke(net.isConnected ? Color.cyan.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .onHover { h in
+                                hoveredSSID = h ? net.ssid : nil
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
             }
-            .frame(maxHeight: 110)
+            .frame(maxHeight: 140)
+            
+            Divider().opacity(0.15)
+            
+            // Bottom Settings Action
+            Button {
+                model.openWiFiSettings()
+            } label: {
+                HStack {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("Wi-Fi Settings...")
+                        .font(.system(size: 10.5, weight: .medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .opacity(0.6)
+                }
+                .foregroundColor(.white.opacity(0.75))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.bottom, 6)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.black.opacity(0.78))
                 .background(
                     VisualEffect()
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(
                             LinearGradient(
-                                colors: [Color.white.opacity(0.35), Color.white.opacity(0.08)],
+                                colors: [
+                                    Color.white.opacity(0.45),
+                                    Color.blue.opacity(0.20),
+                                    Color.white.opacity(0.08)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
                             lineWidth: 1
                         )
                 )
-                .shadow(color: .black.opacity(0.5), radius: 12, x: 0, y: 4)
+                .shadow(color: Color.black.opacity(0.60), radius: 20, x: 0, y: 8)
+                .shadow(color: Color.blue.opacity(0.25), radius: 12, x: 0, y: 2)
+        )
+    }
+}
+
+struct LiquidGlassBluetoothPicker: View {
+    @ObservedObject var model: IslandModel
+    @State private var hoveredID: String? = nil
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Header
+            HStack {
+                HStack(spacing: 7) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Color.indigo.opacity(0.85), Color.blue.opacity(0.9)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 22, height: 22)
+                        BluetoothShape()
+                            .stroke(Color.white, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                            .frame(width: 8, height: 11)
+                    }
+                    Text("Bluetooth")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                if model.isScanningBluetooth {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .padding(.trailing, 2)
+                } else {
+                    Button {
+                        model.scanAvailableBluetoothDevices()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.65))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
+                
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.74, blendDuration: 0.06)) {
+                        model.isShowingBluetoothPicker = false
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white.opacity(0.65))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            
+            Divider().opacity(0.2)
+            
+            // Device list
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 5) {
+                    if model.availableBluetoothDevices.isEmpty {
+                        Text("No Paired Devices")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .padding(.vertical, 20)
+                    } else {
+                        ForEach(model.availableBluetoothDevices) { dev in
+                            Button {
+                                model.toggleConnectBluetoothDevice(dev)
+                            } label: {
+                                HStack(spacing: 9) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .fill(dev.isConnected ? Color.blue.opacity(0.28) : Color.white.opacity(0.08))
+                                            .frame(width: 24, height: 24)
+                                        Image(systemName: dev.iconName)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(dev.isConnected ? .cyan : .white.opacity(0.75))
+                                    }
+                                    
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(dev.name)
+                                            .font(.system(size: 11.5, weight: dev.isConnected ? .semibold : .medium))
+                                            .foregroundColor(dev.isConnected ? .white : .white.opacity(0.85))
+                                            .lineLimit(1)
+                                        Text(dev.isConnected ? "Connected" : "Not Connected")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(dev.isConnected ? .cyan : .white.opacity(0.45))
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    // Battery status badge for bluetooth items
+                                    if let bat = dev.batteryLevel {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: bat > 20 ? "battery.100" : "battery.25")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(bat > 20 ? Color(red: 0.22, green: 0.86, blue: 0.40) : Color.red)
+                                            Text("\(bat)%")
+                                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                                .foregroundColor(bat > 20 ? Color(red: 0.22, green: 0.86, blue: 0.40) : Color.red)
+                                                .monospacedDigit()
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2.5)
+                                        .background(
+                                            Capsule().fill(Color.white.opacity(0.12))
+                                        )
+                                    }
+                                    
+                                    if dev.isConnected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.cyan)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(dev.isConnected ? Color.blue.opacity(0.18) : (hoveredID == dev.id ? Color.white.opacity(0.10) : Color.white.opacity(0.04)))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                .stroke(dev.isConnected ? Color.cyan.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .onHover { h in
+                                hoveredID = h ? dev.id : nil
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+            .frame(maxHeight: 125)
+            
+            Divider().opacity(0.15)
+            
+            // Bottom Settings Action
+            Button {
+                model.openBluetoothSettings()
+            } label: {
+                HStack {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("Bluetooth Settings...")
+                        .font(.system(size: 10.5, weight: .medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .opacity(0.6)
+                }
+                .foregroundColor(.white.opacity(0.75))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.78))
+                .background(
+                    VisualEffect()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.45),
+                                    Color.indigo.opacity(0.20),
+                                    Color.white.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.60), radius: 20, x: 0, y: 8)
+                .shadow(color: Color.indigo.opacity(0.25), radius: 12, x: 0, y: 2)
         )
     }
 }
@@ -10962,7 +13158,7 @@ struct AudioVisualisationSettingsView: View {
                 // Dark Glass Backdrop
                 LinearGradient(
                     colors: [
-                        model.artworkColor.opacity(0.35),
+                        model.artworkColor.opacity(model.isMusicPlaying ? 0.35 : 0.0),
                         Color(red: 0.08, green: 0.08, blue: 0.12)
                     ],
                     startPoint: .topLeading,
@@ -10974,7 +13170,7 @@ struct AudioVisualisationSettingsView: View {
                     HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(model.artworkColor.opacity(0.4))
+                                .fill(model.artworkColor.opacity(model.isMusicPlaying ? 0.4 : 0.08))
                                 .frame(width: 44, height: 44)
                             Image(systemName: "music.note")
                                 .font(.system(size: 20, weight: .bold))
@@ -10993,7 +13189,7 @@ struct AudioVisualisationSettingsView: View {
                         Spacer()
                         
                         // Active Live Waveform Preview in Card
-                        MusicWaveform(isPlaying: true, color: model.artworkColor)
+                        MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
                             .padding(.trailing, 8)
                     }
                     .padding(.horizontal, 20)
@@ -11129,6 +13325,7 @@ struct WaveformCardThumbnail: View {
     let isSelected: Bool
     let isLightBg: Bool
     let action: () -> Void
+    @ObservedObject var model = IslandModel.shared
     
     private var cardBgColor: Color {
         if isSelected { return Color.blue.opacity(0.16) }
@@ -11160,7 +13357,7 @@ struct WaveformCardThumbnail: View {
                 .fill(isSelected ? Color.blue.opacity(0.25) : Color.black.opacity(0.40))
                 .frame(height: 60)
             
-            MusicWaveform(isPlaying: true, color: isSelected ? .cyan : .white, overrideStyle: style)
+            MusicWaveform(isPlaying: model.isMusicPlaying, color: isSelected ? .cyan : .white, overrideStyle: style)
                 .scaleEffect(1.15)
             
             if isSelected {

@@ -10,7 +10,7 @@ struct MyApp: App {
     var body: some Scene {
         WindowGroup("dyNotch") {
             ContentView()
-                .frame(width: 840, height: 680)
+                .frame(minWidth: 520, idealWidth: 860, maxWidth: .infinity, minHeight: 460, idealHeight: 680, maxHeight: .infinity)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -369,7 +369,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hostingView.registerForDraggedTypes([.fileURL, .URL])
         
         let width: CGFloat = 680
-        let height: CGFloat = 500
+        let height: CGFloat = 620
         
         let originX = screen.frame.midX - (width / 2.0)
         let originY = screen.frame.maxY - height
