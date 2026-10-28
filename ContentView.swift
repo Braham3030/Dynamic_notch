@@ -1475,6 +1475,8 @@ struct IslandView: View {
                                 .padding(.leading, 18)
                                 .padding(.trailing, 48)
                                 .frame(width: model.width, height: (model.state == .expandedMusic ? 180 : (model.state == .expandedFood ? 80 : (model.state == .expandedAirDrop ? (model.isShowingAirDropInShelf ? 240 : 160) : ((model.isShowingWiFiPicker || model.isShowingBluetoothPicker) ? 270 : (model.airPodsConnected ? 245 : 170))))), alignment: .top)
+                                .animation(.spring(response: 0.40, dampingFraction: 0.78, blendDuration: 0.15), value: model.isShowingWiFiPicker)
+                                .animation(.spring(response: 0.40, dampingFraction: 0.78, blendDuration: 0.15), value: model.isShowingBluetoothPicker)
                                 
                                 // 2. Real-Time Lyrics & Karaoke Sing Drawer Below (Full Notch Width)
                                 if model.state == .expandedMusic && model.isShowingLyricsInMusic {
@@ -1809,7 +1811,7 @@ struct IslandView: View {
                                         },
                                         onDetailsClick: {
                                             model.scanAvailableWiFiNetworks()
-                                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76, blendDuration: 0.08)) {
+                                            withAnimation(.spring(response: 0.42, dampingFraction: 0.76, blendDuration: 0.12)) {
                                                 model.isShowingWiFiPicker = true
                                             }
                                         }
@@ -1827,7 +1829,7 @@ struct IslandView: View {
                                         },
                                         onDetailsClick: {
                                             model.scanAvailableBluetoothDevices()
-                                            withAnimation(.spring(response: 0.38, dampingFraction: 0.76, blendDuration: 0.08)) {
+                                            withAnimation(.spring(response: 0.42, dampingFraction: 0.76, blendDuration: 0.12)) {
                                                 model.isShowingBluetoothPicker = true
                                             }
                                         }
@@ -8951,8 +8953,32 @@ struct ConnectivityCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.10))
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.16),
+                                Color.white.opacity(0.06)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.35),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.8
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
         )
     }
 }
@@ -12646,29 +12672,56 @@ struct LiquidGlassWiFiPicker: View {
         }
         .padding(.bottom, 6)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.78))
-                .background(
-                    VisualEffect()
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.45),
-                                    Color.blue.opacity(0.20),
-                                    Color.white.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
+            ZStack {
+                // Liquid Glass frosted acrylic base
+                VisualEffect()
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                
+                // Smoked Glass tint with depth
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.10, green: 0.14, blue: 0.22).opacity(0.85),
+                                Color(red: 0.06, green: 0.08, blue: 0.12).opacity(0.92)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                )
-                .shadow(color: Color.black.opacity(0.60), radius: 20, x: 0, y: 8)
-                .shadow(color: Color.blue.opacity(0.25), radius: 12, x: 0, y: 2)
+                    )
+                
+                // Specular liquid glass top sheen
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.white.opacity(0.25),
+                                Color.blue.opacity(0.12),
+                                Color.clear
+                            ],
+                            center: .topLeading,
+                            startRadius: 10,
+                            endRadius: 220
+                        )
+                    )
+                
+                // Crisp glass bevel edge
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.65),
+                                Color.cyan.opacity(0.35),
+                                Color.white.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.55), radius: 24, x: 0, y: 10)
+            .shadow(color: Color.blue.opacity(0.30), radius: 14, x: 0, y: 4)
         )
     }
 }
@@ -12834,29 +12887,56 @@ struct LiquidGlassBluetoothPicker: View {
         }
         .padding(.bottom, 6)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.78))
-                .background(
-                    VisualEffect()
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.45),
-                                    Color.indigo.opacity(0.20),
-                                    Color.white.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
+            ZStack {
+                // Liquid Glass frosted acrylic base
+                VisualEffect()
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                
+                // Smoked Glass tint with depth
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.12, green: 0.10, blue: 0.24).opacity(0.85),
+                                Color(red: 0.07, green: 0.06, blue: 0.14).opacity(0.92)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                )
-                .shadow(color: Color.black.opacity(0.60), radius: 20, x: 0, y: 8)
-                .shadow(color: Color.indigo.opacity(0.25), radius: 12, x: 0, y: 2)
+                    )
+                
+                // Specular liquid glass top sheen
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.white.opacity(0.25),
+                                Color.indigo.opacity(0.12),
+                                Color.clear
+                            ],
+                            center: .topLeading,
+                            startRadius: 10,
+                            endRadius: 220
+                        )
+                    )
+                
+                // Crisp glass bevel edge
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.65),
+                                Color.indigo.opacity(0.35),
+                                Color.white.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.55), radius: 24, x: 0, y: 10)
+            .shadow(color: Color.indigo.opacity(0.30), radius: 14, x: 0, y: 4)
         )
     }
 }
