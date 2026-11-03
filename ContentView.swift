@@ -214,7 +214,7 @@ struct AppleMusicLyricsView: View {
                 }
             }
         }
-        .frame(height: 175)
+        .frame(height: model.isLyricsTranslationEnabled ? 200 : 175)
     }
     
     // Bottom-Right Apple Music Sing (Karaoke) Control
@@ -484,13 +484,15 @@ struct AppleLyricsLineView: View {
                         }
                     }
                     
-                    // Dual Language Translation Sub-line (Apple Music style)
+                    // Dual Language Translation Sub-line (Apple Music high-contrast styling)
                     if showTranslation, let trans = line.translation, !trans.isEmpty {
                         Text(trans)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(isCurrentLine ? artworkColor.opacity(0.95) : .white.opacity(0.45))
-                            .lineLimit(2)
-                            .padding(.top, 1)
+                            .font(.system(size: 14.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(isCurrentLine ? Color.white : Color.white.opacity(0.82))
+                            .shadow(color: Color.black.opacity(0.85), radius: 3, x: 0, y: 1)
+                            .shadow(color: isCurrentLine ? artworkColor.opacity(0.75) : Color.clear, radius: 6)
+                            .lineLimit(3)
+                            .padding(.top, 2)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
@@ -2656,7 +2658,7 @@ extension IslandModel {
             switch state {
             case .expandedAirDrop: return isShowingAirDropInShelf ? 235 : 155
             case .expandedMusic: 
-                if isShowingLyricsInMusic { return 455 }
+                if isShowingLyricsInMusic { return isLyricsTranslationEnabled ? 480 : 455 }
                 if isShowingAirPlayInMusic { return 405 }
                 return 198
             case .expandedFood: return 75
