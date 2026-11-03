@@ -12,7 +12,7 @@ struct AppleMusicLyricsView: View {
     
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.033)) { timeline in
-            let currentSec = model.currentPrecisePlaybackPosition
+            let currentSec = model.currentLyricsTime
             
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 8) {
@@ -90,6 +90,44 @@ struct AppleMusicLyricsView: View {
             .buttonStyle(.plain)
             .help("Translate or transliterate lyrics into dual language (Apple Music style)")
             
+            // Micro Sync Adjuster (±0.3s) for perfect on-cue alignment
+            HStack(spacing: 3) {
+                Button(action: { model.adjustLyricsSync(delta: -0.3) }) {
+                    Text("-0.3s")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.70))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white.opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+                .help("Nudge lyrics earlier (-0.3s)")
+                
+                if abs(model.lyricsSyncOffset) > 0.05 {
+                    Button(action: { model.resetLyricsSync() }) {
+                        Text(String(format: "%+.1fs", model.lyricsSyncOffset))
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(model.artworkColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(model.artworkColor.opacity(0.25)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reset sync offset")
+                }
+                
+                Button(action: { model.adjustLyricsSync(delta: 0.3) }) {
+                    Text("+0.3s")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.70))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white.opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+                .help("Nudge lyrics later (+0.3s)")
+            }
+            
             // Refresh lyrics button
             Button(action: {
                 model.fetchLyricsForCurrentTrack()
@@ -154,7 +192,8 @@ struct AppleMusicLyricsView: View {
                         VStack(alignment: .leading, spacing: 18) {
                             ForEach(Array(model.currentTrackLyrics.indices), id: \.self) { (idx: Int) in
                                 let line = model.currentTrackLyrics[idx]
-                                let isCurrent = currentSec >= line.startTime && currentSec < line.endTime
+                                let nextStart = (idx + 1 < model.currentTrackLyrics.count) ? model.currentTrackLyrics[idx + 1].startTime : (line.endTime + 8.0)
+                                let isCurrent = currentSec >= line.startTime && currentSec < nextStart
                                 
                                 Button(action: {
                                     model.seekToPosition(line.startTime)
@@ -204,9 +243,9 @@ struct AppleMusicLyricsView: View {
                             }
                         }
                     }
-                    .onChange(of: model.currentTrackLyrics.first(where: { currentSec >= $0.startTime && currentSec < $0.endTime })?.id) { newID in
+                    .onChange(of: model.currentActiveLyricLineID(for: currentSec)) { newID in
                         if let id = newID {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                                 proxy.scrollTo(id, anchor: .center)
                             }
                         }
@@ -1778,10 +1817,14 @@ struct IslandView: View {
 
             Spacer(minLength: 0)
 
-            MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
-                .frame(width: 24, height: 16)
-                .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
-                .zIndex(1)
+            ZStack {
+                MusicWaveform(isPlaying: model.isMusicPlaying, color: model.artworkColor)
+                    .frame(width: 24, height: 16)
+            }
+            .id("waveform_\(model.trackChangeCounter)")
+            .transition(.flip3D(isForward: model.isForward))
+            .matchedGeometryEffect(id: "musicWaveform", in: musicActivityNamespace)
+            .zIndex(1)
         }
         .padding(.horizontal, 12)
         .opacity(model.isScreenTransitioning ? 0 : 1)
@@ -3856,12 +3899,36 @@ class IslandModel: ObservableObject {
     @Published var playbackPosition: Double = 0.0
     var lastPlaybackUpdateTime: Date = Date()
     
+    @Published var lyricsSyncOffset: Double = 0.0 // User-adjustable micro-offset for fine-tuning
+    
     var currentPrecisePlaybackPosition: Double {
         if isMusicPlaying {
             let elapsed = Date().timeIntervalSince(lastPlaybackUpdateTime)
             return min(trackDuration, playbackPosition + elapsed)
         }
         return playbackPosition
+    }
+    
+    var currentLyricsTime: Double {
+        return max(0.0, min(trackDuration, currentPrecisePlaybackPosition + lyricsSyncOffset))
+    }
+    
+    func currentActiveLyricLineID(for currentSec: Double) -> UUID? {
+        for (idx, line) in currentTrackLyrics.enumerated() {
+            let nextStart = (idx + 1 < currentTrackLyrics.count) ? currentTrackLyrics[idx + 1].startTime : (line.endTime + 8.0)
+            if currentSec >= line.startTime && currentSec < nextStart {
+                return line.id
+            }
+        }
+        return nil
+    }
+    
+    func adjustLyricsSync(delta: Double) {
+        lyricsSyncOffset = max(-5.0, min(5.0, lyricsSyncOffset + delta))
+    }
+    
+    func resetLyricsSync() {
+        lyricsSyncOffset = 0.0
     }
     @Published var currentArtwork: NSImage? = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
     @Published var hasLiveMotionWallpaper: Bool = false
@@ -4788,16 +4855,29 @@ class IslandModel: ObservableObject {
             var rawLines: [(time: Double, text: String)] = []
             if let lrcText = fetchedLRC, !lrcText.isEmpty {
                 let lines = lrcText.components(separatedBy: .newlines)
+                var lrcOffsetSec: Double = 0.0
                 for line in lines {
                     let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    guard trimmed.hasPrefix("[") else { continue }
+                    if trimmed.lowercased().hasPrefix("[offset:") {
+                        if let close = trimmed.firstIndex(of: "]") {
+                            let offsetStr = String(trimmed[trimmed.index(trimmed.startIndex, offsetBy: 8)..<close]).trimmingCharacters(in: .whitespaces)
+                            if let ms = Double(offsetStr) {
+                                lrcOffsetSec = ms / 1000.0
+                            }
+                        }
+                    }
+                }
+                
+                for line in lines {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    guard trimmed.hasPrefix("[") && !trimmed.lowercased().hasPrefix("[offset:") else { continue }
                     if let closingBracket = trimmed.firstIndex(of: "]") {
                         let timeStr = String(trimmed[trimmed.index(after: trimmed.startIndex)..<closingBracket])
                         let textStr = String(trimmed[trimmed.index(after: closingBracket)...]).trimmingCharacters(in: .whitespaces)
                         
                         let timeParts = timeStr.components(separatedBy: ":")
                         if timeParts.count == 2, let mins = Double(timeParts[0]), let secs = Double(timeParts[1]) {
-                            let totalSecs = (mins * 60.0) + secs
+                            let totalSecs = max(0.0, (mins * 60.0) + secs + lrcOffsetSec)
                             if !textStr.isEmpty {
                                 rawLines.append((time: totalSecs, text: textStr))
                             }
@@ -4879,11 +4959,11 @@ class IslandModel: ObservableObject {
                     }
                 }
                 
-                let hasInstrumentalInterlude = (nextStart - r.time >= 4.0)
+                let hasInstrumentalInterlude = (nextStart - r.time >= 8.0)
                 let lineEndTime = hasInstrumentalInterlude ? (r.time + sungDuration) : nextStart
                 parsed.append(LyricsLine(startTime: r.time, endTime: lineEndTime, text: r.text, words: words, isInstrumentalBreak: false))
                 
-                if hasInstrumentalInterlude && (nextStart - lineEndTime >= 1.5) {
+                if hasInstrumentalInterlude && (nextStart - lineEndTime >= 2.5) {
                     parsed.append(LyricsLine(
                         startTime: lineEndTime,
                         endTime: nextStart,
@@ -5479,8 +5559,18 @@ class IslandModel: ObservableObject {
                 if !nxtTitle.isEmpty && Int(nxtTitle) == nil { self.nextTrackName = nxtTitle }
                 if !prvTitle.isEmpty && Int(prvTitle) == nil { self.prevTrackName = prvTitle }
                 self.currentAlbum = tAlbum
-                self.playbackPosition = tPosition
-                self.lastPlaybackUpdateTime = scriptCaptureTime
+                // Compensate for AppleScript player position integer floor:
+                // During smooth continuous playback, wall-clock interpolation is microsecond-accurate.
+                // Only re-anchor if there is genuine drift (seek, track skip, pause-resume).
+                let currentInterpolated = self.playbackPosition + Date().timeIntervalSince(self.lastPlaybackUpdateTime)
+                let diff = tPosition - currentInterpolated
+                if abs(diff) > 1.8 || self.playbackPosition == 0.0 || isNewTrack {
+                    self.playbackPosition = tPosition + 0.35
+                    self.lastPlaybackUpdateTime = scriptCaptureTime
+                } else if diff > 1.0 {
+                    self.playbackPosition = tPosition + 0.35
+                    self.lastPlaybackUpdateTime = scriptCaptureTime
+                }
                 self.lastPlaybackPollTime = scriptCaptureTime
                 let isActuallyPlaying = (pState.lowercased() == "playing" || pState.lowercased() == "kpsp")
                 if Date().timeIntervalSince(self.lastPlayPauseToggleTime) > 0.8 {
@@ -11209,10 +11299,10 @@ struct Flip3DModifier: AnimatableModifier {
     }
     
     func body(content: Content) -> some View {
-        let angle = progress * 90.0
+        let angle = progress * 75.0
         let absProg = abs(progress)
-        let scale = 1.0 - (0.30 * absProg)
-        let offset = progress * 24.0
+        let scale = 1.0 - (0.28 * absProg)
+        let offset = progress * 26.0
         
         return content
             .scaleEffect(max(0.65, scale))
@@ -11221,7 +11311,7 @@ struct Flip3DModifier: AnimatableModifier {
                 .degrees(angle),
                 axis: (x: 0.0, y: 1.0, z: 0.0),
                 anchor: progress > 0 ? .leading : .trailing,
-                perspective: 0.45
+                perspective: 0.40
             )
             .opacity(absProg >= 0.95 ? 0.0 : 1.0)
     }
@@ -11229,16 +11319,33 @@ struct Flip3DModifier: AnimatableModifier {
 
 extension AnyTransition {
     static func flip3D(isForward: Bool) -> AnyTransition {
-        .asymmetric(
-            insertion: .modifier(
-                active: Flip3DModifier(progress: isForward ? 1.0 : -1.0),
-                identity: Flip3DModifier(progress: 0.0)
-            ),
-            removal: .modifier(
-                active: Flip3DModifier(progress: isForward ? -1.0 : 1.0),
-                identity: Flip3DModifier(progress: 0.0)
+        // isForward == true (Next Track): Entire animation moves to the RIGHT
+        // Outgoing exits to +1.0 (slides & flips right), Incoming enters from -1.0 (left to center)
+        // isForward == false (Previous Track): Entire animation moves to the LEFT
+        // Outgoing exits to -1.0 (slides & flips left), Incoming enters from +1.0 (right to center)
+        if isForward {
+            return .asymmetric(
+                insertion: .modifier(
+                    active: Flip3DModifier(progress: -1.0),
+                    identity: Flip3DModifier(progress: 0.0)
+                ),
+                removal: .modifier(
+                    active: Flip3DModifier(progress: 1.0),
+                    identity: Flip3DModifier(progress: 0.0)
+                )
             )
-        )
+        } else {
+            return .asymmetric(
+                insertion: .modifier(
+                    active: Flip3DModifier(progress: 1.0),
+                    identity: Flip3DModifier(progress: 0.0)
+                ),
+                removal: .modifier(
+                    active: Flip3DModifier(progress: -1.0),
+                    identity: Flip3DModifier(progress: 0.0)
+                )
+            )
+        }
     }
 }
 
