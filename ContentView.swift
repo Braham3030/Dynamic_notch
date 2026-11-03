@@ -1770,7 +1770,7 @@ struct IslandView: View {
                             .foregroundStyle(.white)
                     }
                 }
-                .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                .id("\(model.currentTrack)_\(model.trackChangeCounter)")
                 .transition(.flip3D(isForward: model.isForward))
             }
             .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
@@ -2313,7 +2313,7 @@ struct IslandView: View {
                                     .foregroundColor(.white)
                             }
                         }
-                        .id(model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID)
+                        .id("\(model.currentTrack)_\(model.trackChangeCounter)")
                         .transition(.flip3D(isForward: model.isForward))
                     }
                     .matchedGeometryEffect(id: "musicArtwork", in: musicActivityNamespace)
@@ -3915,6 +3915,7 @@ class IslandModel: ObservableObject {
     
     // Track transition overrides
     @Published var isForward: Bool = true
+    @Published var trackChangeCounter: Int = 0
     var lastManualSkipTime: Date = .distantPast
     var lastPlayPauseToggleTime: Date = .distantPast
     var wasLiveWallpaperExpandedBeforePause: Bool = false
@@ -4455,15 +4456,18 @@ class IslandModel: ObservableObject {
             self.isForward = forward
             self.lastManualSkipTime = Date()
             self.buttonSkipTrigger += (forward ? 1 : -1)
+            self.trackChangeCounter += 1
             
             // Instantly apply next/previous track name and cached artwork optimistically ONLY if genuine track title!
             if isRealTrackName {
-                self.currentTrack = targetCandidate
-                for (k, v) in self.artworkCache {
-                    if k.localizedCaseInsensitiveContains(targetCandidate) || targetCandidate.localizedCaseInsensitiveContains(k) {
-                        self.currentArtwork = v.image
-                        self.artworkColor = v.color
-                        break
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                    self.currentTrack = targetCandidate
+                    for (k, v) in self.artworkCache {
+                        if k.localizedCaseInsensitiveContains(targetCandidate) || targetCandidate.localizedCaseInsensitiveContains(k) {
+                            self.currentArtwork = v.image
+                            self.artworkColor = v.color
+                            break
+                        }
                     }
                 }
             }
@@ -5493,9 +5497,17 @@ class IslandModel: ObservableObject {
                     if Date().timeIntervalSince(self.lastManualSkipTime) > 2.0 {
                         self.isForward = true
                     }
-                    self.currentTrackPersistentID = cacheKey
-                    self.currentTrack = tTrack
-                    self.currentArtist = tArtist
+                    self.trackChangeCounter += 1
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                        self.currentTrackPersistentID = cacheKey
+                        self.currentTrack = tTrack
+                        self.currentArtist = tArtist
+                        
+                        if let img = finalImage {
+                            self.currentArtwork = img
+                            self.artworkColor = finalColor
+                        }
+                    }
                     
                     self.hasLiveMotionWallpaper = false
                     self.liveMotionVideoURL = nil
@@ -5505,16 +5517,16 @@ class IslandModel: ObservableObject {
                     // Always proactively fetch/validate lyrics for current track so button knows availability
                     self.fetchLyricsForCurrentTrack()
                     
-                    if let img = finalImage {
-                        self.currentArtwork = img
-                        self.artworkColor = finalColor
+                    if finalImage != nil {
                         self.pendingArtworkRetry = false
                         // Check online for iOS / Apple Music Live Motion Wallpaper variant
                         self.fetchArtworkFromWeb(track: tTrack, artist: tArtist, album: tAlbum, cacheKey: cacheKey)
                     } else {
                         // Reset to default music icon while loading — NEVER keep previous track's artwork
-                        self.currentArtwork = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
-                        self.artworkColor = .orange
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                            self.currentArtwork = NSImage(contentsOfFile: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/MusicIcon.icns")
+                            self.artworkColor = .orange
+                        }
                         self.pendingArtworkRetry = true
                         self.fetchArtworkFromWeb(track: tTrack, artist: tArtist, album: tAlbum, cacheKey: cacheKey)
                         self.scheduleArtworkRetry(for: cacheKey, attempt: 1)
@@ -11188,24 +11200,43 @@ struct LiveActivitiesView: View {
     }
 }
 
-struct FlipTransitionModifier: ViewModifier {
-    var angle: Double
+struct Flip3DModifier: AnimatableModifier {
+    var progress: Double // -1.0 to 1.0
+    
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+    
     func body(content: Content) -> some View {
-        content
-            .rotation3DEffect(.degrees(angle), axis: (x: 0.0, y: 1.0, z: 0.0), perspective: 0.5)
-            .opacity(abs(angle) >= 89.9 ? 0 : 1.0)
+        let angle = progress * 90.0
+        let absProg = abs(progress)
+        let scale = 1.0 - (0.30 * absProg)
+        let offset = progress * 24.0
+        
+        return content
+            .scaleEffect(max(0.65, scale))
+            .offset(x: offset)
+            .rotation3DEffect(
+                .degrees(angle),
+                axis: (x: 0.0, y: 1.0, z: 0.0),
+                anchor: progress > 0 ? .leading : .trailing,
+                perspective: 0.45
+            )
+            .opacity(absProg >= 0.95 ? 0.0 : 1.0)
     }
 }
+
 extension AnyTransition {
     static func flip3D(isForward: Bool) -> AnyTransition {
-        return .asymmetric(
+        .asymmetric(
             insertion: .modifier(
-                active: FlipTransitionModifier(angle: isForward ? -90 : 90),
-                identity: FlipTransitionModifier(angle: 0)
+                active: Flip3DModifier(progress: isForward ? 1.0 : -1.0),
+                identity: Flip3DModifier(progress: 0.0)
             ),
             removal: .modifier(
-                active: FlipTransitionModifier(angle: isForward ? 90 : -90),
-                identity: FlipTransitionModifier(angle: 0)
+                active: Flip3DModifier(progress: isForward ? -1.0 : 1.0),
+                identity: Flip3DModifier(progress: 0.0)
             )
         )
     }
