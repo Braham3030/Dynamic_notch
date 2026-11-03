@@ -58,6 +58,50 @@ struct AppleMusicLyricsView: View {
             }
             
             Spacer()
+            
+            // Apple Music Style Translate / Dual Language Button
+            Button(action: {
+                model.toggleLyricsTranslation()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "translate")
+                        .font(.system(size: 10.5, weight: .bold))
+                    if model.isTranslatingLyrics {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 10, height: 10)
+                    } else {
+                        Text(model.isLyricsTranslationEnabled ? "Translated" : "Translate")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                }
+                .foregroundColor(model.isLyricsTranslationEnabled ? .white : .white.opacity(0.75))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(model.isLyricsTranslationEnabled ? model.artworkColor.opacity(0.85) : Color.white.opacity(0.12))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(model.isLyricsTranslationEnabled ? model.artworkColor : Color.white.opacity(0.2), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Translate or transliterate lyrics into dual language (Apple Music style)")
+            
+            // Refresh lyrics button
+            Button(action: {
+                model.fetchLyricsForCurrentTrack()
+            }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundColor(.white.opacity(0.75))
+                    .padding(5)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+            .help("Refresh lyrics for current track")
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
@@ -72,6 +116,36 @@ struct AppleMusicLyricsView: View {
                     Text("Fetching High-Precision Live Lyrics...")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.currentTrackLyrics.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundColor(.white.opacity(0.4))
+                    Text("No Lyrics Available")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("Could not find synchronized lyrics for \"\(model.currentTrack)\"")
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                    Button(action: {
+                        model.fetchLyricsForCurrentTrack()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Try Again")
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.white.opacity(0.15)))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -90,7 +164,8 @@ struct AppleMusicLyricsView: View {
                                         currentSec: currentSec,
                                         isCurrentLine: isCurrent,
                                         isKaraokeActive: model.isKaraokeActive,
-                                        artworkColor: model.artworkColor
+                                        artworkColor: model.artworkColor,
+                                        showTranslation: model.isLyricsTranslationEnabled
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -356,6 +431,7 @@ struct AppleLyricsLineView: View {
     let isCurrentLine: Bool
     var isKaraokeActive: Bool = false
     let artworkColor: Color
+    var showTranslation: Bool = false
     
     private let fontSize: CGFloat = 16.5
     
@@ -380,28 +456,42 @@ struct AppleLyricsLineView: View {
                 }
                 .frame(minHeight: isCurrentLine ? 24 : 0)
                 .animation(.spring(response: 0.38, dampingFraction: 0.78), value: isCurrentLine)
-            } else if line.words.isEmpty {
-                Text(line.text)
-                    .font(.system(size: fontSize, weight: .bold, design: .rounded))
-                    .foregroundColor(isCurrentLine ? .white : .white.opacity(0.25))
-                    .shadow(color: isCurrentLine ? artworkColor.opacity(0.8) : Color.clear, radius: isCurrentLine ? 6 : 0)
             } else {
-                FlowLayout(spacing: 5.5, lineSpacing: 5.0) {
-                    ForEach(line.words) { word in
-                        let isPast = currentSec >= word.endTime
-                        let isActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
-                        let progress: Double = isActive 
-                            ? max(0.0, min(1.0, (currentSec - word.startTime) / max(0.08, word.endTime - word.startTime))) 
-                            : (isPast ? 1.0 : 0.0)
-                        
-                        AppleLyricsWordView(
-                            text: word.text,
-                            progress: progress,
-                            isCurrentLine: isCurrentLine,
-                            isActive: isActive,
-                            isPast: isPast,
-                            artworkColor: artworkColor
-                        )
+                VStack(alignment: .leading, spacing: 3) {
+                    if line.words.isEmpty {
+                        Text(line.text)
+                            .font(.system(size: fontSize, weight: .bold, design: .rounded))
+                            .foregroundColor(isCurrentLine ? .white : .white.opacity(0.25))
+                            .shadow(color: isCurrentLine ? artworkColor.opacity(0.8) : Color.clear, radius: isCurrentLine ? 6 : 0)
+                    } else {
+                        FlowLayout(spacing: 5.5, lineSpacing: 5.0) {
+                            ForEach(line.words) { word in
+                                let isPast = currentSec >= word.endTime
+                                let isActive = isCurrentLine && currentSec >= word.startTime && currentSec < word.endTime
+                                let progress: Double = isActive 
+                                    ? max(0.0, min(1.0, (currentSec - word.startTime) / max(0.08, word.endTime - word.startTime))) 
+                                    : (isPast ? 1.0 : 0.0)
+                                
+                                AppleLyricsWordView(
+                                    text: word.text,
+                                    progress: progress,
+                                    isCurrentLine: isCurrentLine,
+                                    isActive: isActive,
+                                    isPast: isPast,
+                                    artworkColor: artworkColor
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Dual Language Translation Sub-line (Apple Music style)
+                    if showTranslation, let trans = line.translation, !trans.isEmpty {
+                        Text(trans)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundColor(isCurrentLine ? artworkColor.opacity(0.95) : .white.opacity(0.45))
+                            .lineLimit(2)
+                            .padding(.top, 1)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
             }
@@ -416,6 +506,7 @@ struct LyricsLine: Identifiable, Equatable {
     let startTime: TimeInterval
     let endTime: TimeInterval
     let text: String
+    var translation: String? = nil
     var words: [LyricsWord] = []
     var isInstrumentalBreak: Bool = false
 }
@@ -3663,6 +3754,8 @@ class IslandModel: ObservableObject {
     @Published var currentTrackLyrics: [LyricsLine] = []
     @Published var isFetchingLyrics: Bool = false
     @Published var hasLyricsAvailable: Bool = true
+    @Published var isLyricsTranslationEnabled: Bool = false
+    @Published var isTranslatingLyrics: Bool = false
 
     @Published var airPlayDevices: [AirPlayOutputDevice] = []
     private var albumTracksCache: [String: [String]] = [:]
@@ -4390,6 +4483,108 @@ class IslandModel: ObservableObject {
         }
     }
     
+    func toggleLyricsTranslation() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            isLyricsTranslationEnabled.toggle()
+        }
+        if isLyricsTranslationEnabled {
+            let needsTranslation = currentTrackLyrics.contains(where: { !$0.isInstrumentalBreak && !$0.text.isEmpty && $0.translation == nil })
+            if needsTranslation {
+                translateCurrentLyrics()
+            }
+        }
+    }
+    
+    func translateCurrentLyrics() {
+        guard !currentTrackLyrics.isEmpty, !isTranslatingLyrics else { return }
+        isTranslatingLyrics = true
+        let linesToTranslate = currentTrackLyrics
+        let trackSnapshotID = currentTrackPersistentID
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Check for Gurmukhi (Punjabi), Devanagari (Hindi), or non-Latin script
+            var containsGurmukhiOrIndic = false
+            for line in linesToTranslate {
+                for scalar in line.text.unicodeScalars {
+                    if (scalar.value >= 0x0900 && scalar.value <= 0x0DFF) || (scalar.value >= 0x4E00 && scalar.value <= 0x9FFF) {
+                        containsGurmukhiOrIndic = true
+                        break
+                    }
+                }
+                if containsGurmukhiOrIndic { break }
+            }
+            
+            let targetLang = "en"
+            var translations: [UUID: String] = [:]
+            
+            let textLines = linesToTranslate.filter { !$0.isInstrumentalBreak && !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            let batchSize = 25
+            var i = 0
+            while i < textLines.count {
+                let chunk = Array(textLines[i..<min(i + batchSize, textLines.count)])
+                i += batchSize
+                
+                let combinedText = chunk.map { $0.text.replacingOccurrences(of: "\n", with: " ") }.joined(separator: "\n")
+                if let encoded = combinedText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=\(targetLang)&dt=t&q=\(encoded)") {
+                    
+                    var req = URLRequest(url: url)
+                    req.timeoutInterval = 5.0
+                    req.setValue("Mozilla/5.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
+                    
+                    let sema = DispatchSemaphore(value: 0)
+                    URLSession.shared.dataTask(with: req) { data, _, _ in
+                        if let d = data,
+                           let json = try? JSONSerialization.jsonObject(with: d) as? [Any],
+                           let parts = json.first as? [[Any]] {
+                            
+                            var fullTranslated = ""
+                            for part in parts {
+                                if let str = part.first as? String {
+                                    fullTranslated += str
+                                }
+                            }
+                            
+                            let transLines = fullTranslated.components(separatedBy: "\n")
+                            for (idx, item) in chunk.enumerated() {
+                                if idx < transLines.count {
+                                    let tText = transLines[idx].trimmingCharacters(in: .whitespaces)
+                                    if !tText.isEmpty {
+                                        translations[item.id] = tText
+                                    }
+                                }
+                            }
+                        }
+                        sema.signal()
+                    }.resume()
+                    _ = sema.wait(timeout: .now() + 5.0)
+                }
+            }
+            
+            // Offline / Transliteration fallback: convert Gurmukhi / Indic script to phonetically accurate Latin / Romanized Punjabi
+            for line in linesToTranslate where translations[line.id] == nil && !line.isInstrumentalBreak {
+                if let latin = (line.text as NSString).applyingTransform(StringTransform("Any-Latin"), reverse: false), latin != line.text {
+                    translations[line.id] = latin
+                }
+            }
+            
+            DispatchQueue.main.async {
+                guard self.currentTrackPersistentID == trackSnapshotID else { return }
+                self.isTranslatingLyrics = false
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                    for idx in self.currentTrackLyrics.indices {
+                        let id = self.currentTrackLyrics[idx].id
+                        if let trans = translations[id] {
+                            self.currentTrackLyrics[idx].translation = trans
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func toggleKaraoke() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.76)) {
             isKaraokeActive.toggle()
@@ -4457,6 +4652,8 @@ class IslandModel: ObservableObject {
                     if let d = data, let dict = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                         if let synced = dict["syncedLyrics"] as? String, !synced.isEmpty {
                             resultLRC = synced
+                        } else if let plain = dict["plainLyrics"] as? String, !plain.isEmpty {
+                            resultLRC = plain
                         }
                     }
                     sema.signal()
@@ -4479,27 +4676,25 @@ class IslandModel: ObservableObject {
                 
                 var req = URLRequest(url: searchURL)
                 req.timeoutInterval = 4.0
-                req.setValue("dyNotch/1.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
+                req.setValue("Mozilla/5.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
                 let sema = DispatchSemaphore(value: 0)
                 var searchResult: String? = nil
                 URLSession.shared.dataTask(with: req) { data, _, _ in
                     if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]], !list.isEmpty {
-                        // Score candidates based on:
-                        // 1. Has synced lyrics (highest priority)
-                        // 2. Duration proximity to expected track length (within 12 seconds)
-                        let candidates = list.compactMap { item -> (synced: String, score: Double)? in
-                            guard let syn = item["syncedLyrics"] as? String, !syn.isEmpty else { return nil }
+                        let candidates = list.compactMap { item -> (lyrics: String, isSynced: Bool, score: Double)? in
+                            let syn = (item["syncedLyrics"] as? String) ?? ""
+                            let plain = (item["plainLyrics"] as? String) ?? ""
                             let candDur = (item["duration"] as? Double) ?? 0.0
                             let durDiff = abs(candDur - expectedDur)
-                            // Reject candidate if duration is completely off (> 18 seconds)
-                            if expectedDur > 30 && durDiff > 18.0 { return nil }
-                            return (syn, durDiff)
+                            if !syn.isEmpty {
+                                return (syn, true, durDiff)
+                            } else if !plain.isEmpty {
+                                return (plain, false, durDiff + 10.0)
+                            }
+                            return nil
                         }
-                        
                         if let best = candidates.sorted(by: { $0.score < $1.score }).first {
-                            searchResult = best.synced
-                        } else if let plain = list.first?["plainLyrics"] as? String, !plain.isEmpty {
-                            searchResult = plain
+                            searchResult = best.lyrics
                         }
                     }
                     sema.signal()
@@ -4508,14 +4703,20 @@ class IslandModel: ObservableObject {
                 return searchResult
             }
             
-            // Clean queries: strip (feat. ...), [Remastered], (Deluxe), etc.
-            let cleanTrack = trackName.replacingOccurrences(of: "\\(.*\\)", with: "", options: .regularExpression)
-                                      .replacingOccurrences(of: "\\[.*\\]", with: "", options: .regularExpression)
-                                      .trimmingCharacters(in: .whitespaces)
+            // Thorough Punjabi / international title cleaning
+            var cleanTrack = trackName
+            cleanTrack = cleanTrack.replacingOccurrences(of: "\\(.*\\)", with: "", options: .regularExpression)
+            cleanTrack = cleanTrack.replacingOccurrences(of: "\\[.*\\]", with: "", options: .regularExpression)
+            cleanTrack = cleanTrack.replacingOccurrences(of: "\\s*-\\s*Single$", with: "", options: .regularExpression)
+            cleanTrack = cleanTrack.replacingOccurrences(of: "\\s*-\\s*EP$", with: "", options: .regularExpression)
+            cleanTrack = cleanTrack.replacingOccurrences(of: "\\s*-\\s*From\\s+.*$", with: "", options: .regularExpression)
+            cleanTrack = cleanTrack.trimmingCharacters(in: .whitespaces)
+            
             let cleanArtist = artistName.components(separatedBy: ",")[0]
                                         .components(separatedBy: "&")[0]
                                         .components(separatedBy: "feat")[0]
                                         .components(separatedBy: "ft.")[0]
+                                        .components(separatedBy: "With")[0]
                                         .trimmingCharacters(in: .whitespaces)
             
             // 1. Try structured search with exact clean track & clean artist
@@ -4531,20 +4732,45 @@ class IslandModel: ObservableObject {
                 fetchedLRC = queryStructuredSearch(tName: trackName, aName: artistName, expectedDur: trackDur)
             }
             
-            // 4. Try general free-form search query (/api/search?q=...)
+            // 4. Try free-form search query
             if fetchedLRC == nil {
                 var freeComponents = URLComponents(string: "https://lrclib.net/api/search")
                 freeComponents?.queryItems = [URLQueryItem(name: "q", value: "\(cleanTrack) \(cleanArtist)")]
                 if let u = freeComponents?.url {
                     var req = URLRequest(url: u)
                     req.timeoutInterval = 3.5
-                    req.setValue("dyNotch/1.0", forHTTPHeaderField: "User-Agent")
+                    req.setValue("Mozilla/5.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
                     let sema = DispatchSemaphore(value: 0)
                     URLSession.shared.dataTask(with: req) { data, _, _ in
                         if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] {
                             let withSync = list.filter { !(($0["syncedLyrics"] as? String) ?? "").isEmpty }
                             if let match = withSync.sorted(by: { abs((( $0["duration"] as? Double) ?? 0) - trackDur) < abs((( $1["duration"] as? Double) ?? 0) - trackDur) }).first {
                                 fetchedLRC = match["syncedLyrics"] as? String
+                            } else if let plainMatch = list.first(where: { !(($0["plainLyrics"] as? String) ?? "").isEmpty }) {
+                                fetchedLRC = plainMatch["plainLyrics"] as? String
+                            }
+                        }
+                        sema.signal()
+                    }.resume()
+                    _ = sema.wait(timeout: .now() + 3.5)
+                }
+            }
+            
+            // 5. Try search by track name only (great for unique Punjabi titles)
+            if fetchedLRC == nil && !cleanTrack.isEmpty {
+                var singleComponents = URLComponents(string: "https://lrclib.net/api/search")
+                singleComponents?.queryItems = [URLQueryItem(name: "track_name", value: cleanTrack)]
+                if let u = singleComponents?.url {
+                    var req = URLRequest(url: u)
+                    req.timeoutInterval = 3.5
+                    req.setValue("Mozilla/5.0 (Macintosh; Apple Silicon)", forHTTPHeaderField: "User-Agent")
+                    let sema = DispatchSemaphore(value: 0)
+                    URLSession.shared.dataTask(with: req) { data, _, _ in
+                        if let d = data, let list = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] {
+                            if let match = list.first(where: { !(($0["syncedLyrics"] as? String) ?? "").isEmpty }) {
+                                fetchedLRC = match["syncedLyrics"] as? String
+                            } else if let plainMatch = list.first(where: { !(($0["plainLyrics"] as? String) ?? "").isEmpty }) {
+                                fetchedLRC = plainMatch["plainLyrics"] as? String
                             }
                         }
                         sema.signal()
@@ -4572,8 +4798,20 @@ class IslandModel: ObservableObject {
                         }
                     }
                 }
+                
+                // If lrcText was plain lyrics without [time] tags, parse lines and distribute evenly
+                if rawLines.isEmpty {
+                    let plainLines = lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !$0.hasPrefix("[") }
+                    if !plainLines.isEmpty {
+                        let step = trackDur / Double(max(1, plainLines.count))
+                        for (idx, lineStr) in plainLines.enumerated() {
+                            rawLines.append((time: Double(idx) * step, text: lineStr))
+                        }
+                    }
+                }
             }
             
+            // 6. Fallback: Apple Music native cached lyrics via AppleScript
             if rawLines.isEmpty {
                 var nativeLyrics = ""
                 let scriptSource = """
@@ -4595,17 +4833,12 @@ class IslandModel: ObservableObject {
                 }
             }
             
-            // NEVER generate fake lyrics like 'Sing along with Apple Music Sing' if real lyrics do not exist!
-            // If rawLines is empty, there are genuinely no lyrics for this song, so lyrics button will be disabled!
             if rawLines.isEmpty {
                 DispatchQueue.main.async {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
                         self.currentTrackLyrics = []
                         self.isFetchingLyrics = false
                         self.hasLyricsAvailable = false
-                        if self.isShowingLyricsInMusic {
-                            self.isShowingLyricsInMusic = false
-                        }
                     }
                 }
                 return
@@ -4614,7 +4847,6 @@ class IslandModel: ObservableObject {
             // Build detailed word-by-word line model with dynamic instrumental breaks
             var parsed: [LyricsLine] = []
             
-            // Check for intro instrumental break (if track starts with music before lyrics)
             if let first = rawLines.first, first.time >= 3.0 {
                 parsed.append(LyricsLine(
                     startTime: 0.0,
@@ -4628,8 +4860,6 @@ class IslandModel: ObservableObject {
             for (idx, r) in rawLines.enumerated() {
                 let nextStart = (idx + 1 < rawLines.count) ? rawLines[idx + 1].time : (trackDur > 0 ? trackDur : r.time + 8.0)
                 let totalGap = max(0.5, nextStart - r.time)
-                
-                // Words active duration: if gap before next line is large, keep singing duration natural
                 let sungDuration = min(totalGap, max(1.2, totalGap > 5.0 ? totalGap * 0.65 : totalGap))
                 
                 let wordTokens = r.text.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
@@ -4647,7 +4877,6 @@ class IslandModel: ObservableObject {
                 let lineEndTime = hasInstrumentalInterlude ? (r.time + sungDuration) : nextStart
                 parsed.append(LyricsLine(startTime: r.time, endTime: lineEndTime, text: r.text, words: words, isInstrumentalBreak: false))
                 
-                // If there is an instrumental gap >= 3.5s before the next line, insert an instrumental break!
                 if hasInstrumentalInterlude && (nextStart - lineEndTime >= 1.5) {
                     parsed.append(LyricsLine(
                         startTime: lineEndTime,
@@ -4665,9 +4894,9 @@ class IslandModel: ObservableObject {
                     self.currentTrackLyrics = parsed
                     self.isFetchingLyrics = false
                     self.hasLyricsAvailable = foundLyrics
-                    if !foundLyrics && self.isShowingLyricsInMusic {
-                        self.isShowingLyricsInMusic = false
-                    }
+                }
+                if foundLyrics && self.isLyricsTranslationEnabled {
+                    self.translateCurrentLyrics()
                 }
             }
         }
