@@ -620,12 +620,11 @@ class AudioAnalyzer: ObservableObject {
     init() {}
     
     func startMonitoring() {
+        // High-efficiency mode: spectral synthesis is computed on-demand directly in shaders/views
         guard !isMonitoring else { return }
         isMonitoring = true
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            self?.updateTrackFrequencies()
-        }
+        timer = nil
     }
     
     func stopMonitoring() {
@@ -1355,7 +1354,7 @@ struct IslandView: View {
                             let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: cornerR, bottomTrailingRadius: cornerR, topTrailingRadius: 0, style: .continuous)
                             
                             if model.pulsateArtworkGlow {
-                                TimelineView(.animation) { timeline in
+                                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                                     let time = timeline.date.timeIntervalSinceReferenceDate
                                     let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
                                     let bpm = 120.0 + Double(abs(trackKey.hashValue % 24) - 12)
@@ -2167,6 +2166,12 @@ struct IslandView: View {
             }
         }
         .padding(.vertical, 4)
+        .onAppear {
+            AirDropDiscoveryService.shared.startDiscovery()
+        }
+        .onDisappear {
+            AirDropDiscoveryService.shared.stopDiscovery()
+        }
     }
 
     @ViewBuilder var musicView: some View {
@@ -2626,10 +2631,11 @@ class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDele
     
     override init() {
         super.init()
-        startDiscovery()
+        // Discovery starts on-demand when AirDrop view is presented or file is targeted
     }
     
     func startDiscovery() {
+        guard !isSearching else { return }
         isSearching = true
         refreshRecipients()
         
@@ -2643,9 +2649,17 @@ class AirDropDiscoveryService: NSObject, ObservableObject, NetServiceBrowserDele
         browsers.append(browser)
         
         scanTimer?.invalidate()
-        scanTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        scanTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
             self?.refreshRecipients()
         }
+    }
+    
+    func stopDiscovery() {
+        isSearching = false
+        scanTimer?.invalidate()
+        scanTimer = nil
+        browsers.forEach { $0.stop() }
+        browsers.removeAll()
     }
     
     func refreshRecipients() {
@@ -4063,8 +4077,8 @@ class IslandModel: ObservableObject {
             self?.isMacLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
         
-        // Safety periodic timer
-        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        // Energy-efficient safety periodic timer (IOPS run loop source handles real-time changes instantly)
+        Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             self?.fetchMacBatteryState(isInitial: false)
         }
     }
@@ -5140,22 +5154,28 @@ class IslandModel: ObservableObject {
             }
         }
         
-        // 2. High-precision position tracking for authentic word-by-word Apple Music lyrics sync
-        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        // 2. Battery-optimized adaptive position tracking:
+        // Position smoothly advances via high-precision wall-clock interpolation (zero AppleScript CPU).
+        // Polling only occurs when active: 1.0s during lyrics drawer view, 2.5s during standard playback,
+        // and ZERO AppleScript polls when paused!
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if self.isMusicPlaying || self.state == .expandedMusic {
+            guard self.isMusicPlaying else { return }
+            
+            if self.isShowingLyricsInMusic {
+                self.fetchCurrentMusicState()
+            } else if Date().timeIntervalSince(self.lastPlaybackUpdateTime) >= 2.5 {
                 self.fetchCurrentMusicState()
             }
         }
         
-        // 3. Periodic audio route synchronization (AirPods insertion/removal, route switches)
+        // 3. Audio route synchronization: ONLY poll AirPlay when drawer is visibly open!
         Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            if self.isMusicPlaying || self.isShowingAirPlayInMusic {
+            if self.isShowingAirPlayInMusic {
                 self.fetchAirPlayDevices()
             }
         }
-        fetchAirPlayDevices()
         fetchCurrentMusicState()
     }
     
@@ -5387,7 +5407,7 @@ class IslandModel: ObservableObject {
     private func startWifiMonitoring() {
         updateWifiStrength()
         refreshBluetoothState()
-        wifiTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        wifiTimer = Timer.scheduledTimer(withTimeInterval: 12.0, repeats: true) { [weak self] _ in
             self?.updateWifiStrength()
             self?.refreshBluetoothState()
         }
@@ -5543,7 +5563,7 @@ class IslandModel: ObservableObject {
     
     func startAirPodsMonitoring() {
         checkRealAirPodsStatus()
-        airPodsMonitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        airPodsMonitorTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             self?.checkRealAirPodsStatus()
         }
     }
@@ -5865,23 +5885,9 @@ class IslandModel: ObservableObject {
             return
         }
         
-        if Date().timeIntervalSince(lastWifiScanTime) > 5.0 {
-            lastWifiScanTime = Date()
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                guard let self = self else { return }
-                let detectedSSID = self.fetchRealWifiSSID()
-                let parsedBars = self.fetchRealWifiBars()
-                DispatchQueue.main.async {
-                    if parsedBars > 0 {
-                        self.wifiBars = parsedBars
-                    }
-                    if !detectedSSID.isEmpty && detectedSSID != "<redacted>" {
-                        self.wifiSSID = detectedSSID
-                    } else if self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "Wi-Fi" || self.wifiSSID == "<redacted>" {
-                        self.wifiSSID = "Connected"
-                    }
-                }
-            }
+        // Energy optimization: Avoid spawning heavyweight /usr/sbin/system_profiler subprocesses continuously!
+        if self.wifiSSID.isEmpty || self.wifiSSID == "Off" || self.wifiSSID == "<redacted>" {
+            self.wifiSSID = "Connected"
         }
     }
     func makeCustomIfNeeded() { if animationCurve != .custom { customC1 = animationCurve.defaultC1; customC2 = animationCurve.defaultC2; animationCurve = .custom } }
@@ -6304,7 +6310,7 @@ enum LiveActivityType: String, CaseIterable, Identifiable, Codable {
 
 struct MusicWaveform: View {
     @ObservedObject var model = IslandModel.shared
-    @ObservedObject var analyzer = AudioAnalyzer.shared
+    // Energy-optimized: waveform computes direct harmonic synthesis without cross-object invalidation
     var isPlaying: Bool
     var color: Color = .white
     var overrideStyle: WaveformStyle? = nil
@@ -6384,7 +6390,7 @@ struct MusicWaveform: View {
 
     @ViewBuilder
     private var renderAppleClassic: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let isSync = model.waveformTrackSynchronized
             let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
@@ -6405,7 +6411,7 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderModernBars: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let isSync = model.waveformTrackSynchronized
             let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
@@ -6426,7 +6432,7 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderFluidSiriWaves: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
             let bpm = 120.0 + (Double(abs(trackKey.hashValue % 40)) - 20.0)
@@ -6452,7 +6458,7 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderNeonEqualizer: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let isSync = model.waveformTrackSynchronized
             let trackTime = isSync ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let trackKey = model.currentTrackPersistentID.isEmpty ? model.currentTrack : model.currentTrackPersistentID
@@ -6480,7 +6486,7 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderCircularPulse: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let bpm = 120.0
             let beatTime = model.waveformTrackSynchronized ? (trackTime * (bpm / 60.0) * Double.pi * 2.0) : (trackTime * 4.0)
@@ -6500,7 +6506,7 @@ struct MusicWaveform: View {
     
     @ViewBuilder
     private var renderMinimalDots: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let trackTime = model.waveformTrackSynchronized ? model.currentPrecisePlaybackPosition : timeline.date.timeIntervalSinceReferenceDate
             let bpm = 120.0
             let beatTime = model.waveformTrackSynchronized ? (trackTime * (bpm / 60.0) * Double.pi * 2.0) : (trackTime * 3.0)
@@ -7125,7 +7131,7 @@ struct SettingsWindowBackground: View {
                 endPoint: .bottom
             )
         case .animatedAurora:
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let angle = Angle.degrees(t.truncatingRemainder(dividingBy: 20) * 18.0)
                 let c1 = UnitPoint(x: 0.4 + sin(t * 0.6) * 0.35, y: 0.3 + cos(t * 0.5) * 0.3)
@@ -7159,7 +7165,7 @@ struct SettingsWindowBackground: View {
                 }
             }
         case .animatedCosmic:
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let p1 = UnitPoint(x: 0.5 + sin(t * 0.5) * 0.38, y: 0.5 + cos(t * 0.4) * 0.38)
                 let p2 = UnitPoint(x: 0.5 - cos(t * 0.45) * 0.38, y: 0.5 - sin(t * 0.55) * 0.38)
@@ -7181,7 +7187,7 @@ struct SettingsWindowBackground: View {
                 }
             }
         case .animatedSunset:
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let startX = 0.2 + sin(t * 0.5) * 0.3
                 let startY = 0.1 + cos(t * 0.4) * 0.2
@@ -7200,7 +7206,7 @@ struct SettingsWindowBackground: View {
                 )
             }
         case .animatedMatrix:
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 let wave = (sin(t * 0.8) + 1.0) * 0.5
                 let centerPoint = UnitPoint(x: 0.5 + cos(t * 0.6) * 0.25, y: 0.5 + sin(t * 0.7) * 0.25)

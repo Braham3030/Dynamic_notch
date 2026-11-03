@@ -81,7 +81,7 @@ struct FullScreenGlowView: View {
     var body: some View {
         GeometryReader { geo in
             if model.enableFullWindowGlow && model.isMusicPlaying {
-                TimelineView(.animation) { timeline in
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                     // Perfectly synchronized strictly to the track's internal playback position and tempo!
                     // ZERO microphone overhead, ZERO outside room noise, 100% pure track music flow!
                     let pos = model.currentPrecisePlaybackPosition
@@ -199,23 +199,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupMouseTracking() {
         // Track mouse globally across all apps for smooth notch hover interactions
-        mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+        mouseMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseUp]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
-            self?.checkImageDragState()
+            if event.type == .leftMouseDragged {
+                self?.checkImageDragState()
+            } else if event.type == .leftMouseUp {
+                self?.resetDragState()
+            }
         }
         // Track mouse locally within our application
-        mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]) { [weak self] event in
+        mouseMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseUp]) { [weak self] event in
             self?.handleMouseLocation(NSEvent.mouseLocation)
-            self?.checkImageDragState()
+            if event.type == .leftMouseDragged {
+                self?.checkImageDragState()
+            } else if event.type == .leftMouseUp {
+                self?.resetDragState()
+            }
             return event
         }
         
-        // Fast periodic checker to detect drag time progression & release across the entire OS
-        dragCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
-            self?.checkImageDragState()
-        }
+        // Energy-efficient on-demand drag checking (only active during actual drag events)
+        // No wasteful 24/7 background timer!
     }
     
+    private func resetDragState() {
+        dragStartTime = nil
+        let model = IslandModel.shared
+        if model.isAirDropTargeted && model.state != .expandedAirDrop {
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    model.isAirDropTargeted = false
+                }
+            }
+        }
+    }
+
     private func checkImageDragState() {
         let mouseButtons = NSEvent.pressedMouseButtons
         let isLeftDown = (mouseButtons & 1) != 0
@@ -439,7 +457,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.isRestorable = false
         win.ignoresMouseEvents = true
         win.setFrame(screen.frame, display: true)
-        win.orderFrontRegardless()
+        if IslandModel.shared.enableFullWindowGlow && IslandModel.shared.isMusicPlaying {
+            win.orderFrontRegardless()
+        } else {
+            win.orderOut(nil)
+        }
         return win
     }
 }
